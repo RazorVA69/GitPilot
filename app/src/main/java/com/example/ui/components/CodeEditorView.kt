@@ -70,14 +70,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -164,9 +161,15 @@ fun CodeEditorView(
         ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
     }
 
-    val lines = remember(content) {
-        val count = content.count { it == '\n' } + 1
-        (1..count).toList()
+    // High performance single-string line number generation for smooth 120 FPS scrolling
+    val lineCount = remember(content) { content.count { it == '\n' } + 1 }
+    val lineNumbersText = remember(lineCount) {
+        val sb = StringBuilder(lineCount * 6)
+        for (i in 1..lineCount) {
+            sb.append(i).append('\n')
+        }
+        if (sb.isNotEmpty()) sb.setLength(sb.length - 1)
+        sb.toString()
     }
 
     val charCount = remember(content) { content.length }
@@ -615,7 +618,7 @@ fun CodeEditorView(
             }
         }
 
-        // EDITOR BODY
+        // EDITOR BODY (High Performance Layout)
         Box(modifier = Modifier.weight(1f)) {
             if (isLoading) {
                 Box(
@@ -657,33 +660,33 @@ fun CodeEditorView(
                     )
                 }
             } else {
-                // Code Editor with Line Numbers
+                // Code Editor with High Performance Synchronized Gutter
                 val verticalScrollState = rememberScrollState()
                 val horizontalScrollState = rememberScrollState()
 
                 Row(modifier = Modifier.fillMaxSize()) {
-                    // Line numbers column
+                    // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
                     if (showLineNumbers) {
-                        Column(
+                        val digits = remember(lineCount) { lineCount.toString().length }
+                        val gutterWidth = (digits * 9 + 18).dp.coerceAtLeast(36.dp)
+
+                        Box(
                             modifier = Modifier
                                 .fillMaxHeight()
-                                .width(46.dp)
+                                .width(gutterWidth)
                                 .background(Md3LightCodeGutter)
                                 .verticalScroll(verticalScrollState)
-                                .padding(vertical = 12.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.End
+                                .padding(top = 12.dp, bottom = 12.dp, start = 4.dp, end = 6.dp)
                         ) {
-                            lines.forEach { lineNum ->
-                                Text(
-                                    text = "$lineNum",
-                                    fontSize = fontSize.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = Md3LightTextTertiary,
-                                    textAlign = TextAlign.End,
-                                    lineHeight = (fontSize * 1.5).sp,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                            Text(
+                                text = lineNumbersText,
+                                fontSize = fontSize.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Md3LightTextTertiary,
+                                textAlign = TextAlign.End,
+                                lineHeight = (fontSize * 1.5).sp,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         // Gutter Divider
@@ -743,7 +746,7 @@ fun CodeEditorView(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "${lines.size} lines",
+                        text = "$lineCount lines",
                         style = MaterialTheme.typography.labelSmall,
                         color = Md3LightTextSecondary
                     )
@@ -753,7 +756,7 @@ fun CodeEditorView(
                         color = Md3LightTextSecondary
                     )
                     Text(
-                        text = formatFileSize(file?.size ?: charCount.toLong()),
+                        text = FileIcons.formatFileSize(file?.size ?: charCount.toLong()),
                         style = MaterialTheme.typography.labelSmall,
                         color = Md3LightTextSecondary
                     )

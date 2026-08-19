@@ -15,12 +15,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -32,6 +29,7 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.NoteAdd
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -85,7 +83,6 @@ import com.example.ui.theme.Md3LightSurface
 import com.example.ui.theme.Md3LightSurfaceVariant
 import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -126,12 +123,15 @@ fun CreateOrUploadModal(
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Files Upload, 1: Folder Upload, 2: New File, 3: New Folder, 4: Templates
     var showFolderDropdown by remember { mutableStateOf(false) }
 
-    // Selected local files for batch upload
+    // Staged files for batch upload
     var stagedFiles by remember { mutableStateOf<List<Pair<String, ByteArray>>>(emptyList()) }
     var stagedSummary by remember { mutableStateOf("") }
     var isReadingFiles by remember { mutableStateOf(false) }
 
-    // System File Picker (Supports any file type)
+    // Device Storage Explorer Modal visibility
+    var showDeviceStorageExplorer by remember { mutableStateOf(false) }
+
+    // System File Picker (Fallback)
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -155,7 +155,7 @@ fun CreateOrUploadModal(
         }
     }
 
-    // System Folder Picker
+    // System Folder Picker (Fallback)
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { treeUri ->
@@ -273,7 +273,7 @@ fun CreateOrUploadModal(
                     .padding(horizontal = 20.dp, vertical = 16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Target Directory Section with Quick Chips (Root, Current, Select Other)
+                // Target Directory Section with Quick Chips
                 Text(
                     text = "Target Directory Path in Repository",
                     style = MaterialTheme.typography.labelMedium,
@@ -373,43 +373,57 @@ fun CreateOrUploadModal(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // TAB 0: UPLOAD FILES FROM STORAGE
+                // TAB 0: UPLOAD FILES (Device Storage Explorer & Pickers)
                 if (selectedTab == 0) {
+                    // Primary Custom Storage Explorer Card
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { filePickerLauncher.launch(arrayOf("*/*")) }
-                            .padding(vertical = 4.dp),
-                        color = Md3LightSurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GitHubGreen.copy(alpha = 0.6f))
+                            .clickable { showDeviceStorageExplorer = true },
+                        color = Color(0xFFE8F5E9),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GitHubGreen)
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.UploadFile,
+                                imageVector = Icons.Default.Smartphone,
                                 contentDescription = null,
                                 tint = GitHubGreen,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(36.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Select Files from Storage",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Md3LightTextPrimary
-                            )
-                            Text(
-                                text = "Supports code, images, audio, video, zip, pdf, and all file formats",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Md3LightTextSecondary,
-                                fontSize = 11.sp
-                            )
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Device Storage Explorer",
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1B5E20),
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Browse device folders & multi-select multiple files / folders simultaneously",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Secondary System File Picker Button
+                    OutlinedButton(
+                        onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Or choose via System File Picker", fontSize = 12.sp)
                     }
 
                     if (isReadingFiles) {
@@ -461,43 +475,57 @@ fun CreateOrUploadModal(
                     }
                 }
 
-                // TAB 1: UPLOAD FOLDER FROM STORAGE
+                // TAB 1: UPLOAD FOLDERS (Device Storage Explorer & Pickers)
                 if (selectedTab == 1) {
+                    // Primary Custom Storage Explorer Card for Folders
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .clickable { folderPickerLauncher.launch(null) }
-                            .padding(vertical = 4.dp),
-                        color = Md3LightSurfaceVariant,
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GitHubBlue.copy(alpha = 0.6f))
+                            .clickable { showDeviceStorageExplorer = true },
+                        color = Color(0xFFE3F2FD),
+                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GitHubBlue)
                     ) {
-                        Column(
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(20.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.DriveFolderUpload,
                                 contentDescription = null,
                                 tint = GitHubBlue,
-                                modifier = Modifier.size(40.dp)
+                                modifier = Modifier.size(36.dp)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Select Folder from Storage",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = Md3LightTextPrimary
-                            )
-                            Text(
-                                text = "Recursively uploads all files and subfolders into the repository target path",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Md3LightTextSecondary,
-                                fontSize = 11.sp
-                            )
+                            Spacer(modifier = Modifier.width(14.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Device Storage Explorer",
+                                    fontWeight = FontWeight.Bold,
+                                    color = GitHubBlue,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Select single or multiple folders to recursively upload all files inside",
+                                    fontSize = 11.sp,
+                                    color = Md3LightTextSecondary
+                                )
+                            }
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Secondary System Tree Picker
+                    OutlinedButton(
+                        onClick = { folderPickerLauncher.launch(null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Or choose via System Folder Picker", fontSize = 12.sp)
                     }
 
                     if (isReadingFiles) {
@@ -756,7 +784,6 @@ fun CreateOrUploadModal(
                                     }
                                 }
                                 3 -> {
-                                    // New Folder (creates .gitkeep)
                                     val folderName = fileName.trim().trim('/')
                                     if (folderName.isNotBlank()) {
                                         val folderPath = if (targetDirectory.isBlank()) folderName else "${targetDirectory.trim('/')}/$folderName"
@@ -770,7 +797,6 @@ fun CreateOrUploadModal(
                                     }
                                 }
                                 else -> {
-                                    // New File or Template
                                     if (fileName.isNotBlank()) {
                                         onCreateOrUpload(
                                             targetDirectory,
@@ -811,6 +837,17 @@ fun CreateOrUploadModal(
                 }
             }
         }
+    }
+
+    // Built-in Device File & Folder Explorer Sheet
+    if (showDeviceStorageExplorer) {
+        DeviceStorageExplorerModal(
+            onDismiss = { showDeviceStorageExplorer = false },
+            onFilesSelected = { files, summary ->
+                stagedFiles = files
+                stagedSummary = summary
+            }
+        )
     }
 }
 
