@@ -28,8 +28,14 @@ interface AppDao {
     @Query("UPDATE accounts SET isCurrent = 1 WHERE id = :id")
     suspend fun setCurrentAccount(id: Long)
 
+    @Query("UPDATE accounts SET isCurrent = 1 WHERE username = :username")
+    suspend fun setCurrentAccountByUsername(username: String)
+
     @Query("DELETE FROM accounts WHERE id = :id")
     suspend fun deleteAccount(id: Long)
+
+    @Query("DELETE FROM accounts WHERE username = :username")
+    suspend fun deleteAccountByUsername(username: String)
 
     @Query("DELETE FROM accounts")
     suspend fun deleteAllAccounts()

@@ -6,10 +6,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,9 +41,13 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -52,11 +56,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -98,6 +103,7 @@ import com.example.ui.theme.Md3LightSurfaceVariant
 import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
 import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.viewmodel.FileTreeSortOption
 import com.example.ui.viewmodel.SyncStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,6 +121,9 @@ fun FileTreeExplorer(
     matchingSearchFiles: List<GitTreeItem>,
     isBatchMode: Boolean,
     selectedFilePaths: Set<String>,
+    pinnedFolders: Set<String> = emptySet(),
+    fileTreeSortOption: FileTreeSortOption = FileTreeSortOption.FOLDERS_FIRST,
+    isFileTreeSortReversed: Boolean = false,
     onBranchClick: () -> Unit,
     onNavigateToDir: (String) -> Unit,
     onNavigateUp: () -> Unit,
@@ -130,10 +139,15 @@ fun FileTreeExplorer(
     onClearSelection: () -> Unit,
     onOpenBatchDeleteModal: () -> Unit,
     onDeleteSingleFile: (path: String, sha: String) -> Unit,
+    onTogglePinFolder: (String) -> Unit = {},
+    onFileTreeSortChange: (FileTreeSortOption) -> Unit = {},
+    onToggleFileTreeSortReverse: () -> Unit = {},
     onToggleLeftDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var folderForActionDialog by remember { mutableStateOf<ExplorerNode?>(null) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
     val syncRotation by infiniteTransition.animateFloat(
@@ -288,6 +302,92 @@ fun FileTreeExplorer(
                     )
                 }
 
+                // Sort Menu Button
+                Box {
+                    IconButton(onClick = { showSortMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Sort,
+                            contentDescription = "Sort Files & Folders",
+                            tint = Md3LightTextSecondary
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Folders First")
+                                    if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.FOLDERS_FIRST)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Files First")
+                                    if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.FILES_FIRST)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Name (A → Z)")
+                                    if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.NAME_ASC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Name (Z → A)")
+                                    if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.NAME_DESC)
+                                showSortMenu = false
+                            }
+                        )
+                    }
+                }
+
+                // Reverse Sort Toggle
+                IconButton(onClick = onToggleFileTreeSortReverse) {
+                    Icon(
+                        imageVector = Icons.Default.SwapVert,
+                        contentDescription = "Reverse Sort Order",
+                        tint = if (isFileTreeSortReversed) Md3LightPrimary else Md3LightTextSecondary
+                    )
+                }
+
                 // Multi-select Batch Mode Toggle
                 IconButton(
                     onClick = onToggleBatchMode,
@@ -378,6 +478,107 @@ fun FileTreeExplorer(
             onNavigateToDir = onNavigateToDir
         )
 
+        // Pinned Folders Quick Access Bar
+        if (pinnedFolders.isNotEmpty() || currentPath.isNotBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = "Pinned",
+                        tint = GitHubYellow,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Quick Folders:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Md3LightTextSecondary
+                    )
+                }
+
+                // Pinned Folder Chips
+                pinnedFolders.forEach { folderPath ->
+                    val displayName = folderPath.substringAfterLast('/')
+                    val isCurrent = currentPath == folderPath
+
+                    FilterChip(
+                        selected = isCurrent,
+                        onClick = { onNavigateToDir(folderPath) },
+                        label = {
+                            Text(
+                                text = displayName,
+                                fontSize = 11.sp,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = if (isCurrent) Md3LightPrimary else GitHubYellow
+                            )
+                        },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Unpin",
+                                modifier = Modifier
+                                    .size(14.dp)
+                                    .clickable { onTogglePinFolder(folderPath) },
+                                tint = Md3LightTextTertiary
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Md3LightPrimaryContainer,
+                            selectedLabelColor = Md3LightPrimary
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+
+                // Pin Current Directory Quick Action
+                if (currentPath.isNotBlank() && !pinnedFolders.contains(currentPath)) {
+                    val currentFolderName = currentPath.substringAfterLast('/')
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onTogglePinFolder(currentPath) },
+                        color = GitHubGreen.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = GitHubGreen,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Pin \"$currentFolderName\"",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GitHubGreen
+                            )
+                        }
+                    }
+                }
+            }
+            HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+        }
+
         // Batch Mode Action Bar
         AnimatedVisibility(visible = isBatchMode) {
             BatchActionBar(
@@ -422,7 +623,18 @@ fun FileTreeExplorer(
             } else {
                 // Directory Node Children List (Files & Folders)
                 val currentNode = rootNode?.let { RepoRepo.findNodeAtDirectory(it, currentPath) }
-                if (currentNode == null || currentNode.children.isEmpty()) {
+                val sortedChildren = remember(currentNode?.children, fileTreeSortOption, isFileTreeSortReversed) {
+                    val list = currentNode?.children ?: emptyList()
+                    val sorted = when (fileTreeSortOption) {
+                        FileTreeSortOption.FOLDERS_FIRST -> list.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                        FileTreeSortOption.FILES_FIRST -> list.sortedWith(compareBy({ it.isDirectory }, { it.name.lowercase() }))
+                        FileTreeSortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
+                        FileTreeSortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
+                    }
+                    if (isFileTreeSortReversed) sorted.reversed() else sorted
+                }
+
+                if (currentNode == null || sortedChildren.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
@@ -459,7 +671,7 @@ fun FileTreeExplorer(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 72.dp)
                     ) {
-                        items(currentNode.children, key = { it.path }) { childNode ->
+                        items(sortedChildren, key = { it.path }) { childNode ->
                             val rawItem = rawTreeItems.firstOrNull { it.path == childNode.path }
                                 ?: GitTreeItem(
                                     path = childNode.path,
@@ -477,11 +689,14 @@ fun FileTreeExplorer(
                                 selectedFilePaths.contains(childNode.path)
                             }
 
+                            val isFolderPinned = childNode.isDirectory && pinnedFolders.contains(childNode.path)
+
                             ExplorerItemRow(
                                 node = childNode,
                                 rawItem = rawItem,
                                 isBatchMode = isBatchMode,
                                 isSelected = isSelected,
+                                isPinned = isFolderPinned,
                                 onClick = {
                                     if (isBatchMode) {
                                         if (childNode.isDirectory) {
@@ -497,6 +712,11 @@ fun FileTreeExplorer(
                                         }
                                     }
                                 },
+                                onLongClick = {
+                                    if (childNode.isDirectory) {
+                                        folderForActionDialog = childNode
+                                    }
+                                },
                                 onToggleSelect = {
                                     if (childNode.isDirectory) {
                                         onToggleSelectFolder(childNode.path)
@@ -504,13 +724,77 @@ fun FileTreeExplorer(
                                         onToggleSelectFile(childNode.path)
                                     }
                                 },
-                                onDelete = { onDeleteSingleFile(childNode.path, childNode.sha) }
+                                onDelete = { onDeleteSingleFile(childNode.path, childNode.sha) },
+                                onTogglePinFolder = { onTogglePinFolder(childNode.path) }
                             )
                         }
                     }
                 }
             }
         }
+    }
+
+    // Folder Context Menu Dialog (for Pinning & Actions)
+    folderForActionDialog?.let { folderNode ->
+        val isPinned = pinnedFolders.contains(folderNode.path)
+        AlertDialog(
+            onDismissRequest = { folderForActionDialog = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Folder, contentDescription = null, tint = GitHubYellow, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(folderNode.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Quick action for this folder:", fontSize = 13.sp, color = Md3LightTextSecondary)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onTogglePinFolder(folderNode.path)
+                                folderForActionDialog = null
+                            },
+                        color = Md3LightSurfaceVariant
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = null,
+                                tint = if (isPinned) GitHubYellow else Md3LightTextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (isPinned) "Unpin Folder" else "Pin Folder to Quick Access",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Access this folder with one tap from the explorer header",
+                                    fontSize = 11.sp,
+                                    color = Md3LightTextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { folderForActionDialog = null }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 }
 
@@ -654,22 +938,29 @@ private fun BatchActionBar(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ExplorerItemRow(
     node: ExplorerNode,
     rawItem: GitTreeItem,
     isBatchMode: Boolean,
     isSelected: Boolean,
+    isPinned: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     onToggleSelect: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onTogglePinFolder: () -> Unit = {}
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .testTag("explorer_item_${node.name}"),
         verticalAlignment = Alignment.CenterVertically
@@ -702,92 +993,92 @@ private fun ExplorerItemRow(
             )
         }
 
-        Spacer(modifier = Modifier.width(14.dp))
+        Spacer(modifier = Modifier.width(12.dp))
 
-        // Name & Meta Details
+        // Name & Meta
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = node.name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (node.isDirectory) FontWeight.Bold else FontWeight.Medium,
-                color = Md3LightTextPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (node.isDirectory) {
-                    val count = node.children.size
-                    Text(
-                        text = "$count ${if (count == 1) "item" else "items"}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Md3LightTextSecondary
+                Text(
+                    text = node.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (node.isDirectory) FontWeight.Bold else FontWeight.Medium,
+                    color = Md3LightTextPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (isPinned) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = "Pinned",
+                        tint = GitHubYellow,
+                        modifier = Modifier.size(13.dp)
                     )
-                } else {
-                    val sizeFormatted = formatFileSize(node.size ?: rawItem.size ?: 0L)
-                    Text(
-                        text = sizeFormatted,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = Md3LightTextSecondary
-                    )
-                    if (rawItem.sha.length >= 7) {
-                        Text(
-                            text = " • ${rawItem.sha.take(7)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = FontFamily.Monospace,
-                            color = Md3LightTextTertiary
-                        )
-                    }
                 }
+            }
+
+            if (!node.isDirectory && node.size != null && node.size > 0) {
+                Text(
+                    text = formatFileSize(node.size),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Md3LightTextSecondary
+                )
             }
         }
 
-        // Trailing affordance
-        if (node.isDirectory) {
-            Icon(
-                imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
-                tint = Md3LightTextTertiary,
-                modifier = Modifier.size(18.dp)
-            )
-        } else {
-            Box {
-                IconButton(
-                    onClick = { showMenu = true },
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "Options",
-                        tint = Md3LightTextTertiary,
-                        modifier = Modifier.size(18.dp)
+        // Context Action Menu
+        Box {
+            IconButton(
+                onClick = { showMenu = true },
+                modifier = Modifier.size(28.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "More actions",
+                    tint = Md3LightTextTertiary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                if (node.isDirectory) {
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitHubYellow else Md3LightPrimary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders")
+                            }
+                        },
+                        onClick = {
+                            onTogglePinFolder()
+                            showMenu = false
+                        }
                     )
                 }
 
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false }
-                ) {
-                    DropdownMenuItem(
-                        text = { Text("Open File") },
-                        onClick = {
-                            showMenu = false
-                            onClick()
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (node.isDirectory) "Delete Folder" else "Delete File", color = Md3LightError)
                         }
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Delete File", color = Md3LightError) },
-                        onClick = {
-                            showMenu = false
-                            onDelete()
-                        }
-                    )
-                }
+                    },
+                    onClick = {
+                        onDelete()
+                        showMenu = false
+                    }
+                )
             }
         }
     }
+
     HorizontalDivider(
-        modifier = Modifier.padding(start = if (isBatchMode) 68.dp else 48.dp),
+        modifier = Modifier.padding(start = if (isBatchMode) 56.dp else 48.dp),
         color = Md3LightOutlineVariant.copy(alpha = 0.5f),
         thickness = 0.5.dp
     )
@@ -801,7 +1092,7 @@ private fun SearchResultsList(
     selectedFilePaths: Set<String>,
     onOpenFile: (GitTreeItem) -> Unit,
     onToggleSelect: (String) -> Unit,
-    onDeleteSingle: (String, String) -> Unit
+    onDeleteSingle: (path: String, sha: String) -> Unit
 ) {
     if (items.isEmpty()) {
         Box(
@@ -815,12 +1106,18 @@ private fun SearchResultsList(
                     imageVector = Icons.Default.Search,
                     contentDescription = null,
                     tint = Md3LightTextTertiary,
-                    modifier = Modifier.size(48.dp)
+                    modifier = Modifier.size(44.dp)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
                 Text(
                     text = "No files match \"$searchQuery\"",
                     style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Md3LightTextPrimary
+                )
+                Text(
+                    text = "Try searching for another filename or path",
+                    style = MaterialTheme.typography.bodySmall,
                     color = Md3LightTextSecondary
                 )
             }
@@ -831,37 +1128,80 @@ private fun SearchResultsList(
             contentPadding = PaddingValues(bottom = 72.dp)
         ) {
             items(items, key = { it.path }) { item ->
-                val node = ExplorerNode(
-                    path = item.path,
-                    name = item.fileName,
-                    isDirectory = false,
-                    sha = item.sha,
-                    size = item.size,
-                    extension = item.extension
-                )
+                val isSelected = selectedFilePaths.contains(item.path)
 
-                ExplorerItemRow(
-                    node = node,
-                    rawItem = item,
-                    isBatchMode = isBatchMode,
-                    isSelected = selectedFilePaths.contains(item.path),
-                    onClick = {
-                        if (isBatchMode) onToggleSelect(item.path)
-                        else onOpenFile(item)
-                    },
-                    onToggleSelect = { onToggleSelect(item.path) },
-                    onDelete = { onDeleteSingle(item.path, item.sha) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (isBatchMode) onToggleSelect(item.path)
+                            else onOpenFile(item)
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isBatchMode) {
+                        Checkbox(
+                            checked = isSelected,
+                            onCheckedChange = { onToggleSelect(item.path) },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = Md3LightPrimary,
+                                uncheckedColor = Md3LightOutline
+                            ),
+                            modifier = Modifier.size(32.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+
+                    FileIconForExtension(
+                        extension = item.extension,
+                        modifier = Modifier.size(22.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = item.fileName,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
+                            color = Md3LightTextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = item.path,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Md3LightTextSecondary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    if (item.size != null && item.size > 0) {
+                        Text(
+                            text = formatFileSize(item.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Md3LightTextTertiary
+                        )
+                    }
+                }
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 48.dp),
+                    color = Md3LightOutlineVariant.copy(alpha = 0.5f),
+                    thickness = 0.5.dp
                 )
             }
         }
     }
 }
 
-fun formatFileSize(bytes: Long): String {
-    if (bytes <= 0) return "0 B"
-    val units = arrayOf("B", "KB", "MB", "GB")
-    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
-    val group = digitGroups.coerceIn(0, units.size - 1)
-    val value = bytes / Math.pow(1024.0, group.toDouble())
-    return String.format("%.1f %s", value, units[group]).replace(".0 ", " ")
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f KB", bytes / 1024f)
+        bytes < 1024 * 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024f * 1024f))
+        else -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024f * 1024f * 1024f))
+    }
 }

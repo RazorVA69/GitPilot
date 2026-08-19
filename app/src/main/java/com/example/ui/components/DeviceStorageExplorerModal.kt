@@ -7,8 +7,10 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,27 +32,27 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.FolderOpen
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.InsertDriveFile
-import androidx.compose.material.icons.filled.MusicNote
-import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.SdCard
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -102,6 +104,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+enum class DeviceFolderSortBy {
+    NAME,
+    DATE_MODIFIED,
+    SIZE,
+    TYPE
+}
 
 data class LocalFileItem(
     val file: File,
@@ -112,7 +124,7 @@ data class LocalFileItem(
     val extension: String
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun DeviceStorageExplorerModal(
     onDismiss: () -> Unit,
@@ -121,6 +133,7 @@ fun DeviceStorageExplorerModal(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences("device_explorer_prefs", Context.MODE_PRIVATE) }
 
     var hasAllFilesPermission by remember {
         mutableStateOf(checkAllFilesPermission(context))
@@ -136,11 +149,46 @@ fun DeviceStorageExplorerModal(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
 
+    // Sorting State
+    var sortBy by remember { mutableStateOf(DeviceFolderSortBy.TYPE) }
+    var isSortReversed by remember { mutableStateOf(false) }
+    var showSortDropdown by remember { mutableStateOf(false) }
+
+    // Pinned Device Folders State
+    var pinnedFolderPaths by remember {
+        val saved = prefs.getStringSet("pinned_device_dirs", null)
+        val initial = saved?.toList() ?: listOf(
+            defaultRoot.absolutePath,
+            File(defaultRoot, "Download").absolutePath,
+            File(defaultRoot, "Documents").absolutePath
+        )
+        mutableStateOf(initial.filter { File(it).exists() || it == defaultRoot.absolutePath })
+    }
+
+    var folderToUnpinPrompt by remember { mutableStateOf<String?>(null) }
+
     // Selected items (Absolute paths of selected files and folders)
     val selectedPaths = remember { mutableStateListOf<String>() }
 
     var isCollectingFiles by remember { mutableStateOf(false) }
-    var collectingStatus by remember { mutableStateOf("") }
+
+    fun savePinnedFolders(paths: List<String>) {
+        pinnedFolderPaths = paths
+        prefs.edit().putStringSet("pinned_device_dirs", paths.toSet()).apply()
+    }
+
+    fun pinCurrentFolder() {
+        val current = currentDir.absolutePath
+        if (!pinnedFolderPaths.contains(current)) {
+            val updated = pinnedFolderPaths + current
+            savePinnedFolders(updated)
+        }
+    }
+
+    fun unpinFolder(path: String) {
+        val updated = pinnedFolderPaths.filter { it != path }
+        savePinnedFolders(updated)
+    }
 
     // Refresh file list in directory
     fun refreshDirectory(dir: File) {
@@ -156,7 +204,7 @@ fun DeviceStorageExplorerModal(
                         lastModified = f.lastModified(),
                         extension = if (f.isFile && f.name.contains('.')) f.name.substringAfterLast('.').lowercase() else ""
                     )
-                }?.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() })) ?: emptyList()
+                } ?: emptyList()
             } catch (e: Exception) {
                 emptyList()
             }
@@ -172,21 +220,19 @@ fun DeviceStorageExplorerModal(
         refreshDirectory(currentDir)
     }
 
-    // Shortcuts
-    val shortcuts = remember {
-        listOf(
-            "Storage" to defaultRoot,
-            "Download" to Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-            "Documents" to Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
-            "DCIM" to Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-            "Pictures" to Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-            "Music" to Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-        ).filter { it.second != null && it.second.exists() }
-    }
-
-    val filteredList = remember(fileList, searchQuery) {
-        if (searchQuery.isBlank()) fileList
+    // Filter & Sort
+    val displayedList = remember(fileList, searchQuery, sortBy, isSortReversed) {
+        val filtered = if (searchQuery.isBlank()) fileList
         else fileList.filter { it.name.contains(searchQuery, ignoreCase = true) }
+
+        val sorted = when (sortBy) {
+            DeviceFolderSortBy.TYPE -> filtered.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+            DeviceFolderSortBy.NAME -> filtered.sortedBy { it.name.lowercase() }
+            DeviceFolderSortBy.DATE_MODIFIED -> filtered.sortedByDescending { it.lastModified }
+            DeviceFolderSortBy.SIZE -> filtered.sortedByDescending { it.size }
+        }
+
+        if (isSortReversed) sorted.reversed() else sorted
     }
 
     fun requestManageStoragePermission() {
@@ -212,7 +258,6 @@ fun DeviceStorageExplorerModal(
         if (selectedPaths.isEmpty()) return
 
         isCollectingFiles = true
-        collectingStatus = "Scanning selected folders and files..."
 
         scope.launch(Dispatchers.IO) {
             val finalFiles = mutableListOf<Pair<String, ByteArray>>()
@@ -260,7 +305,7 @@ fun DeviceStorageExplorerModal(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.92f)
+                .fillMaxHeight(0.94f)
         ) {
             // Header Bar
             Surface(
@@ -303,12 +348,100 @@ fun DeviceStorageExplorerModal(
                             Icon(
                                 imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
                                 contentDescription = "Search",
-                                tint = Md3LightTextSecondary
+                                tint = if (isSearchExpanded) Md3LightPrimary else Md3LightTextSecondary
                             )
                         }
+
+                        // Sort Menu Button
+                        Box {
+                            IconButton(onClick = { showSortDropdown = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Sort,
+                                    contentDescription = "Sort",
+                                    tint = Md3LightTextSecondary
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortDropdown,
+                                onDismissRequest = { showSortDropdown = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Folders First")
+                                            if (sortBy == DeviceFolderSortBy.TYPE) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        sortBy = DeviceFolderSortBy.TYPE
+                                        showSortDropdown = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Name")
+                                            if (sortBy == DeviceFolderSortBy.NAME) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        sortBy = DeviceFolderSortBy.NAME
+                                        showSortDropdown = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Date Modified")
+                                            if (sortBy == DeviceFolderSortBy.DATE_MODIFIED) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        sortBy = DeviceFolderSortBy.DATE_MODIFIED
+                                        showSortDropdown = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Size")
+                                            if (sortBy == DeviceFolderSortBy.SIZE) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        sortBy = DeviceFolderSortBy.SIZE
+                                        showSortDropdown = false
+                                    }
+                                )
+                            }
+                        }
+
+                        // Reverse Order Toggle Button
+                        IconButton(onClick = { isSortReversed = !isSortReversed }) {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = "Reverse Sort",
+                                tint = if (isSortReversed) Md3LightPrimary else Md3LightTextSecondary
+                            )
+                        }
+
                         IconButton(onClick = { refreshDirectory(currentDir) }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Md3LightTextSecondary)
                         }
+
                         IconButton(onClick = onDismiss) {
                             Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
                         }
@@ -357,38 +490,109 @@ fun DeviceStorageExplorerModal(
                 }
             }
 
-            // Shortcuts Bar
+            // Pinned Device Folders Quick-Access Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                shortcuts.forEach { (label, dir) ->
-                    val isCurrent = currentDir.absolutePath == dir.absolutePath
+                // Pin Label
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = "Pinned",
+                        tint = GitHubYellow,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Pinned:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Md3LightTextSecondary
+                    )
+                }
+
+                // Render Pinned Folder Chips
+                pinnedFolderPaths.forEach { path ->
+                    val file = File(path)
+                    val label = if (path == defaultRoot.absolutePath) "Storage Root" else file.name
+                    val isCurrent = currentDir.absolutePath == path
+
                     FilterChip(
                         selected = isCurrent,
-                        onClick = { currentDir = dir },
-                        label = { Text(label, fontSize = 11.sp, fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal) },
+                        onClick = {
+                            if (file.exists() && file.canRead()) {
+                                currentDir = file
+                            }
+                        },
+                        label = {
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
                         leadingIcon = {
                             Icon(
-                                imageVector = when (label) {
-                                    "Download" -> Icons.Default.Download
-                                    "DCIM", "Pictures" -> Icons.Default.PhotoLibrary
-                                    "Music" -> Icons.Default.MusicNote
-                                    else -> Icons.Default.SdCard
-                                },
+                                imageVector = Icons.Default.Folder,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = if (isCurrent) Md3LightPrimary else Md3LightTextSecondary
+                                tint = if (isCurrent) Md3LightPrimary else GitHubYellow
                             )
+                        },
+                        trailingIcon = {
+                            if (path != defaultRoot.absolutePath) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Unpin",
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clickable { folderToUnpinPrompt = path },
+                                    tint = Md3LightTextTertiary
+                                )
+                            }
                         },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Md3LightPrimaryContainer,
                             selectedLabelColor = Md3LightPrimary
-                        )
+                        ),
+                        shape = RoundedCornerShape(8.dp)
                     )
+                }
+
+                // Button to Pin Current Directory
+                val isAlreadyPinned = pinnedFolderPaths.contains(currentDir.absolutePath)
+                if (!isAlreadyPinned) {
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { pinCurrentFolder() },
+                        color = GitHubGreen.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = GitHubGreen,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Pin Current",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GitHubGreen
+                            )
+                        }
+                    }
                 }
             }
 
@@ -458,7 +662,7 @@ fun DeviceStorageExplorerModal(
 
             HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
 
-            // Selection Summary Bar
+            // Selection Summary Bar & Select All
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -486,7 +690,7 @@ fun DeviceStorageExplorerModal(
 
                 TextButton(
                     onClick = {
-                        val allInDir = filteredList.map { it.file.absolutePath }
+                        val allInDir = displayedList.map { it.file.absolutePath }
                         if (selectedPaths.containsAll(allInDir)) {
                             selectedPaths.removeAll(allInDir.toSet())
                         } else {
@@ -507,17 +711,17 @@ fun DeviceStorageExplorerModal(
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = GitHubBlue, modifier = Modifier.size(32.dp))
                     }
-                } else if (filteredList.isEmpty()) {
+                } else if (displayedList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.FolderOpen, contentDescription = null, tint = Md3LightTextTertiary, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.Folder, contentDescription = null, tint = Md3LightTextTertiary, modifier = Modifier.size(40.dp))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("Folder is empty or unreadable", color = Md3LightTextSecondary, fontSize = 13.sp)
                         }
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        items(filteredList, key = { it.file.absolutePath }) { item ->
+                        items(displayedList, key = { it.file.absolutePath }) { item ->
                             val isSelected = selectedPaths.contains(item.file.absolutePath)
 
                             Row(
@@ -572,7 +776,7 @@ fun DeviceStorageExplorerModal(
 
                                 Spacer(modifier = Modifier.width(12.dp))
 
-                                // Name & Meta
+                                // Name & Meta (NO repetitive "Folder (tap to open)" text)
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = item.name,
@@ -582,11 +786,14 @@ fun DeviceStorageExplorerModal(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
-                                    Text(
-                                        text = if (item.isDirectory) "Folder (tap to open)" else formatFileSize(item.size),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Md3LightTextSecondary
-                                    )
+
+                                    if (!item.isDirectory) {
+                                        Text(
+                                            text = formatFileSize(item.size),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Md3LightTextSecondary
+                                        )
+                                    }
                                 }
 
                                 if (item.isDirectory) {
@@ -655,6 +862,52 @@ fun DeviceStorageExplorerModal(
             }
         }
     }
+
+    // Unpin Confirmation Dialog
+    folderToUnpinPrompt?.let { path ->
+        val name = File(path).name
+        AlertDialog(
+            onDismissRequest = { folderToUnpinPrompt = null },
+            title = { Text("Unpin Folder") },
+            text = { Text("Remove \"$name\" from pinned folders?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        unpinFolder(path)
+                        folderToUnpinPrompt = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen)
+                ) {
+                    Text("Unpin")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { folderToUnpinPrompt = null }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+private fun collectFilesInDirectory(
+    dir: File,
+    relativeParentPath: String,
+    resultList: MutableList<Pair<String, ByteArray>>
+) {
+    val files = dir.listFiles() ?: return
+    for (f in files) {
+        if (f.isDirectory) {
+            val childPath = "$relativeParentPath/${f.name}"
+            collectFilesInDirectory(f, childPath, resultList)
+        } else if (f.isFile) {
+            val bytes = try { f.readBytes() } catch (e: Exception) { null }
+            if (bytes != null) {
+                val fullRelativePath = "$relativeParentPath/${f.name}"
+                resultList.add(fullRelativePath to bytes)
+            }
+        }
+    }
 }
 
 private fun checkAllFilesPermission(context: Context): Boolean {
@@ -665,25 +918,11 @@ private fun checkAllFilesPermission(context: Context): Boolean {
     }
 }
 
-private fun collectFilesInDirectory(
-    directory: File,
-    relativePrefix: String,
-    results: MutableList<Pair<String, ByteArray>>
-) {
-    try {
-        val files = directory.listFiles() ?: return
-        for (f in files) {
-            val relPath = if (relativePrefix.isEmpty()) f.name else "$relativePrefix/${f.name}"
-            if (f.isDirectory) {
-                collectFilesInDirectory(f, relPath, results)
-            } else if (f.isFile) {
-                val bytes = try { f.readBytes() } catch (e: Exception) { null }
-                if (bytes != null) {
-                    results.add(relPath to bytes)
-                }
-            }
-        }
-    } catch (e: Exception) {
-        // Skip unreadable files
+private fun formatFileSize(bytes: Long): String {
+    return when {
+        bytes < 1024 -> "$bytes B"
+        bytes < 1024 * 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024f)
+        bytes < 1024 * 1024 * 1024 -> String.format(Locale.US, "%.1f MB", bytes / (1024f * 1024f))
+        else -> String.format(Locale.US, "%.2f GB", bytes / (1024f * 1024f * 1024f))
     }
 }

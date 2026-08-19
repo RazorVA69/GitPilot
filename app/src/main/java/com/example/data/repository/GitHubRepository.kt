@@ -164,13 +164,55 @@ class GitHubRepository(
         }
     }
 
+    suspend fun validateAndSaveToken(token: String): Result<AccountEntity> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(IllegalArgumentException("Token cannot be empty"))
+
+            val response = apiService.getAuthenticatedUser(authHeader)
+            if (response.isSuccessful && response.body() != null) {
+                val user = response.body()!!
+                appDao.clearCurrentAccount()
+                val account = AccountEntity(
+                    username = user.login,
+                    token = token.trim(),
+                    avatarUrl = user.avatarUrl,
+                    name = user.name ?: user.login,
+                    isCurrent = true
+                )
+                val id = appDao.insertAccount(account)
+                Result.success(account.copy(id = id))
+            } else {
+                val rawError = response.errorBody()?.string()
+                val code = response.code()
+                val msg = when (code) {
+                    401 -> "Invalid GitHub Token (401 Unauthorized). Please ensure your token is copied correctly and has 'repo' scope."
+                    403 -> "GitHub API Rate Limited or Access Forbidden (403). Ensure token has proper permissions."
+                    else -> "Authentication failed: HTTP $code. ${rawError ?: ""}"
+                }
+                Result.failure(Exception(msg))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
     suspend fun switchAccount(id: Long) = withContext(Dispatchers.IO) {
         appDao.clearCurrentAccount()
         appDao.setCurrentAccount(id)
     }
 
+    suspend fun setCurrentAccount(username: String) = withContext(Dispatchers.IO) {
+        appDao.clearCurrentAccount()
+        appDao.setCurrentAccountByUsername(username)
+    }
+
     suspend fun removeAccount(id: Long) = withContext(Dispatchers.IO) {
         appDao.deleteAccount(id)
+    }
+
+    suspend fun deleteAccount(username: String) = withContext(Dispatchers.IO) {
+        appDao.deleteAccountByUsername(username)
     }
 
     suspend fun logout() = withContext(Dispatchers.IO) {
@@ -197,6 +239,44 @@ class GitHubRepository(
                     else -> "Failed to load repositories: HTTP $code"
                 }
                 Result.failure(Exception(msg))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun getPublicUserRepositories(username: String): Result<List<GitHubRepository>> = withContext(Dispatchers.IO) {
+        try {
+            val response = apiService.getPublicRepositories(username)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val code = response.code()
+                val msg = when (code) {
+                    404 -> "User @$username not found on GitHub."
+                    403 -> "GitHub API Rate limit exceeded. Try adding a PAT token."
+                    else -> "Failed to fetch repositories for @$username (HTTP $code)"
+                }
+                Result.failure(Exception(msg))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun getRecursiveTree(
+        token: String?,
+        owner: String,
+        repo: String,
+        branch: String
+    ): Result<List<GitTreeItem>> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getGitTreeRecursive(authHeader, owner, repo, branch, recursive = 1)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!.tree)
+            } else {
+                Result.failure(Exception("Failed to load tree: HTTP ${response.code()}"))
             }
         } catch (e: Exception) {
             Result.failure(Exception(friendlyErrorMessage(null, e)))
@@ -258,6 +338,52 @@ class GitHubRepository(
         } catch (e: Exception) {
             Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
+    }
+
+    suspend fun commitFile(
+        token: String?,
+        owner: String,
+        repo: String,
+        path: String,
+        content: String,
+        message: String,
+        sha: String?,
+        branch: String
+    ): Result<CommitResultResponse> {
+        if (token.isNullOrBlank()) return Result.failure(Exception("Authentication token required to commit"))
+        return commitFileChanges(
+            token = token,
+            owner = owner,
+            repo = repo,
+            path = path,
+            content = content,
+            commitMessage = message,
+            branch = branch,
+            fileSha = sha
+        )
+    }
+
+    suspend fun commitRawFileBytes(
+        token: String?,
+        owner: String,
+        repo: String,
+        path: String,
+        bytes: ByteArray,
+        message: String,
+        sha: String?,
+        branch: String
+    ): Result<CommitResultResponse> {
+        if (token.isNullOrBlank()) return Result.failure(Exception("Authentication token required to upload"))
+        return commitBinaryFile(
+            token = token,
+            owner = owner,
+            repo = repo,
+            path = path,
+            bytes = bytes,
+            commitMessage = message,
+            branch = branch,
+            fileSha = sha
+        )
     }
 
     suspend fun commitFileChanges(
@@ -364,12 +490,12 @@ class GitHubRepository(
     }
 
     suspend fun deleteFile(
-        token: String,
+        token: String?,
         owner: String,
         repo: String,
         path: String,
-        fileSha: String,
-        commitMessage: String,
+        sha: String,
+        message: String = "",
         branch: String
     ): Result<CommitResultResponse> = withContext(Dispatchers.IO) {
         try {
@@ -377,8 +503,8 @@ class GitHubRepository(
                 ?: return@withContext Result.failure(Exception("Authentication token required to delete files"))
 
             val payload = DeleteFilePayload(
-                message = commitMessage.ifBlank { "Delete $path" },
-                sha = fileSha,
+                message = message.ifBlank { "Delete $path" },
+                sha = sha,
                 branch = branch
             )
 
@@ -412,8 +538,8 @@ class GitHubRepository(
                 owner = owner,
                 repo = repo,
                 path = path,
-                fileSha = sha,
-                commitMessage = "$baseMessage - $path",
+                sha = sha,
+                message = "$baseMessage - $path",
                 branch = branch
             )
             if (res.isSuccess) {

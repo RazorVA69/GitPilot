@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,22 +24,25 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Book
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
-import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -50,6 +55,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -62,7 +68,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,11 +75,8 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.local.AccountEntity
 import com.example.data.model.GitHubRepository
-import com.example.ui.components.FileIcons
 import com.example.ui.theme.GitHubBlue
 import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubOrange
-import com.example.ui.theme.GitHubPurple
 import com.example.ui.theme.GitHubYellow
 import com.example.ui.theme.Md3LightBackground
 import com.example.ui.theme.Md3LightOutline
@@ -87,6 +89,7 @@ import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
 import com.example.ui.theme.Md3LightTextTertiary
 import com.example.ui.viewmodel.RepoFilterType
+import com.example.ui.viewmodel.RepoSortOption
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -96,8 +99,14 @@ fun RepoListScreen(
     isLoading: Boolean,
     searchQuery: String,
     filterType: RepoFilterType,
+    sortOption: RepoSortOption = RepoSortOption.LAST_ACTIVITY,
+    pinnedRepoIds: Set<Long> = emptySet(),
+    workingRepoId: Long? = null,
     onSearchChange: (String) -> Unit,
     onFilterChange: (RepoFilterType) -> Unit,
+    onSortChange: (RepoSortOption) -> Unit = {},
+    onTogglePinRepo: (Long) -> Unit = {},
+    onSetWorkingRepo: (Long?) -> Unit = {},
     onSelectRepo: (GitHubRepository) -> Unit,
     onRefresh: () -> Unit,
     onOpenLeftDrawer: () -> Unit,
@@ -105,6 +114,8 @@ fun RepoListScreen(
     modifier: Modifier = Modifier
 ) {
     var isSearchVisible by remember { mutableStateOf(false) }
+    var showSortMenu by remember { mutableStateOf(false) }
+    var selectedRepoForActions by remember { mutableStateOf<GitHubRepository?>(null) }
 
     val publicCount = remember(repositories) { repositories.count { !it.private } }
     val privateCount = remember(repositories) { repositories.count { it.private } }
@@ -155,6 +166,86 @@ fun RepoListScreen(
                             contentDescription = "Search",
                             tint = if (isSearchVisible || searchQuery.isNotEmpty()) Md3LightPrimary else Md3LightTextSecondary
                         )
+                    }
+
+                    // Sort menu
+                    Box {
+                        IconButton(
+                            onClick = { showSortMenu = true },
+                            modifier = Modifier.testTag("repo_list_sort_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sort,
+                                contentDescription = "Sort",
+                                tint = Md3LightTextSecondary
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Last Activity")
+                                        if (sortOption == RepoSortOption.LAST_ACTIVITY) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.LAST_ACTIVITY)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Name (A → Z)")
+                                        if (sortOption == RepoSortOption.NAME_ASC) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.NAME_ASC)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Name (Z → A)")
+                                        if (sortOption == RepoSortOption.NAME_DESC) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.NAME_DESC)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Most Stars ⭐")
+                                        if (sortOption == RepoSortOption.STARS_DESC) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.STARS_DESC)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
                     }
 
                     IconButton(
@@ -323,30 +414,152 @@ fun RepoListScreen(
                     items(repositories, key = { it.id }) { repo ->
                         RepositoryCard(
                             repo = repo,
-                            onClick = { onSelectRepo(repo) }
+                            isPinned = pinnedRepoIds.contains(repo.id),
+                            isWorking = workingRepoId == repo.id,
+                            onClick = { onSelectRepo(repo) },
+                            onLongClick = { selectedRepoForActions = repo }
                         )
                     }
                 }
             }
         }
     }
+
+    // Repository Context Menu Dialog
+    selectedRepoForActions?.let { repo ->
+        val isPinned = pinnedRepoIds.contains(repo.id)
+        val isWorking = workingRepoId == repo.id
+
+        AlertDialog(
+            onDismissRequest = { selectedRepoForActions = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (repo.private) Icons.Default.Lock else Icons.Default.Book,
+                        contentDescription = null,
+                        tint = Md3LightPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(repo.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select quick action for this repository:", fontSize = 13.sp, color = Md3LightTextSecondary)
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // 1. PIN / UNPIN
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onTogglePinRepo(repo.id)
+                                selectedRepoForActions = null
+                            },
+                        color = Md3LightSurfaceVariant
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = null,
+                                tint = if (isPinned) GitHubYellow else Md3LightTextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (isPinned) "Unpin from Top" else "Pin to Top",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = if (isPinned) "Remove priority pin" else "Keep at the top of your sidebar & repo list",
+                                    fontSize = 11.sp,
+                                    color = Md3LightTextSecondary
+                                )
+                            }
+                        }
+                    }
+
+                    // 2. WORKING REPO
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onSetWorkingRepo(if (isWorking) null else repo.id)
+                                selectedRepoForActions = null
+                            },
+                        color = if (isWorking) GitHubGreen.copy(alpha = 0.12f) else Md3LightSurfaceVariant
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Bolt,
+                                contentDescription = null,
+                                tint = if (isWorking) GitHubGreen else Md3LightTextPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text(
+                                    text = if (isWorking) "Remove Working Repository" else "Set as Working Repository",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp,
+                                    color = if (isWorking) GitHubGreen else Md3LightTextPrimary
+                                )
+                                Text(
+                                    text = "Auto-opens automatically whenever you launch the app",
+                                    fontSize = 11.sp,
+                                    color = Md3LightTextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { selectedRepoForActions = null }) {
+                    Text("Close")
+                }
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun RepositoryCard(
     repo: GitHubRepository,
+    isPinned: Boolean = false,
+    isWorking: Boolean = false,
     onClick: () -> Unit,
+    onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .testTag("repo_card_${repo.name}"),
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (isWorking) GitHubGreen.copy(alpha = 0.6f) else if (isPinned) GitHubYellow.copy(alpha = 0.6f) else Md3LightOutlineVariant
+        )
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             // Repo Name & Badges
@@ -378,24 +591,53 @@ fun RepositoryCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+
+                    if (isPinned) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Pinned",
+                            tint = GitHubYellow,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (repo.private) GitHubYellow.copy(alpha = 0.12f) else Md3LightSurfaceVariant,
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (repo.private) GitHubYellow.copy(alpha = 0.3f) else Md3LightOutlineVariant
-                    )
-                ) {
-                    Text(
-                        text = if (repo.private) "Private" else "Public",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (repo.private) GitHubYellow else Md3LightTextSecondary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 11.sp
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (isWorking) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = GitHubGreen.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Bolt, contentDescription = null, tint = GitHubGreen, modifier = Modifier.size(12.dp))
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text("Working", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GitHubGreen)
+                            }
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (repo.private) GitHubYellow.copy(alpha = 0.12f) else Md3LightSurfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (repo.private) GitHubYellow.copy(alpha = 0.3f) else Md3LightOutlineVariant
+                        )
+                    ) {
+                        Text(
+                            text = if (repo.private) "Private" else "Public",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (repo.private) GitHubYellow else Md3LightTextSecondary,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
 
@@ -461,7 +703,7 @@ fun RepositoryCard(
                         Icon(
                             imageVector = Icons.Default.ForkRight,
                             contentDescription = "Forks",
-                            tint = Md3LightTextTertiary,
+                            tint = Md3LightTextSecondary,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
@@ -473,45 +715,37 @@ fun RepositoryCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
-
                 // Default branch
-                Surface(
-                    shape = RoundedCornerShape(4.dp),
-                    color = Md3LightSurfaceVariant
-                ) {
-                    Text(
-                        text = repo.defaultBranch,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = Md3LightPrimary,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                        fontSize = 11.sp
-                    )
-                }
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = repo.defaultBranch,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Md3LightTextTertiary,
+                    fontSize = 11.sp
+                )
             }
         }
     }
 }
 
-fun getLanguageColor(language: String): Color {
-    return when (language.lowercase()) {
+fun getLanguageColor(language: String?): Color {
+    return when (language?.lowercase()) {
         "kotlin" -> Color(0xFFA97BFF)
         "java" -> Color(0xFFB07219)
         "python" -> Color(0xFF3572A5)
         "javascript" -> Color(0xFFF1E05A)
         "typescript" -> Color(0xFF3178C6)
+        "html" -> Color(0xFFE34C26)
+        "css" -> Color(0xFF563D7C)
         "c++", "cpp" -> Color(0xFFF34B7D)
         "c" -> Color(0xFF555555)
         "c#" -> Color(0xFF178600)
         "go" -> Color(0xFF00ADD8)
         "rust" -> Color(0xFFDEA584)
-        "swift" -> Color(0xFFF05138)
-        "html" -> Color(0xFFE34C26)
-        "css" -> Color(0xFF563D7C)
         "ruby" -> Color(0xFF701516)
-        "php" -> Color(0xFF4F5D95)
+        "swift" -> Color(0xFFF05138)
         "dart" -> Color(0xFF00B4AB)
-        else -> Md3LightPrimary
+        "shell", "bash" -> Color(0xFF89E051)
+        else -> Color(0xFF8B949E)
     }
 }

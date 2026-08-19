@@ -6,6 +6,7 @@ import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -19,10 +20,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CreateNewFolder
@@ -33,6 +36,8 @@ import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -158,122 +163,132 @@ fun CreateOrUploadModal(
     // System Folder Picker (Fallback)
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
-    ) { treeUri ->
-        if (treeUri != null) {
+    ) { uri ->
+        if (uri != null) {
             isReadingFiles = true
             scope.launch(Dispatchers.IO) {
+                val dirDoc = DocumentFile.fromTreeUri(context, uri)
                 val list = mutableListOf<Pair<String, ByteArray>>()
-                val rootDoc = DocumentFile.fromTreeUri(context, treeUri)
-                if (rootDoc != null && rootDoc.isDirectory) {
-                    traverseDocumentTree(context, rootDoc, "", list)
+                if (dirDoc != null) {
+                    val rootFolderName = dirDoc.name ?: "folder"
+                    traverseDocumentTree(context, dirDoc, rootFolderName, list)
                 }
                 withContext(Dispatchers.Main) {
                     stagedFiles = list
-                    val folderName = rootDoc?.name ?: "Folder"
-                    stagedSummary = "$folderName: ${list.size} file(s) (${formatTotalBytes(list.sumOf { it.second.size.toLong() })})"
+                    stagedSummary = "Folder: ${dirDoc?.name ?: ""} (${list.size} files, ${formatTotalBytes(list.sumOf { it.second.size.toLong() })})"
                     isReadingFiles = false
                 }
             }
         }
     }
 
-    val templates = listOf(
-        "Kotlin File" to ("Main.kt" to "package com.example\n\nfun main() {\n    println(\"Hello from Kotlin!\")\n}\n"),
-        "Compose Screen" to ("MyScreen.kt" to "package com.example.ui\n\nimport androidx.compose.runtime.Composable\nimport androidx.compose.material3.Text\n\n@Composable\nfun MyScreen() {\n    Text(\"Welcome to MyScreen\")\n}\n"),
-        "README.md" to ("README.md" to "# Project Title\n\nFast and modern GitHub file management.\n\n## Features\n- Fast exploration\n- Code Editor\n- Direct Commits\n"),
-        ".gitignore" to (".gitignore" to "*.class\n*.log\n.gradle/\nbuild/\nlocal.properties\n.DS_Store\n"),
-        "GitHub Workflow" to (".github/workflows/build.yml" to "name: Android CI\n\non: [push, pull_request]\n\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - name: Set up JDK\n        uses: actions/setup-java@v4\n        with:\n          java-version: '17'\n          distribution: 'temurin'\n      - name: Build with Gradle\n        run: ./gradlew assembleDebug\n"),
-        "config.json" to ("config.json" to "{\n  \"name\": \"app-config\",\n  \"version\": \"1.0.0\",\n  \"enabled\": true\n}\n"),
-        "script.py" to ("script.py" to "def main():\n    print(\"Hello from Python!\")\n\nif __name__ == '__main__':\n    main()\n")
-    )
+    val templates = remember {
+        listOf(
+            "README.md" to ("README.md" to "# Project\n\nA modern project repository.\n\n## Getting Started\n- Setup instructions\n"),
+            ".gitignore" to (".gitignore" to "*.log\n.DS_Store\nbuild/\n.gradle/\nnode_modules/\n.env\n"),
+            "LICENSE (MIT)" to ("LICENSE" to "MIT License\n\nCopyright (c) ${java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)}\n\nPermission is hereby granted, free of charge..."),
+            "package.json" to ("package.json" to "{\n  \"name\": \"project\",\n  \"version\": \"1.0.0\",\n  \"main\": \"index.js\"\n}\n"),
+            "build.gradle.kts" to ("build.gradle.kts" to "plugins {\n    kotlin(\"jvm\") version \"2.0.0\"\n}\n")
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
         containerColor = Md3LightSurface,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         dragHandle = null
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp)
+                .padding(bottom = 16.dp)
         ) {
-            // Header
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Header Bar
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Md3LightSurface,
+                shadowElevation = 0.5.dp
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.CloudUpload,
-                        contentDescription = null,
-                        tint = GitHubGreen,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text(
-                        text = "Add to Repository",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
-                    )
-                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column {
+                        Text(
+                            text = "Add to Repository",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Md3LightTextPrimary
+                        )
+                        Text(
+                            text = "Branch: $targetBranch",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Md3LightTextSecondary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
 
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                    }
                 }
             }
 
             HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
 
-            // Tabs
+            // Segmented Scrollable Tabs
             ScrollableTabRow(
                 selectedTabIndex = selectedTab,
+                edgePadding = 16.dp,
                 containerColor = Md3LightSurfaceVariant,
                 contentColor = Md3LightPrimary,
-                edgePadding = 12.dp
+                divider = {}
             ) {
                 Tab(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    text = { Text("Upload Files", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                    text = { Text("Upload Files", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
                     icon = { Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text("Upload Folder", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                    text = { Text("Upload Folder", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
                     icon = { Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
                 Tab(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    text = { Text("New File", fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                    text = { Text("New File", fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
                     icon = { Icon(Icons.Default.NoteAdd, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
                 Tab(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    text = { Text("New Folder", fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal) },
+                    text = { Text("New Folder", fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
                     icon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null, modifier = Modifier.size(16.dp)) }
                 )
                 Tab(
                     selected = selectedTab == 4,
                     onClick = { selectedTab = 4 },
-                    text = { Text("Templates", fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Normal) }
+                    text = { Text("Templates", fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) }
                 )
             }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .padding(horizontal = 20.dp, vertical = 14.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Target Directory Section with Quick Chips
+                // Target Directory Section
                 Text(
                     text = "Target Directory Path in Repository",
                     style = MaterialTheme.typography.labelMedium,
@@ -288,7 +303,8 @@ fun CreateOrUploadModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     FilterChip(
                         selected = targetDirectory.isBlank(),
@@ -297,7 +313,8 @@ fun CreateOrUploadModal(
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Md3LightPrimaryContainer,
                             selectedLabelColor = Md3LightPrimary
-                        )
+                        ),
+                        shape = RoundedCornerShape(8.dp)
                     )
 
                     if (initialDirectory.isNotBlank()) {
@@ -308,7 +325,8 @@ fun CreateOrUploadModal(
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Md3LightPrimaryContainer,
                                 selectedLabelColor = Md3LightPrimary
-                            )
+                            ),
+                            shape = RoundedCornerShape(8.dp)
                         )
                     }
 
@@ -322,7 +340,8 @@ fun CreateOrUploadModal(
                                         Text("Browse Repo Folders...", fontSize = 11.sp)
                                         Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp))
                                     }
-                                }
+                                },
+                                shape = RoundedCornerShape(8.dp)
                             )
 
                             DropdownMenu(
@@ -352,14 +371,14 @@ fun CreateOrUploadModal(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Editable Target Directory Field
+                // Target Directory Text Input
                 OutlinedTextField(
                     value = targetDirectory,
                     onValueChange = { targetDirectory = it },
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("target_dir_input"),
-                    placeholder = { Text("e.g. src/main/kotlin or leave blank for root") },
+                    placeholder = { Text("Leave blank for repo root or enter folder path...") },
                     leadingIcon = {
                         Icon(Icons.Default.Folder, contentDescription = null, tint = GitHubYellow, modifier = Modifier.size(20.dp))
                     },
@@ -368,21 +387,21 @@ fun CreateOrUploadModal(
                         focusedBorderColor = Md3LightPrimary,
                         unfocusedBorderColor = Md3LightOutline
                     ),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(10.dp)
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // TAB 0: UPLOAD FILES (Device Storage Explorer & Pickers)
+                // TAB 0: UPLOAD FILES
                 if (selectedTab == 0) {
-                    // Primary Custom Storage Explorer Card
-                    Surface(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable { showDeviceStorageExplorer = true },
-                        color = Color(0xFFE8F5E9),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GitHubGreen)
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
+                        border = BorderStroke(1.5.dp, GitHubGreen),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -390,36 +409,63 @@ fun CreateOrUploadModal(
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Smartphone,
-                                contentDescription = null,
-                                tint = GitHubGreen,
-                                modifier = Modifier.size(36.dp)
-                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = GitHubGreen.copy(alpha = 0.15f),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Smartphone,
+                                        contentDescription = null,
+                                        tint = GitHubGreen,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+
                             Spacer(modifier = Modifier.width(14.dp))
+
                             Column(modifier = Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = "Device File Explorer",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1B5E20),
+                                        fontSize = 14.sp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = GitHubGreen
+                                    ) {
+                                        Text(
+                                            text = "MULTI-SELECT",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "Device Storage Explorer",
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF1B5E20),
-                                    fontSize = 14.sp
-                                )
-                                Text(
-                                    text = "Browse device folders & multi-select multiple files / folders simultaneously",
+                                    text = "Browse storage with folder pinning, sorting, and multi-file selection",
                                     fontSize = 11.sp,
                                     color = Color(0xFF2E7D32)
                                 )
                             }
+
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitHubGreen, modifier = Modifier.size(20.dp))
                         }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Secondary System File Picker Button
                     OutlinedButton(
                         onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -445,16 +491,17 @@ fun CreateOrUploadModal(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = Color(0xFFE8F5E9),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Text(
                                     text = stagedSummary,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF2E7D32),
                                     fontSize = 12.sp
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 stagedFiles.take(5).forEach { (name, bytes) ->
                                     Text(
                                         text = "• $name (${formatTotalBytes(bytes.size.toLong())})",
@@ -475,16 +522,16 @@ fun CreateOrUploadModal(
                     }
                 }
 
-                // TAB 1: UPLOAD FOLDERS (Device Storage Explorer & Pickers)
+                // TAB 1: UPLOAD FOLDERS
                 if (selectedTab == 1) {
-                    // Primary Custom Storage Explorer Card for Folders
-                    Surface(
+                    Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable { showDeviceStorageExplorer = true },
-                        color = Color(0xFFE3F2FD),
-                        border = androidx.compose.foundation.BorderStroke(1.5.dp, GitHubBlue)
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+                        border = BorderStroke(1.5.dp, GitHubBlue),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -492,36 +539,48 @@ fun CreateOrUploadModal(
                                 .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DriveFolderUpload,
-                                contentDescription = null,
-                                tint = GitHubBlue,
-                                modifier = Modifier.size(36.dp)
-                            )
+                            Surface(
+                                shape = CircleShape,
+                                color = GitHubBlue.copy(alpha = 0.15f),
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.DriveFolderUpload,
+                                        contentDescription = null,
+                                        tint = GitHubBlue,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                }
+                            }
+
                             Spacer(modifier = Modifier.width(14.dp))
+
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Device Storage Explorer",
+                                    text = "Device Folder Explorer",
                                     fontWeight = FontWeight.Bold,
                                     color = GitHubBlue,
                                     fontSize = 14.sp
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "Select single or multiple folders to recursively upload all files inside",
+                                    text = "Select single or multiple folders to upload recursively",
                                     fontSize = 11.sp,
                                     color = Md3LightTextSecondary
                                 )
                             }
+
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(20.dp))
                         }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Secondary System Tree Picker
                     OutlinedButton(
                         onClick = { folderPickerLauncher.launch(null) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
@@ -547,16 +606,17 @@ fun CreateOrUploadModal(
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             color = Color(0xFFE3F2FD),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, GitHubBlue.copy(alpha = 0.4f))
                         ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Text(
                                     text = stagedSummary,
                                     fontWeight = FontWeight.Bold,
                                     color = GitHubBlue,
                                     fontSize = 12.sp
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
                                 stagedFiles.take(5).forEach { (relPath, bytes) ->
                                     Text(
                                         text = "• $relPath (${formatTotalBytes(bytes.size.toLong())})",
@@ -598,7 +658,7 @@ fun CreateOrUploadModal(
                             focusedBorderColor = Md3LightPrimary,
                             unfocusedBorderColor = Md3LightOutline
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     )
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -625,7 +685,7 @@ fun CreateOrUploadModal(
                             focusedBorderColor = Md3LightPrimary,
                             unfocusedBorderColor = Md3LightOutline
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     )
                 }
 
@@ -648,7 +708,7 @@ fun CreateOrUploadModal(
                             focusedBorderColor = Md3LightPrimary,
                             unfocusedBorderColor = Md3LightOutline
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
@@ -674,13 +734,14 @@ fun CreateOrUploadModal(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         fileName = tName
                                         fileContent = tContent
                                         selectedTab = 2
                                     },
-                                color = Md3LightSurfaceVariant
+                                color = Md3LightSurfaceVariant,
+                                border = BorderStroke(1.dp, Md3LightOutlineVariant)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -729,7 +790,7 @@ fun CreateOrUploadModal(
                         focusedBorderColor = Md3LightPrimary,
                         unfocusedBorderColor = Md3LightOutline
                     ),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(10.dp)
                 )
 
                 // Upload Progress Bar if active
@@ -739,7 +800,7 @@ fun CreateOrUploadModal(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         color = Md3LightSurfaceVariant,
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -765,7 +826,7 @@ fun CreateOrUploadModal(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         Text("Cancel")
                     }
@@ -810,7 +871,7 @@ fun CreateOrUploadModal(
                             }
                         },
                         modifier = Modifier
-                            .weight(1f)
+                            .weight(1.2f)
                             .testTag("submit_create_file_btn"),
                         enabled = !isCommitting && !isUploading && (
                                 ((selectedTab == 0 || selectedTab == 1) && stagedFiles.isNotEmpty()) ||
@@ -819,7 +880,7 @@ fun CreateOrUploadModal(
                                         (selectedTab == 4 && fileName.isNotBlank())
                                 ),
                         colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         if (isCommitting || isUploading) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))

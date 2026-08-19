@@ -173,8 +173,14 @@ fun GitExplorerApp(
                         isLoading = uiState.isLoadingRepos,
                         searchQuery = uiState.repoSearchQuery,
                         filterType = uiState.repoFilterType,
+                        sortOption = uiState.repoSortOption,
+                        pinnedRepoIds = uiState.pinnedRepoIds,
+                        workingRepoId = uiState.workingRepoId,
                         onSearchChange = viewModel::setRepoSearchQuery,
                         onFilterChange = viewModel::setRepoFilterType,
+                        onSortChange = viewModel::setRepoSortOption,
+                        onTogglePinRepo = viewModel::togglePinRepo,
+                        onSetWorkingRepo = viewModel::setWorkingRepo,
                         onSelectRepo = viewModel::selectRepository,
                         onRefresh = viewModel::loadRepositories,
                         onOpenLeftDrawer = { viewModel.setLeftDrawerOpen(true) },
@@ -212,6 +218,9 @@ fun GitExplorerApp(
                             matchingSearchFiles = uiState.matchingSearchFiles,
                             isBatchMode = uiState.isBatchMode,
                             selectedFilePaths = uiState.selectedFilePaths,
+                            pinnedFolders = uiState.pinnedFolders,
+                            fileTreeSortOption = uiState.fileTreeSortOption,
+                            isFileTreeSortReversed = uiState.isFileTreeSortReversed,
                             onBranchClick = { viewModel.setShowBranchSelector(true) },
                             onNavigateToDir = viewModel::navigateToDirectory,
                             onNavigateUp = viewModel::navigateUp,
@@ -227,8 +236,11 @@ fun GitExplorerApp(
                             onClearSelection = viewModel::clearSelectedFiles,
                             onOpenBatchDeleteModal = { viewModel.setShowBatchDeleteDialog(true) },
                             onDeleteSingleFile = { path, sha ->
-                                viewModel.deleteSingleFile(path, sha, "Delete $path")
+                                viewModel.deleteSingleFile(path, sha)
                             },
+                            onTogglePinFolder = viewModel::togglePinFolder,
+                            onFileTreeSortChange = viewModel::setFileTreeSortOption,
+                            onToggleFileTreeSortReverse = viewModel::toggleFileTreeSortReverse,
                             onToggleLeftDrawer = { viewModel.setLeftDrawerOpen(!uiState.isLeftDrawerOpen) }
                         )
                     }
