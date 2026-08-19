@@ -20,21 +20,42 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Accept Licenses and Install SDK 36
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" || true
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Generate debug keystore
+        run: |
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Patch build.gradle.kts
         run: |
-          sed -i '/signingConfig = signingConfigs.getByName("debugConfig")/i\
-            isCrunchPngs = true\
-            isMinifyEnabled = true\
-            isShrinkResources = true\
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")' app/build.gradle.kts
-          sed -i '/signingConfig = signingConfigs.getByName("debugConfig")/d' app/build.gradle.kts
-     
+          python3 - <<'EOF'
+          import re
+          with open('app/build.gradle.kts', 'r') as f:
+              content = f.read()
+          new_debug = '''debug {
+              isCrunchPngs = true
+              isMinifyEnabled = true
+              isShrinkResources = true
+              proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+          }'''
+          content = re.sub(r'debug\s*\{[^}]*\}', new_debug, content)
+          with open('app/build.gradle.kts', 'w') as f:
+              f.write(content)
+          EOF
+
       - name: Ensure proguard-rules.pro exists
         run: touch app/proguard-rules.pro
-        
+
       - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
