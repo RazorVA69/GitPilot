@@ -1,6 +1,11 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -21,11 +26,13 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -36,6 +43,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -64,6 +72,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
@@ -89,6 +98,7 @@ import com.example.ui.theme.Md3LightSurfaceVariant
 import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
 import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.viewmodel.SyncStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,6 +109,8 @@ fun FileTreeExplorer(
     rootNode: ExplorerNode?,
     rawTreeItems: List<GitTreeItem>,
     isLoadingTree: Boolean,
+    syncStatus: SyncStatus = SyncStatus.IDLE,
+    lastSyncedAt: Long? = null,
     searchQuery: String,
     matchingSearchFiles: List<GitTreeItem>,
     isBatchMode: Boolean,
@@ -113,6 +125,7 @@ fun FileTreeExplorer(
     onOpenNewFileDialog: () -> Unit,
     onToggleBatchMode: () -> Unit,
     onToggleSelectFile: (String) -> Unit,
+    onToggleSelectFolder: (String) -> Unit,
     onSelectAllInDir: () -> Unit,
     onClearSelection: () -> Unit,
     onOpenBatchDeleteModal: () -> Unit,
@@ -121,6 +134,16 @@ fun FileTreeExplorer(
     modifier: Modifier = Modifier
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
+    val syncRotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000, easing = LinearEasing)
+        ),
+        label = "rotation"
+    )
 
     Column(
         modifier = modifier
@@ -131,15 +154,23 @@ fun FileTreeExplorer(
         TopAppBar(
             title = {
                 Column {
-                    Text(
-                        text = repo?.name ?: "File Explorer",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (repo != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = repo?.name ?: "File Explorer",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Md3LightTextPrimary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 2.dp)
+                    ) {
+                        // Branch Chip
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
@@ -159,6 +190,7 @@ fun FileTreeExplorer(
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold
                                 )
+                                Spacer(modifier = Modifier.width(2.dp))
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Branch",
@@ -167,81 +199,124 @@ fun FileTreeExplorer(
                                 )
                             }
                         }
+
+                        // Live Sync Status Pill
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable(onClick = onRefresh),
+                            color = when (syncStatus) {
+                                SyncStatus.SYNCING -> Md3LightSurfaceVariant
+                                SyncStatus.SYNCED -> Color(0xFFE8F5E9)
+                                SyncStatus.ERROR -> Color(0xFFFFEBEE)
+                                SyncStatus.IDLE -> Md3LightSurfaceVariant
+                            }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sync,
+                                        contentDescription = "Syncing",
+                                        tint = GitHubBlue,
+                                        modifier = Modifier
+                                            .size(11.dp)
+                                            .rotate(syncRotation)
+                                    )
+                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Text(
+                                        text = "Syncing...",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = GitHubBlue
+                                    )
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(
+                                                color = if (syncStatus == SyncStatus.ERROR) Md3LightError else Color(0xFF2E7D32),
+                                                shape = CircleShape
+                                            )
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = formatSyncTime(lastSyncedAt),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (syncStatus == SyncStatus.ERROR) Md3LightError else Color(0xFF2E7D32)
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             },
             navigationIcon = {
                 IconButton(
                     onClick = onToggleLeftDrawer,
-                    modifier = Modifier.testTag("explorer_open_left_drawer_btn")
+                    modifier = Modifier.testTag("explorer_drawer_toggle_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Menu,
-                        contentDescription = "Open Left Repositories Sidebar",
-                        tint = Md3LightPrimary
+                        contentDescription = "Repositories Menu",
+                        tint = Md3LightTextPrimary
                     )
                 }
             },
             actions = {
-                // Back to Repos List button
-                IconButton(
-                    onClick = onNavigateToReposList,
-                    modifier = Modifier.testTag("back_to_repos_list_btn")
-                ) {
+                // Back to Repositories
+                IconButton(onClick = onNavigateToReposList) {
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "All Repos",
+                        contentDescription = "Back to Repositories",
                         tint = Md3LightTextSecondary
                     )
                 }
 
-                // Search toggle
+                // Search Files in Tree
                 IconButton(
-                    onClick = {
-                        isSearchExpanded = !isSearchExpanded
-                        if (!isSearchExpanded) onSearchChange("")
-                    },
-                    modifier = Modifier.testTag("file_search_toggle_btn")
+                    onClick = { isSearchExpanded = !isSearchExpanded },
+                    modifier = Modifier.testTag("explorer_search_toggle_btn")
                 ) {
                     Icon(
                         imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
-                        contentDescription = "Search Files",
-                        tint = if (isSearchExpanded || searchQuery.isNotEmpty()) Md3LightPrimary else Md3LightTextSecondary
+                        contentDescription = "Search files",
+                        tint = if (isSearchExpanded) Md3LightPrimary else Md3LightTextSecondary
                     )
                 }
 
-                // Batch Mode toggle
+                // Multi-select Batch Mode Toggle
                 IconButton(
                     onClick = onToggleBatchMode,
-                    modifier = Modifier.testTag("batch_mode_toggle_btn")
+                    modifier = Modifier.testTag("explorer_batch_mode_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Checklist,
-                        contentDescription = "Batch Actions",
-                        tint = if (isBatchMode) GitHubGreen else Md3LightTextSecondary
+                        contentDescription = "Batch selection mode",
+                        tint = if (isBatchMode) Md3LightPrimary else Md3LightTextSecondary
                     )
                 }
 
-                // New file / upload
+                // Add File / Folder / Upload Button
                 IconButton(
                     onClick = onOpenNewFileDialog,
-                    modifier = Modifier.testTag("new_file_btn")
+                    modifier = Modifier.testTag("explorer_add_file_btn")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "New File / Upload",
+                        contentDescription = "Add or Upload",
                         tint = GitHubGreen
                     )
                 }
 
-                // Refresh tree
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.testTag("refresh_tree_btn")
-                ) {
+                // Refresh / Sync
+                IconButton(onClick = onRefresh) {
                     Icon(
                         imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh",
+                        contentDescription = "Refresh tree",
                         tint = Md3LightTextSecondary
                     )
                 }
@@ -252,80 +327,70 @@ fun FileTreeExplorer(
             )
         )
 
-        // Instant Global File Search Field
-        AnimatedVisibility(
-            visible = isSearchExpanded || searchQuery.isNotEmpty(),
-            enter = fadeIn(),
-            exit = fadeOut()
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchChange,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                    .testTag("instant_file_search_input"),
-                placeholder = {
-                    Text(
-                        "Search all files in repository (e.g. MainActivity, .kt)...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Md3LightTextTertiary
+        HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+
+        // Search Bar (if expanded)
+        AnimatedVisibility(visible = isSearchExpanded) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = Md3LightSurfaceVariant
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = onSearchChange,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("tree_search_input"),
+                        placeholder = { Text("Search files by name or path...", fontSize = 13.sp) },
+                        singleLine = true,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null, tint = Md3LightTextSecondary, modifier = Modifier.size(18.dp))
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchChange("") }) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = Color.White,
+                            unfocusedContainerColor = Color.White,
+                            focusedBorderColor = Md3LightPrimary,
+                            unfocusedBorderColor = Md3LightOutline
+                        )
                     )
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = Md3LightPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { onSearchChange("") }) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Clear",
-                                tint = Md3LightTextSecondary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                },
-                singleLine = true,
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Md3LightPrimary,
-                    unfocusedBorderColor = Md3LightOutline,
-                    focusedContainerColor = Md3LightSurface,
-                    unfocusedContainerColor = Md3LightSurface
-                )
-            )
+                }
+            }
         }
 
-        // Breadcrumbs Bar
-        if (searchQuery.isBlank() && repo != null) {
-            BreadcrumbBar(
-                repoName = repo.name,
-                currentPath = currentPath,
-                onNavigateToDir = onNavigateToDir,
-                onNavigateUp = onNavigateUp
-            )
-        }
+        // Breadcrumb Navigation Path Bar
+        BreadcrumbBar(
+            repoName = repo?.name ?: "Repository",
+            currentPath = currentPath,
+            onNavigateToDir = onNavigateToDir
+        )
 
         // Batch Mode Action Bar
-        if (isBatchMode) {
+        AnimatedVisibility(visible = isBatchMode) {
             BatchActionBar(
                 selectedCount = selectedFilePaths.size,
                 onSelectAll = onSelectAllInDir,
                 onClear = onClearSelection,
-                onDeleteSelected = onOpenBatchDeleteModal
+                onDelete = onOpenBatchDeleteModal
             )
         }
 
-        // Content Area
+        // Main Explorer Content List
         Box(modifier = Modifier.weight(1f)) {
-            if (isLoadingTree) {
+            if (isLoadingTree && rawTreeItems.isEmpty()) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -337,14 +402,14 @@ fun FileTreeExplorer(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Loading repository file tree...",
+                            text = "Loading repository files...",
                             style = MaterialTheme.typography.bodyMedium,
                             color = Md3LightTextSecondary
                         )
                     }
                 }
             } else if (searchQuery.isNotBlank()) {
-                // Search Results across entire tree
+                // Search Results Flat List
                 SearchResultsList(
                     items = matchingSearchFiles,
                     searchQuery = searchQuery,
@@ -355,7 +420,7 @@ fun FileTreeExplorer(
                     onDeleteSingle = onDeleteSingleFile
                 )
             } else {
-                // Current Directory Node Children
+                // Directory Node Children List (Files & Folders)
                 val currentNode = rootNode?.let { RepoRepo.findNodeAtDirectory(it, currentPath) }
                 if (currentNode == null || currentNode.children.isEmpty()) {
                     Box(
@@ -385,7 +450,7 @@ fun FileTreeExplorer(
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Create File Here", fontWeight = FontWeight.Bold)
+                                Text("Upload / Create File Here", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -403,23 +468,42 @@ fun FileTreeExplorer(
                                     size = childNode.size
                                 )
 
+                            // Check if this file or folder is selected
+                            val isSelected = if (childNode.isDirectory) {
+                                selectedFilePaths.contains(childNode.path) ||
+                                        (rawTreeItems.any { it.path.startsWith("${childNode.path}/") } &&
+                                                rawTreeItems.filter { it.path.startsWith("${childNode.path}/") }.all { selectedFilePaths.contains(it.path) })
+                            } else {
+                                selectedFilePaths.contains(childNode.path)
+                            }
+
                             ExplorerItemRow(
                                 node = childNode,
                                 rawItem = rawItem,
                                 isBatchMode = isBatchMode,
-                                isSelected = selectedFilePaths.contains(childNode.path),
+                                isSelected = isSelected,
                                 onClick = {
-                                    if (childNode.isDirectory) {
-                                        onNavigateToDir(childNode.path)
-                                    } else {
-                                        if (isBatchMode) {
+                                    if (isBatchMode) {
+                                        if (childNode.isDirectory) {
+                                            onToggleSelectFolder(childNode.path)
+                                        } else {
                                             onToggleSelectFile(childNode.path)
+                                        }
+                                    } else {
+                                        if (childNode.isDirectory) {
+                                            onNavigateToDir(childNode.path)
                                         } else {
                                             onOpenFile(rawItem)
                                         }
                                     }
                                 },
-                                onToggleSelect = { onToggleSelectFile(childNode.path) },
+                                onToggleSelect = {
+                                    if (childNode.isDirectory) {
+                                        onToggleSelectFolder(childNode.path)
+                                    } else {
+                                        onToggleSelectFile(childNode.path)
+                                    }
+                                },
                                 onDelete = { onDeleteSingleFile(childNode.path, childNode.sha) }
                             )
                         }
@@ -430,36 +514,45 @@ fun FileTreeExplorer(
     }
 }
 
+private fun formatSyncTime(timestamp: Long?): String {
+    if (timestamp == null) return "Auto Sync"
+    val diff = (System.currentTimeMillis() - timestamp) / 1000
+    return when {
+        diff < 60 -> "Synced just now"
+        diff < 3600 -> "Synced ${diff / 60}m ago"
+        else -> "Synced"
+    }
+}
+
 @Composable
 private fun BreadcrumbBar(
     repoName: String,
     currentPath: String,
-    onNavigateToDir: (String) -> Unit,
-    onNavigateUp: () -> Unit
+    onNavigateToDir: (String) -> Unit
 ) {
-    val scrollState = rememberScrollState()
     val segments = remember(currentPath) {
-        if (currentPath.isBlank()) emptyList() else currentPath.split('/')
+        if (currentPath.isBlank()) emptyList()
+        else currentPath.split('/')
     }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Md3LightSurfaceVariant,
-        shadowElevation = 1.dp
+        color = Md3LightSurface,
+        shadowElevation = 0.5.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .horizontalScroll(scrollState)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Root repo chip
+            // Root Icon & Button
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
                     .clickable { onNavigateToDir("") }
-                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -468,42 +561,44 @@ private fun BreadcrumbBar(
                     tint = GitHubYellow,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = repoName,
-                    style = MaterialTheme.typography.labelMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (segments.isEmpty()) Md3LightPrimary else Md3LightTextPrimary
+                    color = if (segments.isEmpty()) Md3LightTextPrimary else Md3LightPrimary
                 )
             }
 
-            // Path segments
-            var accumulatedPath = ""
-            for ((index, segment) in segments.withIndex()) {
-                accumulatedPath = if (accumulatedPath.isEmpty()) segment else "$accumulatedPath/$segment"
-                val thisPath = accumulatedPath
-                val isLast = index == segments.size - 1
+            // Subdirectories breadcrumbs
+            var accumulated = ""
+            for (i in segments.indices) {
+                val seg = segments[i]
+                accumulated = if (accumulated.isEmpty()) seg else "$accumulated/$seg"
+                val dirTarget = accumulated
+                val isLast = i == segments.size - 1
 
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "/",
+                    contentDescription = null,
                     tint = Md3LightTextTertiary,
                     modifier = Modifier.size(14.dp)
                 )
 
                 Text(
-                    text = segment,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isLast) Md3LightPrimary else Md3LightTextPrimary,
+                    text = seg,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isLast) FontWeight.Bold else FontWeight.Medium,
+                    color = if (isLast) Md3LightTextPrimary else Md3LightPrimary,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .clickable { onNavigateToDir(thisPath) }
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .clickable { onNavigateToDir(dirTarget) }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
         }
     }
+    HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
 }
 
 @Composable
@@ -511,18 +606,17 @@ private fun BatchActionBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
-    onDeleteSelected: () -> Unit
+    onDelete: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Md3LightSurface,
-        shadowElevation = 2.dp,
+        color = Md3LightSurfaceVariant,
         border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -533,29 +627,28 @@ private fun BatchActionBar(
                     fontWeight = FontWeight.Bold,
                     color = Md3LightPrimary
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(16.dp))
                 TextButton(onClick = onSelectAll) {
-                    Text("Select All", style = MaterialTheme.typography.labelSmall)
+                    Text("Select All", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 }
                 TextButton(onClick = onClear) {
-                    Text("Clear", style = MaterialTheme.typography.labelSmall)
+                    Text("Clear", fontSize = 12.sp, color = Md3LightTextSecondary)
                 }
             }
 
             Button(
-                onClick = onDeleteSelected,
+                onClick = onDelete,
                 enabled = selectedCount > 0,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Md3LightError,
                     disabledContainerColor = Md3LightOutlineVariant
                 ),
                 shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                modifier = Modifier.testTag("batch_delete_action_btn")
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
             ) {
                 Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Delete ($selectedCount)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                Text("Delete ($selectedCount)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -571,133 +664,133 @@ private fun ExplorerItemRow(
     onToggleSelect: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val meta = FileIcons.getMeta(node.name, node.isDirectory)
     var showMenu by remember { mutableStateOf(false) }
 
-    Surface(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .testTag("file_row_${node.name}"),
-        color = if (isSelected) Md3LightPrimaryContainer else Md3LightSurface
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .testTag("explorer_item_${node.name}"),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 11.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // Batch Checkbox
-            if (isBatchMode && !node.isDirectory) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onToggleSelect() },
-                    colors = CheckboxDefaults.colors(checkedColor = Md3LightPrimary),
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
+        if (isBatchMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onToggleSelect() },
+                colors = CheckboxDefaults.colors(
+                    checkedColor = Md3LightPrimary,
+                    uncheckedColor = Md3LightOutline
+                ),
+                modifier = Modifier.size(32.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
 
-            // File/Folder Icon
+        // Icon
+        if (node.isDirectory) {
             Icon(
-                imageVector = meta.icon,
-                contentDescription = meta.label,
-                tint = meta.color,
-                modifier = Modifier.size(20.dp)
+                imageVector = Icons.Default.Folder,
+                contentDescription = "Directory",
+                tint = GitHubYellow,
+                modifier = Modifier.size(24.dp)
+            )
+        } else {
+            FileIconForExtension(
+                extension = node.extension.ifBlank { rawItem.extension },
+                modifier = Modifier.size(22.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(14.dp))
+
+        // Name & Meta Details
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = node.name,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = if (node.isDirectory) FontWeight.Bold else FontWeight.Medium,
+                color = Md3LightTextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // File Name & Details
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = node.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (node.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
-                    color = Md3LightTextPrimary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    if (node.isDirectory) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (node.isDirectory) {
+                    val count = node.children.size
+                    Text(
+                        text = "$count ${if (count == 1) "item" else "items"}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Md3LightTextSecondary
+                    )
+                } else {
+                    val sizeFormatted = formatFileSize(node.size ?: rawItem.size ?: 0L)
+                    Text(
+                        text = sizeFormatted,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Md3LightTextSecondary
+                    )
+                    if (rawItem.sha.length >= 7) {
                         Text(
-                            text = "${node.children.size} items",
+                            text = " • ${rawItem.sha.take(7)}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Md3LightTextSecondary
-                        )
-                    } else {
-                        Text(
-                            text = FileIcons.formatFileSize(node.size),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Md3LightTextSecondary
-                        )
-                        if (node.sha.isNotBlank()) {
-                            Text(
-                                text = "• ${node.sha.take(7)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                                color = Md3LightTextTertiary,
-                                fontSize = 10.sp
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Directory Chevron or File Actions Menu
-            if (node.isDirectory) {
-                Icon(
-                    imageVector = Icons.Default.ChevronRight,
-                    contentDescription = "Open Directory",
-                    tint = Md3LightTextTertiary,
-                    modifier = Modifier.size(18.dp)
-                )
-            } else {
-                Box {
-                    IconButton(
-                        onClick = { showMenu = true },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "Options",
-                            tint = Md3LightTextSecondary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.background(Md3LightSurface)
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Open / Edit", color = Md3LightTextPrimary) },
-                            onClick = {
-                                showMenu = false
-                                onClick()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Delete File", color = Md3LightError) },
-                            leadingIcon = {
-                                Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(18.dp))
-                            },
-                            onClick = {
-                                showMenu = false
-                                onDelete()
-                            }
+                            fontFamily = FontFamily.Monospace,
+                            color = Md3LightTextTertiary
                         )
                     }
                 }
             }
         }
+
+        // Trailing affordance
+        if (node.isDirectory) {
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = Md3LightTextTertiary,
+                modifier = Modifier.size(18.dp)
+            )
+        } else {
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Options",
+                        tint = Md3LightTextTertiary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false }
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("Open File") },
+                        onClick = {
+                            showMenu = false
+                            onClick()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Delete File", color = Md3LightError) },
+                        onClick = {
+                            showMenu = false
+                            onDelete()
+                        }
+                    )
+                }
+            }
+        }
     }
-    HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.6f), thickness = 0.5.dp)
+    HorizontalDivider(
+        modifier = Modifier.padding(start = if (isBatchMode) 68.dp else 48.dp),
+        color = Md3LightOutlineVariant.copy(alpha = 0.5f),
+        thickness = 0.5.dp
+    )
 }
 
 @Composable
@@ -708,108 +801,67 @@ private fun SearchResultsList(
     selectedFilePaths: Set<String>,
     onOpenFile: (GitTreeItem) -> Unit,
     onToggleSelect: (String) -> Unit,
-    onDeleteSingle: (path: String, sha: String) -> Unit
+    onDeleteSingle: (String, String) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Md3LightSurfaceVariant
+    if (items.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(32.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = "Found ${items.size} matching files in repository",
-                style = MaterialTheme.typography.labelSmall,
-                color = Md3LightTextSecondary,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-            )
-        }
-
-        if (items.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = Md3LightTextTertiary,
+                    modifier = Modifier.size(48.dp)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
                 Text(
                     text = "No files match \"$searchQuery\"",
                     style = MaterialTheme.typography.bodyMedium,
                     color = Md3LightTextSecondary
                 )
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(bottom = 72.dp)
-            ) {
-                items(items, key = { it.path }) { item ->
-                    val isSelected = selectedFilePaths.contains(item.path)
-                    val meta = FileIcons.getMeta(item.fileName, false)
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 72.dp)
+        ) {
+            items(items, key = { it.path }) { item ->
+                val node = ExplorerNode(
+                    path = item.path,
+                    name = item.fileName,
+                    isDirectory = false,
+                    sha = item.sha,
+                    size = item.size,
+                    extension = item.extension
+                )
 
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                if (isBatchMode) {
-                                    onToggleSelect(item.path)
-                                } else {
-                                    onOpenFile(item)
-                                }
-                            },
-                        color = if (isSelected) Md3LightPrimaryContainer else Md3LightSurface
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (isBatchMode) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { onToggleSelect(item.path) },
-                                    colors = CheckboxDefaults.colors(checkedColor = Md3LightPrimary),
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
-
-                            Icon(
-                                imageVector = meta.icon,
-                                contentDescription = meta.label,
-                                tint = meta.color,
-                                modifier = Modifier.size(20.dp)
-                            )
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.fileName,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Md3LightTextPrimary
-                                )
-                                Text(
-                                    text = item.path,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Md3LightTextSecondary,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            Text(
-                                text = FileIcons.formatFileSize(item.size),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Md3LightTextSecondary
-                            )
-                        }
-                    }
-                    HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.6f), thickness = 0.5.dp)
-                }
+                ExplorerItemRow(
+                    node = node,
+                    rawItem = item,
+                    isBatchMode = isBatchMode,
+                    isSelected = selectedFilePaths.contains(item.path),
+                    onClick = {
+                        if (isBatchMode) onToggleSelect(item.path)
+                        else onOpenFile(item)
+                    },
+                    onToggleSelect = { onToggleSelect(item.path) },
+                    onDelete = { onDeleteSingle(item.path, item.sha) }
+                )
             }
         }
     }
+}
+
+fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB")
+    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt()
+    val group = digitGroups.coerceIn(0, units.size - 1)
+    val value = bytes / Math.pow(1024.0, group.toDouble())
+    return String.format("%.1f %s", value, units[group]).replace(".0 ", " ")
 }

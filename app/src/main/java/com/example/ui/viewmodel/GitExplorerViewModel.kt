@@ -1,8 +1,6 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
-import android.content.Intent
-import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AccountEntity
@@ -22,7 +20,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.io.InputStream
 
 enum class AppScreen {
     LOGIN,
@@ -31,6 +31,8 @@ enum class AppScreen {
 }
 
 enum class RepoFilterType { ALL, PUBLIC, PRIVATE, FORKS }
+
+enum class SyncStatus { IDLE, SYNCING, SYNCED, ERROR }
 
 data class GitExplorerUiState(
     val currentScreen: AppScreen = AppScreen.LOGIN,
@@ -64,6 +66,10 @@ data class GitExplorerUiState(
     val fileSearchQuery: String = "",
     val matchingSearchFiles: List<GitTreeItem> = emptyList(),
 
+    // Live Sync
+    val syncStatus: SyncStatus = SyncStatus.IDLE,
+    val lastSyncedAt: Long? = null,
+
     // Active File & Editor
     val activeFile: FileContentResponse? = null,
     val activeFilePath: String? = null,
@@ -76,9 +82,13 @@ data class GitExplorerUiState(
 
     // Batch operations
     val isBatchMode: Boolean = false,
-    val selectedFilePaths: Set<String> = emptySet(),
+    val selectedFilePaths: Set<String> = emptySet(), // can contain files and folder paths
     val isBatchDeleting: Boolean = false,
     val batchProgress: Triple<Int, Int, String>? = null, // completed, total, currentFile
+
+    // Upload Operations
+    val isUploadingFiles: Boolean = false,
+    val uploadProgress: Triple<Int, Int, String>? = null,
 
     // Dialogs & Sheets
     val isLeftDrawerOpen: Boolean = false,
@@ -102,6 +112,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     val uiState: StateFlow<GitExplorerUiState> = _uiState.asStateFlow()
 
     private var oauthPollingJob: Job? = null
+    private var autoSyncJob: Job? = null
 
     init {
         // Collect current account changes
@@ -124,6 +135,22 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             repository.allAccountsFlow.collectLatest { list ->
                 _uiState.update { it.copy(accounts = list) }
+            }
+        }
+
+        // Background Auto-Sync every 2 minutes for active repository
+        startPeriodicAutoSync()
+    }
+
+    private fun startPeriodicAutoSync() {
+        autoSyncJob?.cancel()
+        autoSyncJob = viewModelScope.launch {
+            while (isActive) {
+                delay(120_000L) // 2 minutes
+                val state = _uiState.value
+                if (state.currentScreen == AppScreen.EXPLORER && state.selectedRepo != null && !state.isFileDirty && !state.isLoadingTree) {
+                    syncActiveRepository(isSilent = true)
+                }
             }
         }
     }
@@ -189,7 +216,6 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         loginWithToken(tokenResp.accessToken)
                         return@launch
                     } else if (tokenResp?.error == "authorization_pending") {
-                        // User hasn't finished authorizing on web yet; continue polling
                         continue
                     } else if (tokenResp?.error == "slow_down") {
                         delay(5000L)
@@ -436,18 +462,56 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     activeFile = null,
                     activeFilePath = null,
                     currentScreen = AppScreen.EXPLORER,
-                    isLeftDrawerOpen = false
+                    isLeftDrawerOpen = false,
+                    syncStatus = SyncStatus.SYNCING
                 )
             }
             repository.saveRecentRepo(repo)
             loadBranches(repo.owner.login, repo.name)
-            loadTree(repo.owner.login, repo.name, repo.defaultBranch)
+            syncActiveRepository(isSilent = false)
         }
     }
 
     // ==========================================
-    // BRANCHES & TREE EXPLORER
+    // AUTO SYNC & TREE EXPLORER
     // ==========================================
+
+    fun syncActiveRepository(isSilent: Boolean = false) {
+        val repo = _uiState.value.selectedRepo ?: return
+        val branch = _uiState.value.selectedBranch
+
+        viewModelScope.launch {
+            if (!isSilent) {
+                _uiState.update { it.copy(syncStatus = SyncStatus.SYNCING, isLoadingTree = true) }
+            } else {
+                _uiState.update { it.copy(syncStatus = SyncStatus.SYNCING) }
+            }
+
+            val token = _uiState.value.currentAccount?.token
+            val result = repository.getFileTreeRecursive(token, repo.owner.login, repo.name, branch)
+            if (result.isSuccess) {
+                val (rootNode, rawItems) = result.getOrNull()!!
+                _uiState.update {
+                    it.copy(
+                        isLoadingTree = false,
+                        syncStatus = SyncStatus.SYNCED,
+                        lastSyncedAt = System.currentTimeMillis(),
+                        rootExplorerNode = rootNode,
+                        rawTreeItems = rawItems,
+                        matchingSearchFiles = filterTreeFiles(rawItems, it.fileSearchQuery)
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isLoadingTree = false,
+                        syncStatus = SyncStatus.ERROR,
+                        errorMessage = if (!isSilent) result.exceptionOrNull()?.message ?: "Sync failed" else null
+                    )
+                }
+            }
+        }
+    }
 
     private fun loadBranches(owner: String, repo: String) {
         viewModelScope.launch {
@@ -478,38 +542,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 showBranchSelector = false
             )
         }
-        loadTree(repo.owner.login, repo.name, branch)
-    }
-
-    fun loadTree(owner: String, repo: String, branch: String) {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingTree = true) }
-            val token = _uiState.value.currentAccount?.token
-            val result = repository.getFileTreeRecursive(token, owner, repo, branch)
-            if (result.isSuccess) {
-                val (rootNode, rawItems) = result.getOrNull()!!
-                _uiState.update {
-                    it.copy(
-                        isLoadingTree = false,
-                        rootExplorerNode = rootNode,
-                        rawTreeItems = rawItems,
-                        matchingSearchFiles = filterTreeFiles(rawItems, it.fileSearchQuery)
-                    )
-                }
-            } else {
-                _uiState.update {
-                    it.copy(
-                        isLoadingTree = false,
-                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to load repository tree"
-                    )
-                }
-            }
-        }
+        syncActiveRepository(isSilent = false)
     }
 
     fun refreshTree() {
-        val repo = _uiState.value.selectedRepo ?: return
-        loadTree(repo.owner.login, repo.name, _uiState.value.selectedBranch)
+        syncActiveRepository(isSilent = false)
     }
 
     fun navigateToDirectory(path: String) {
@@ -623,7 +660,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     // ==========================================
-    // COMMITS & FILE CREATION / UPLOAD
+    // COMMITS & FILE CREATION / UPLOADS
     // ==========================================
 
     fun commitActiveFile(commitMessage: String, branch: String) {
@@ -660,7 +697,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         toastOrMessage = "Changes committed successfully!"
                     )
                 }
-                refreshTree()
+                syncActiveRepository(isSilent = false)
             } else {
                 _uiState.update {
                     it.copy(
@@ -707,10 +744,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     it.copy(
                         isCommitting = false,
                         showCreateUploadDialog = false,
-                        toastOrMessage = "File created & committed: $fileName"
+                        toastOrMessage = "Created: $fileName"
                     )
                 }
-                refreshTree()
+                syncActiveRepository(isSilent = false)
             } else {
                 _uiState.update {
                     it.copy(
@@ -722,8 +759,69 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun uploadBatchFiles(
+        targetDir: String,
+        files: List<Pair<String, ByteArray>>, // relative path to bytes
+        commitMessage: String,
+        branch: String
+    ) {
+        val repo = _uiState.value.selectedRepo ?: return
+        val token = _uiState.value.currentAccount?.token
+
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "Please login with a PAT token to upload files.") }
+            return
+        }
+
+        if (files.isEmpty()) return
+
+        val normalizedDir = targetDir.trim('/')
+        val itemsToUpload = files.map { (relPath, bytes) ->
+            val finalPath = if (normalizedDir.isBlank()) relPath else "$normalizedDir/$relPath"
+            finalPath to bytes
+        }
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isUploadingFiles = true) }
+
+            val result = repository.uploadMultipleFiles(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                files = itemsToUpload,
+                branch = branch,
+                baseMessage = commitMessage.ifBlank { "Upload files" }
+            ) { completed, total, currentFile ->
+                _uiState.update {
+                    it.copy(uploadProgress = Triple(completed, total, currentFile))
+                }
+            }
+
+            if (result.isSuccess) {
+                val uploadedCount = result.getOrNull() ?: itemsToUpload.size
+                _uiState.update {
+                    it.copy(
+                        isUploadingFiles = false,
+                        showCreateUploadDialog = false,
+                        uploadProgress = null,
+                        toastOrMessage = "Uploaded $uploadedCount files successfully!"
+                    )
+                }
+                syncActiveRepository(isSilent = false)
+            } else {
+                _uiState.update {
+                    it.copy(
+                        isUploadingFiles = false,
+                        uploadProgress = null,
+                        errorMessage = "Failed to upload all files"
+                    )
+                }
+            }
+        }
+    }
+
     // ==========================================
-    // BATCH SELECTION & MULTI-DELETE
+    // BATCH SELECTION (FILES & FOLDERS)
     // ==========================================
 
     fun toggleBatchMode() {
@@ -743,14 +841,45 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun toggleSelectFolder(folderPath: String) {
+        val state = _uiState.value
+        val normalizedFolder = folderPath.trim('/')
+        val set = state.selectedFilePaths.toMutableSet()
+
+        // Find all files and subdirectories that start with this folder prefix
+        val itemsInFolder = state.rawTreeItems.filter {
+            it.path == normalizedFolder || it.path.startsWith("$normalizedFolder/")
+        }.map { it.path }
+
+        val isFolderAlreadySelected = set.contains(normalizedFolder) || itemsInFolder.all { set.contains(it) }
+
+        if (isFolderAlreadySelected) {
+            set.remove(normalizedFolder)
+            itemsInFolder.forEach { set.remove(it) }
+        } else {
+            set.add(normalizedFolder)
+            itemsInFolder.forEach { set.add(it) }
+        }
+
+        _uiState.update { it.copy(selectedFilePaths = set) }
+    }
+
     fun selectAllInCurrentDirectory() {
         val state = _uiState.value
         val rootNode = state.rootExplorerNode ?: return
         val current = GitHubRepoRepository.findNodeAtDirectory(rootNode, state.currentDirectoryPath) ?: return
 
-        val filesInDir = current.children.filter { !it.isDirectory }.map { it.path }.toSet()
+        val pathsInDir = current.children.flatMap { node ->
+            if (node.isDirectory) {
+                val prefix = node.path
+                listOf(node.path) + state.rawTreeItems.filter { it.path.startsWith("$prefix/") }.map { it.path }
+            } else {
+                listOf(node.path)
+            }
+        }.toSet()
+
         _uiState.update {
-            it.copy(selectedFilePaths = it.selectedFilePaths + filesInDir)
+            it.copy(selectedFilePaths = it.selectedFilePaths + pathsInDir)
         }
     }
 
@@ -778,7 +907,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             )
             if (result.isSuccess) {
                 _uiState.update { it.copy(toastOrMessage = "Deleted $path") }
-                refreshTree()
+                syncActiveRepository(isSilent = false)
             } else {
                 _uiState.update { it.copy(errorMessage = result.exceptionOrNull()?.message ?: "Failed to delete") }
             }
@@ -794,10 +923,21 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
 
-        val itemsToDelete = state.rawTreeItems
-            .filter { state.selectedFilePaths.contains(it.path) }
-            .map { it.path to it.sha }
+        // Expand any selected folder paths to their constituent blobs/files
+        val allBlobPathsToSha = mutableMapOf<String, String>()
+        for (item in state.rawTreeItems) {
+            if (!item.isDirectory) {
+                // If the file path is explicitly selected, or any parent folder of this file is selected
+                val isSelected = state.selectedFilePaths.contains(item.path) ||
+                        state.selectedFilePaths.any { folder -> item.path.startsWith("${folder.trim('/')}/") }
 
+                if (isSelected) {
+                    allBlobPathsToSha[item.path] = item.sha
+                }
+            }
+        }
+
+        val itemsToDelete = allBlobPathsToSha.toList()
         if (itemsToDelete.isEmpty()) return
 
         viewModelScope.launch {
@@ -826,7 +966,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         toastOrMessage = "Deleted ${result.getOrNull()} files successfully"
                     )
                 }
-                refreshTree()
+                syncActiveRepository(isSilent = false)
             } else {
                 _uiState.update {
                     it.copy(

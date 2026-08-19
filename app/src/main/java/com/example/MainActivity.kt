@@ -1,10 +1,18 @@
 package com.example
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -13,6 +21,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
@@ -61,6 +70,26 @@ fun GitExplorerApp(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Request Storage Permissions on startup
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { _ ->
+        // Permissions handled
+    }
+
+    LaunchedEffect(Unit) {
+        val permissions = mutableListOf<String>()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
+            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
+            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+        } else {
+            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        }
+        storagePermissionLauncher.launch(permissions.toTypedArray())
+    }
+
     // Feedback Notifications
     LaunchedEffect(uiState.toastOrMessage) {
         uiState.toastOrMessage?.let { msg ->
@@ -96,9 +125,11 @@ fun GitExplorerApp(
         }
     }
 
+    // Root Scaffold with zero-inset padding so top bars align seamlessly with zero top gap
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
         Box(
@@ -166,6 +197,8 @@ fun GitExplorerApp(
                             rootNode = uiState.rootExplorerNode,
                             rawTreeItems = uiState.rawTreeItems,
                             isLoadingTree = uiState.isLoadingTree,
+                            syncStatus = uiState.syncStatus,
+                            lastSyncedAt = uiState.lastSyncedAt,
                             searchQuery = uiState.fileSearchQuery,
                             matchingSearchFiles = uiState.matchingSearchFiles,
                             isBatchMode = uiState.isBatchMode,
@@ -180,6 +213,7 @@ fun GitExplorerApp(
                             onOpenNewFileDialog = { viewModel.setShowCreateUploadDialog(true) },
                             onToggleBatchMode = viewModel::toggleBatchMode,
                             onToggleSelectFile = viewModel::toggleSelectFile,
+                            onToggleSelectFolder = viewModel::toggleSelectFolder,
                             onSelectAllInDir = viewModel::selectAllInCurrentDirectory,
                             onClearSelection = viewModel::clearSelectedFiles,
                             onOpenBatchDeleteModal = { viewModel.setShowBatchDeleteDialog(true) },
@@ -257,13 +291,23 @@ fun GitExplorerApp(
     }
 
     if (uiState.showCreateUploadDialog) {
+        val existingDirs = remember(uiState.rawTreeItems) {
+            uiState.rawTreeItems.filter { it.isDirectory }.map { it.path }
+        }
+
         CreateOrUploadModal(
             initialDirectory = uiState.currentDirectoryPath,
             currentBranch = uiState.selectedBranch,
+            existingDirectories = existingDirs,
             isCommitting = uiState.isCommitting,
+            isUploading = uiState.isUploadingFiles,
+            uploadProgress = uiState.uploadProgress,
             onDismiss = { viewModel.setShowCreateUploadDialog(false) },
             onCreateOrUpload = { targetDir, name, content, msg, branch ->
                 viewModel.createOrUploadFile(targetDir, name, content, msg, branch)
+            },
+            onUploadBatch = { targetDir, files, msg, branch ->
+                viewModel.uploadBatchFiles(targetDir, files, msg, branch)
             }
         )
     }

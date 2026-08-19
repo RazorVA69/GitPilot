@@ -298,6 +298,71 @@ class GitHubRepository(
         }
     }
 
+    suspend fun commitBinaryFile(
+        token: String,
+        owner: String,
+        repo: String,
+        path: String,
+        bytes: ByteArray,
+        commitMessage: String,
+        branch: String,
+        fileSha: String? = null
+    ): Result<CommitResultResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Authentication token required to commit"))
+
+            val base64Content = Base64.encodeToString(bytes, Base64.NO_WRAP)
+
+            val payload = CreateOrUpdateFilePayload(
+                message = commitMessage.ifBlank { "Upload $path" },
+                content = base64Content,
+                sha = fileSha,
+                branch = branch
+            )
+
+            val response = apiService.createOrUpdateFile(authHeader, owner, repo, path, payload)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Upload failed: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun uploadMultipleFiles(
+        token: String,
+        owner: String,
+        repo: String,
+        files: List<Pair<String, ByteArray>>,
+        branch: String,
+        baseMessage: String,
+        onProgress: (completed: Int, total: Int, currentFile: String) -> Unit
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        var successCount = 0
+        for ((index, item) in files.withIndex()) {
+            val (path, bytes) = item
+            onProgress(index, files.size, path)
+            val res = commitBinaryFile(
+                token = token,
+                owner = owner,
+                repo = repo,
+                path = path,
+                bytes = bytes,
+                commitMessage = "$baseMessage: $path",
+                branch = branch
+            )
+            if (res.isSuccess) {
+                successCount++
+            }
+        }
+        onProgress(files.size, files.size, "Done")
+        Result.success(successCount)
+    }
+
     suspend fun deleteFile(
         token: String,
         owner: String,

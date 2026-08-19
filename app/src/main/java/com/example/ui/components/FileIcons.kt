@@ -7,6 +7,9 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material3.Icon
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.ui.theme.GitHubBlue
@@ -32,7 +35,7 @@ object FileIcons {
             )
         }
 
-        val ext = if (fileName.contains('.')) fileName.substringAfterLast('.').lowercase() else ""
+        val ext = if (fileName.contains('.')) fileName.substringAfterLast('.').lowercase() else fileName.lowercase()
         return when (ext) {
             "kt", "kts" -> FileTypeMeta(Icons.Default.Code, GitHubPurple, "Kotlin")
             "java" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "Java")
@@ -87,4 +90,18 @@ object FileIcons {
         if (gb < 1) return String.format("%.1f MB", mb)
         return String.format("%.1f GB", gb)
     }
+}
+
+@Composable
+fun FileIconForExtension(
+    extension: String,
+    modifier: Modifier = Modifier
+) {
+    val meta = FileIcons.getMeta(if (extension.contains('.')) extension else ".$extension", isDirectory = false)
+    Icon(
+        imageVector = meta.icon,
+        contentDescription = meta.label,
+        tint = meta.color,
+        modifier = modifier
+    )
 }
