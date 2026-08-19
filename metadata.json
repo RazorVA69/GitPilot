@@ -1,0 +1,6 @@
+{
+  "name": "GitExplorer",
+  "description": "Fast GitHub repository file explorer, multi-file editor, uploader and batch committer with PAT authentication.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
