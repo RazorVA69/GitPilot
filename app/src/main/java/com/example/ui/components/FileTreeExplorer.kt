@@ -146,7 +146,7 @@ fun FileTreeExplorer(
     modifier: Modifier = Modifier
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
-    var showSortMenu by remember { mutableStateOf(false) }
+    var showOverflowMenu by remember { mutableStateOf(false) }
     var folderForActionDialog by remember { mutableStateOf<ExplorerNode?>(null) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
@@ -223,11 +223,11 @@ fun FileTreeExplorer(
                                 SyncStatus.SYNCING -> Md3LightSurfaceVariant
                                 SyncStatus.SYNCED -> Color(0xFFE8F5E9)
                                 SyncStatus.ERROR -> Color(0xFFFFEBEE)
-                                SyncStatus.IDLE -> Md3LightSurfaceVariant
+                                SyncStatus.IDLE -> Color(0xFFE8F5E9)
                             }
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
@@ -241,7 +241,7 @@ fun FileTreeExplorer(
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        text = "Syncing...",
+                                        text = "Syncing",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = GitHubBlue
@@ -257,7 +257,7 @@ fun FileTreeExplorer(
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
-                                        text = formatSyncTime(lastSyncedAt),
+                                        text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = if (syncStatus == SyncStatus.ERROR) Md3LightError else Color(0xFF2E7D32)
@@ -284,119 +284,9 @@ fun FileTreeExplorer(
                 // Back to Repositories
                 IconButton(onClick = onNavigateToReposList) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back to Repositories",
                         tint = Md3LightTextSecondary
-                    )
-                }
-
-                // Search Files in Tree
-                IconButton(
-                    onClick = { isSearchExpanded = !isSearchExpanded },
-                    modifier = Modifier.testTag("explorer_search_toggle_btn")
-                ) {
-                    Icon(
-                        imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
-                        contentDescription = "Search files",
-                        tint = if (isSearchExpanded) Md3LightPrimary else Md3LightTextSecondary
-                    )
-                }
-
-                // Sort Menu Button
-                Box {
-                    IconButton(onClick = { showSortMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Sort,
-                            contentDescription = "Sort Files & Folders",
-                            tint = Md3LightTextSecondary
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Folders First")
-                                    if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onFileTreeSortChange(FileTreeSortOption.FOLDERS_FIRST)
-                                showSortMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Files First")
-                                    if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onFileTreeSortChange(FileTreeSortOption.FILES_FIRST)
-                                showSortMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Name (A → Z)")
-                                    if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onFileTreeSortChange(FileTreeSortOption.NAME_ASC)
-                                showSortMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Name (Z → A)")
-                                    if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onFileTreeSortChange(FileTreeSortOption.NAME_DESC)
-                                showSortMenu = false
-                            }
-                        )
-                    }
-                }
-
-                // Reverse Sort Toggle
-                IconButton(onClick = onToggleFileTreeSortReverse) {
-                    Icon(
-                        imageVector = Icons.Default.SwapVert,
-                        contentDescription = "Reverse Sort Order",
-                        tint = if (isFileTreeSortReversed) Md3LightPrimary else Md3LightTextSecondary
-                    )
-                }
-
-                // Multi-select Batch Mode Toggle
-                IconButton(
-                    onClick = onToggleBatchMode,
-                    modifier = Modifier.testTag("explorer_batch_mode_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Checklist,
-                        contentDescription = "Batch selection mode",
-                        tint = if (isBatchMode) Md3LightPrimary else Md3LightTextSecondary
                     )
                 }
 
@@ -412,13 +302,170 @@ fun FileTreeExplorer(
                     )
                 }
 
-                // Refresh / Sync
-                IconButton(onClick = onRefresh) {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = "Refresh tree",
-                        tint = Md3LightTextSecondary
-                    )
+                // Overflow Menu
+                Box {
+                    IconButton(
+                        onClick = { showOverflowMenu = true },
+                        modifier = Modifier.testTag("explorer_overflow_menu_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More Options",
+                            tint = Md3LightTextSecondary
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = showOverflowMenu,
+                        onDismissRequest = { showOverflowMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text("Search Files") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Search, contentDescription = null, tint = GitHubBlue)
+                            },
+                            onClick = {
+                                isSearchExpanded = true
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Text(if (isBatchMode) "Exit Multi-Select Mode" else "Multi-Select Mode")
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Checklist,
+                                    contentDescription = null,
+                                    tint = if (isBatchMode) GitHubGreen else Md3LightTextSecondary
+                                )
+                            },
+                            onClick = {
+                                onToggleBatchMode()
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Sync & Refresh Tree") },
+                            leadingIcon = {
+                                Icon(Icons.Default.Refresh, contentDescription = null, tint = GitHubBlue)
+                            },
+                            onClick = {
+                                onRefresh()
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        Text(
+                            text = "SORT BY",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Md3LightTextTertiary,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Folders First")
+                                    if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.FOLDERS_FIRST)
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Files First")
+                                    if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.FILES_FIRST)
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Name (A → Z)")
+                                    if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.NAME_ASC)
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Name (Z → A)")
+                                    if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onFileTreeSortChange(FileTreeSortOption.NAME_DESC)
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("Reverse Sort Order")
+                                    if (isFileTreeSortReversed) {
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.SwapVert, contentDescription = null, tint = if (isFileTreeSortReversed) GitHubBlue else Md3LightTextSecondary)
+                            },
+                            onClick = {
+                                onToggleFileTreeSortReverse()
+                                showOverflowMenu = false
+                            }
+                        )
+                    }
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(

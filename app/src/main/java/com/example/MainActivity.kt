@@ -72,24 +72,38 @@ fun GitExplorerApp(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Request Storage Permissions on startup
-    val storagePermissionLauncher = rememberLauncherForActivityResult(
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // Request Storage Permission for Android 10 and below, or All Files Access for Android 11+
+    val legacyStorageLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { _ ->
-        // Permissions handled
+        // Legacy permissions handled
     }
 
     LaunchedEffect(Unit) {
-        val permissions = mutableListOf<String>()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions.add(Manifest.permission.READ_MEDIA_IMAGES)
-            permissions.add(Manifest.permission.READ_MEDIA_VIDEO)
-            permissions.add(Manifest.permission.READ_MEDIA_AUDIO)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                try {
+                    val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                    }
+                    context.startActivity(intent)
+                } catch (e: Exception) {
+                    try {
+                        val intent = Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)
+                        context.startActivity(intent)
+                    } catch (_: Exception) {}
+                }
+            }
         } else {
-            permissions.add(Manifest.permission.READ_EXTERNAL_STORAGE)
-            permissions.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            legacyStorageLauncher.launch(
+                arrayOf(
+                    Manifest.permission.READ_EXTERNAL_STORAGE,
+                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                )
+            )
         }
-        storagePermissionLauncher.launch(permissions.toTypedArray())
     }
 
     // Feedback Notifications
@@ -275,8 +289,14 @@ fun GitExplorerApp(
                     isLoading = uiState.isLoadingRepos,
                     searchQuery = uiState.repoSearchQuery,
                     filterType = uiState.repoFilterType,
+                    sortOption = uiState.repoSortOption,
+                    pinnedRepoIds = uiState.pinnedRepoIds,
+                    workingRepoId = uiState.workingRepoId,
                     onSearchChange = viewModel::setRepoSearchQuery,
                     onFilterChange = viewModel::setRepoFilterType,
+                    onSortChange = viewModel::setRepoSortOption,
+                    onTogglePinRepo = viewModel::togglePinRepo,
+                    onSetWorkingRepo = viewModel::setWorkingRepo,
                     onSelectRepo = viewModel::selectRepository,
                     onNavigateToAllRepos = viewModel::navigateToRepoList,
                     onRefreshRepos = viewModel::loadRepositories,
