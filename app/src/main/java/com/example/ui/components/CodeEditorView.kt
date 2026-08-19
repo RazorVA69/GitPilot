@@ -22,14 +22,10 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FindReplace
-import androidx.compose.material.icons.filled.FormatSize
 import androidx.compose.material.icons.filled.Preview
-import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -42,16 +38,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -74,16 +64,19 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.FileContentResponse
 import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubDarkBorder
-import com.example.ui.theme.GitHubDarkCodeBg
-import com.example.ui.theme.GitHubDarkSurface
-import com.example.ui.theme.GitHubDarkSurfaceVariant
-import com.example.ui.theme.GitHubDarkTextMuted
-import com.example.ui.theme.GitHubDarkTextPrimary
-import com.example.ui.theme.GitHubDarkTextSecondary
-import com.example.ui.theme.GitHubGreenBright
+import com.example.ui.theme.GitHubGreen
 import com.example.ui.theme.GitHubOrange
-import com.example.ui.theme.GitHubYellow
+import com.example.ui.theme.Md3LightCodeBg
+import com.example.ui.theme.Md3LightCodeBorder
+import com.example.ui.theme.Md3LightCodeGutter
+import com.example.ui.theme.Md3LightOutline
+import com.example.ui.theme.Md3LightOutlineVariant
+import com.example.ui.theme.Md3LightPrimary
+import com.example.ui.theme.Md3LightSurface
+import com.example.ui.theme.Md3LightSurfaceVariant
+import com.example.ui.theme.Md3LightTextPrimary
+import com.example.ui.theme.Md3LightTextSecondary
+import com.example.ui.theme.Md3LightTextTertiary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -124,7 +117,7 @@ fun CodeEditorView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(GitHubDarkCodeBg)
+            .background(Md3LightCodeBg)
     ) {
         // Editor Header Toolbar
         TopAppBar(
@@ -138,7 +131,7 @@ fun CodeEditorView(
                         imageVector = meta.icon,
                         contentDescription = null,
                         tint = meta.color,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -147,7 +140,7 @@ fun CodeEditorView(
                                 text = fileName,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                color = GitHubDarkTextPrimary,
+                                color = Md3LightTextPrimary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -164,14 +157,15 @@ fun CodeEditorView(
                                     text = "Modified",
                                     style = MaterialTheme.typography.labelSmall,
                                     color = GitHubOrange,
-                                    fontSize = 10.sp
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
                         Text(
                             text = filePath,
                             style = MaterialTheme.typography.labelSmall,
-                            color = GitHubDarkTextMuted,
+                            color = Md3LightTextSecondary,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             maxLines = 1,
@@ -188,13 +182,13 @@ fun CodeEditorView(
                     Icon(
                         imageVector = Icons.Default.ArrowBack,
                         contentDescription = "Back to Explorer",
-                        tint = GitHubDarkTextPrimary
+                        tint = Md3LightTextPrimary
                     )
                 }
             },
             actions = {
-                // Find & Replace toggle
                 if (!isImage) {
+                    // Find & Replace
                     IconButton(
                         onClick = { showFindReplace = !showFindReplace },
                         modifier = Modifier.testTag("editor_find_btn")
@@ -202,12 +196,12 @@ fun CodeEditorView(
                         Icon(
                             imageVector = Icons.Default.FindReplace,
                             contentDescription = "Find & Replace",
-                            tint = if (showFindReplace) GitHubBlue else GitHubDarkTextSecondary,
+                            tint = if (showFindReplace) Md3LightPrimary else Md3LightTextSecondary,
                             modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    // Markdown Preview toggle if markdown
+                    // Markdown Preview toggle
                     if (isMarkdown) {
                         IconButton(
                             onClick = onToggleMarkdownPreview,
@@ -216,13 +210,13 @@ fun CodeEditorView(
                             Icon(
                                 imageVector = Icons.Default.Preview,
                                 contentDescription = "Preview Markdown",
-                                tint = if (isMarkdownPreviewMode) GitHubBlue else GitHubDarkTextSecondary,
+                                tint = if (isMarkdownPreviewMode) Md3LightPrimary else Md3LightTextSecondary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
                     }
 
-                    // Undo / Revert if dirty
+                    // Undo if dirty
                     if (isDirty) {
                         IconButton(
                             onClick = { onContentChange(originalContent) },
@@ -231,36 +225,36 @@ fun CodeEditorView(
                             Icon(
                                 imageVector = Icons.Default.Undo,
                                 contentDescription = "Revert Changes",
-                                tint = GitHubDarkTextSecondary,
+                                tint = Md3LightTextSecondary,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
                     }
 
-                    // Font Zoom Buttons
+                    // Font Zoom
                     IconButton(
                         onClick = { if (fontSize > 9f) fontSize -= 1.5f },
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Text("A-", color = GitHubDarkTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("A-", color = Md3LightTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                     IconButton(
                         onClick = { if (fontSize < 24f) fontSize += 1.5f },
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Text("A+", color = GitHubDarkTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("A+", color = Md3LightTextSecondary, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
 
                 Spacer(modifier = Modifier.width(4.dp))
 
-                // Commit & Save Button
+                // Commit Button
                 Button(
                     onClick = onOpenCommitDialog,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDirty) GitHubGreenBright else GitHubBlue
+                        containerColor = if (isDirty) GitHubGreen else Md3LightPrimary
                     ),
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(8.dp),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     modifier = Modifier
                         .padding(end = 8.dp)
@@ -280,8 +274,8 @@ fun CodeEditorView(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = GitHubDarkSurface,
-                titleContentColor = GitHubDarkTextPrimary
+                containerColor = Md3LightSurface,
+                titleContentColor = Md3LightTextPrimary
             )
         )
 
@@ -289,66 +283,66 @@ fun CodeEditorView(
         AnimatedVisibility(visible = showFindReplace) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = GitHubDarkSurfaceVariant,
-                border = androidx.compose.foundation.BorderStroke(1.dp, GitHubDarkBorder)
+                color = Md3LightSurfaceVariant,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
             ) {
-                Column(modifier = Modifier.padding(8.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = findText,
+                        onValueChange = { findText = it },
+                        placeholder = { Text("Find...", fontSize = 12.sp, color = Md3LightTextTertiary) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp),
+                        textStyle = TextStyle(fontSize = 12.sp, color = Md3LightTextPrimary, fontFamily = FontFamily.Monospace),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Md3LightPrimary,
+                            unfocusedBorderColor = Md3LightOutline
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = replaceText,
+                        onValueChange = { replaceText = it },
+                        placeholder = { Text("Replace with...", fontSize = 12.sp, color = Md3LightTextTertiary) },
+                        singleLine = true,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(46.dp),
+                        textStyle = TextStyle(fontSize = 12.sp, color = Md3LightTextPrimary, fontFamily = FontFamily.Monospace),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = Md3LightPrimary,
+                            unfocusedBorderColor = Md3LightOutline
+                        )
+                    )
+
+                    Button(
+                        onClick = {
+                            if (findText.isNotEmpty()) {
+                                val updated = content.replace(findText, replaceText)
+                                onContentChange(updated)
+                            }
+                        },
+                        enabled = findText.isNotEmpty(),
+                        shape = RoundedCornerShape(6.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Md3LightPrimary),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        OutlinedTextField(
-                            value = findText,
-                            onValueChange = { findText = it },
-                            placeholder = { Text("Find...", fontSize = 12.sp, color = GitHubDarkTextMuted) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp),
-                            textStyle = TextStyle(fontSize = 12.sp, color = GitHubDarkTextPrimary, fontFamily = FontFamily.Monospace),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = GitHubBlue,
-                                unfocusedBorderColor = GitHubDarkBorder
-                            )
-                        )
+                        Text("Replace All", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
 
-                        OutlinedTextField(
-                            value = replaceText,
-                            onValueChange = { replaceText = it },
-                            placeholder = { Text("Replace with...", fontSize = 12.sp, color = GitHubDarkTextMuted) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp),
-                            textStyle = TextStyle(fontSize = 12.sp, color = GitHubDarkTextPrimary, fontFamily = FontFamily.Monospace),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = GitHubBlue,
-                                unfocusedBorderColor = GitHubDarkBorder
-                            )
-                        )
-
-                        Button(
-                            onClick = {
-                                if (findText.isNotEmpty()) {
-                                    val updated = content.replace(findText, replaceText)
-                                    onContentChange(updated)
-                                }
-                            },
-                            enabled = findText.isNotEmpty(),
-                            shape = RoundedCornerShape(4.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = GitHubBlue),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                        ) {
-                            Text("Replace All", fontSize = 11.sp)
-                        }
-
-                        IconButton(
-                            onClick = { showFindReplace = false },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = GitHubDarkTextSecondary, modifier = Modifier.size(16.dp))
-                        }
+                    IconButton(
+                        onClick = { showFindReplace = false },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -362,9 +356,9 @@ fun CodeEditorView(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = GitHubBlue, modifier = Modifier.size(36.dp))
+                        CircularProgressIndicator(color = Md3LightPrimary, modifier = Modifier.size(36.dp))
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("Loading file content...", color = GitHubDarkTextSecondary)
+                        Text("Loading file...", color = Md3LightTextSecondary)
                     }
                 }
             } else if (isImage && file?.downloadUrl != null) {
@@ -400,7 +394,7 @@ fun CodeEditorView(
                     // Line Number Gutter
                     Column(
                         modifier = Modifier
-                            .background(GitHubDarkSurface)
+                            .background(Md3LightCodeGutter)
                             .padding(horizontal = 10.dp, vertical = 12.dp),
                         horizontalAlignment = Alignment.End
                     ) {
@@ -411,7 +405,7 @@ fun CodeEditorView(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = fontSize.sp,
                                     lineHeight = (fontSize * 1.5).sp,
-                                    color = GitHubDarkTextMuted,
+                                    color = Md3LightTextTertiary,
                                     textAlign = TextAlign.End
                                 )
                             )
@@ -423,7 +417,7 @@ fun CodeEditorView(
                         modifier = Modifier
                             .width(1.dp)
                             .fillMaxHeight()
-                            .background(GitHubDarkBorder)
+                            .background(Md3LightCodeBorder)
                     )
 
                     // Code Input Area
@@ -440,9 +434,9 @@ fun CodeEditorView(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = fontSize.sp,
                                 lineHeight = (fontSize * 1.5).sp,
-                                color = GitHubDarkTextPrimary
+                                color = Md3LightTextPrimary
                             ),
-                            cursorBrush = SolidColor(GitHubBlue),
+                            cursorBrush = SolidColor(Md3LightPrimary),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("code_editor_text_field")
@@ -455,13 +449,13 @@ fun CodeEditorView(
         // Status Bar Footer
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = GitHubDarkSurface,
-            border = androidx.compose.foundation.BorderStroke(1.dp, GitHubDarkBorder)
+            color = Md3LightSurface,
+            border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -473,20 +467,20 @@ fun CodeEditorView(
                         text = "${lines.size} lines",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
-                        color = GitHubDarkTextSecondary,
+                        color = Md3LightTextSecondary,
                         fontSize = 11.sp
                     )
                     Text(
                         text = "$charCount chars",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
-                        color = GitHubDarkTextSecondary,
+                        color = Md3LightTextSecondary,
                         fontSize = 11.sp
                     )
                     Text(
                         text = FileIcons.formatFileSize(file?.size ?: charCount.toLong()),
                         style = MaterialTheme.typography.labelSmall,
-                        color = GitHubDarkTextMuted,
+                        color = Md3LightTextSecondary,
                         fontSize = 11.sp
                     )
                 }
@@ -499,15 +493,16 @@ fun CodeEditorView(
                         text = "UTF-8",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
-                        color = GitHubDarkTextMuted,
+                        color = Md3LightTextTertiary,
                         fontSize = 10.sp
                     )
                     Text(
                         text = "branch: $selectedBranch",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
-                        color = GitHubBlue,
-                        fontSize = 10.sp
+                        color = Md3LightPrimary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -523,9 +518,10 @@ private fun MarkdownPreviewPane(content: String) {
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .background(Color.White)
             .verticalScroll(scrollState)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp)
+            .padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         for (line in lines) {
             when {
@@ -534,47 +530,48 @@ private fun MarkdownPreviewPane(content: String) {
                         text = line.removePrefix("# "),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
-                        color = GitHubDarkTextPrimary,
-                        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+                        color = Md3LightTextPrimary,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                     )
-                    HorizontalDivider(color = GitHubDarkBorder)
+                    HorizontalDivider(color = Md3LightOutlineVariant)
                 }
                 line.startsWith("## ") -> {
                     Text(
                         text = line.removePrefix("## "),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
-                        color = GitHubDarkTextPrimary,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                        color = Md3LightTextPrimary,
+                        modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
                     )
-                    HorizontalDivider(color = GitHubDarkBorder)
+                    HorizontalDivider(color = Md3LightOutlineVariant)
                 }
                 line.startsWith("### ") -> {
                     Text(
                         text = line.removePrefix("### "),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
-                        color = GitHubDarkTextPrimary,
-                        modifier = Modifier.padding(top = 6.dp)
+                        color = Md3LightTextPrimary,
+                        modifier = Modifier.padding(top = 8.dp)
                     )
                 }
                 line.startsWith("- ") || line.startsWith("* ") -> {
                     Row(modifier = Modifier.padding(start = 8.dp)) {
-                        Text("• ", color = GitHubBlue, fontWeight = FontWeight.Bold)
-                        Text(line.substring(2), style = MaterialTheme.typography.bodyMedium, color = GitHubDarkTextPrimary)
+                        Text("• ", color = Md3LightPrimary, fontWeight = FontWeight.Bold)
+                        Text(line.substring(2), style = MaterialTheme.typography.bodyMedium, color = Md3LightTextPrimary)
                     }
                 }
                 line.startsWith("```") -> {
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp)),
-                        color = GitHubDarkSurfaceVariant
+                            .clip(RoundedCornerShape(8.dp)),
+                        color = Md3LightSurfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
                     ) {
                         Text(
                             text = line,
-                            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = GitHubGreenBright),
-                            modifier = Modifier.padding(8.dp)
+                            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = GitHubGreen),
+                            modifier = Modifier.padding(10.dp)
                         )
                     }
                 }
@@ -585,7 +582,7 @@ private fun MarkdownPreviewPane(content: String) {
                     Text(
                         text = line,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = GitHubDarkTextPrimary
+                        color = Md3LightTextPrimary
                     )
                 }
             }

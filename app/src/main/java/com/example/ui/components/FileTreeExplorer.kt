@@ -26,9 +26,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CheckBox
-import androidx.compose.material.icons.filled.CheckBoxOutlineBlank
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -79,15 +76,19 @@ import com.example.data.model.GitHubRepository
 import com.example.data.model.GitTreeItem
 import com.example.data.repository.GitHubRepository as RepoRepo
 import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubDarkBorder
-import com.example.ui.theme.GitHubDarkCodeBg
-import com.example.ui.theme.GitHubDarkSurface
-import com.example.ui.theme.GitHubDarkSurfaceVariant
-import com.example.ui.theme.GitHubDarkTextMuted
-import com.example.ui.theme.GitHubDarkTextSecondary
-import com.example.ui.theme.GitHubGreenBright
-import com.example.ui.theme.GitHubRed
+import com.example.ui.theme.GitHubGreen
 import com.example.ui.theme.GitHubYellow
+import com.example.ui.theme.Md3LightBackground
+import com.example.ui.theme.Md3LightError
+import com.example.ui.theme.Md3LightOutline
+import com.example.ui.theme.Md3LightOutlineVariant
+import com.example.ui.theme.Md3LightPrimary
+import com.example.ui.theme.Md3LightPrimaryContainer
+import com.example.ui.theme.Md3LightSurface
+import com.example.ui.theme.Md3LightSurfaceVariant
+import com.example.ui.theme.Md3LightTextPrimary
+import com.example.ui.theme.Md3LightTextSecondary
+import com.example.ui.theme.Md3LightTextTertiary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,6 +106,7 @@ fun FileTreeExplorer(
     onBranchClick: () -> Unit,
     onNavigateToDir: (String) -> Unit,
     onNavigateUp: () -> Unit,
+    onNavigateToReposList: () -> Unit,
     onOpenFile: (GitTreeItem) -> Unit,
     onSearchChange: (String) -> Unit,
     onRefresh: () -> Unit,
@@ -115,7 +117,7 @@ fun FileTreeExplorer(
     onClearSelection: () -> Unit,
     onOpenBatchDeleteModal: () -> Unit,
     onDeleteSingleFile: (path: String, sha: String) -> Unit,
-    onToggleSidebar: () -> Unit,
+    onToggleLeftDrawer: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -123,26 +125,27 @@ fun FileTreeExplorer(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
+            .background(Md3LightBackground)
     ) {
         // Main Top Bar
         TopAppBar(
             title = {
                 Column {
                     Text(
-                        text = repo?.name ?: "Select a Repository",
+                        text = repo?.name ?: "File Explorer",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        color = Md3LightTextPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     if (repo != null) {
                         Surface(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
-                            color = GitHubDarkSurfaceVariant
+                            color = Md3LightPrimaryContainer
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -152,13 +155,14 @@ fun FileTreeExplorer(
                                     text = selectedBranch,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace,
-                                    color = GitHubBlue,
-                                    fontSize = 11.sp
+                                    color = Md3LightPrimary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
                                 )
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Branch",
-                                    tint = GitHubBlue,
+                                    tint = Md3LightPrimary,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
@@ -166,7 +170,31 @@ fun FileTreeExplorer(
                     }
                 }
             },
+            navigationIcon = {
+                IconButton(
+                    onClick = onToggleLeftDrawer,
+                    modifier = Modifier.testTag("explorer_open_left_drawer_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "Open Left Repositories Sidebar",
+                        tint = Md3LightPrimary
+                    )
+                }
+            },
             actions = {
+                // Back to Repos List button
+                IconButton(
+                    onClick = onNavigateToReposList,
+                    modifier = Modifier.testTag("back_to_repos_list_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "All Repos",
+                        tint = Md3LightTextSecondary
+                    )
+                }
+
                 // Search toggle
                 IconButton(
                     onClick = {
@@ -178,7 +206,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
                         contentDescription = "Search Files",
-                        tint = if (isSearchExpanded || searchQuery.isNotEmpty()) GitHubBlue else MaterialTheme.colorScheme.onSurface
+                        tint = if (isSearchExpanded || searchQuery.isNotEmpty()) Md3LightPrimary else Md3LightTextSecondary
                     )
                 }
 
@@ -190,11 +218,11 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Checklist,
                         contentDescription = "Batch Actions",
-                        tint = if (isBatchMode) GitHubGreenBright else MaterialTheme.colorScheme.onSurface
+                        tint = if (isBatchMode) GitHubGreen else Md3LightTextSecondary
                     )
                 }
 
-                // New file / folder upload
+                // New file / upload
                 IconButton(
                     onClick = onOpenNewFileDialog,
                     modifier = Modifier.testTag("new_file_btn")
@@ -202,7 +230,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "New File / Upload",
-                        tint = GitHubGreenBright
+                        tint = GitHubGreen
                     )
                 }
 
@@ -214,25 +242,13 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Refresh,
                         contentDescription = "Refresh",
-                        tint = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-
-                // Right Sidebar Toggle (Repo Drawer)
-                IconButton(
-                    onClick = onToggleSidebar,
-                    modifier = Modifier.testTag("toggle_repo_sidebar_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Menu,
-                        contentDescription = "Open Repositories Sidebar",
-                        tint = GitHubBlue
+                        tint = Md3LightTextSecondary
                     )
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.surface,
-                titleContentColor = MaterialTheme.colorScheme.onSurface
+                containerColor = Md3LightSurface,
+                titleContentColor = Md3LightTextPrimary
             )
         )
 
@@ -251,16 +267,16 @@ fun FileTreeExplorer(
                     .testTag("instant_file_search_input"),
                 placeholder = {
                     Text(
-                        "Search all files in repository (e.g. MainActivity, .kt, package.json)...",
+                        "Search all files in repository (e.g. MainActivity, .kt)...",
                         style = MaterialTheme.typography.bodySmall,
-                        color = GitHubDarkTextMuted
+                        color = Md3LightTextTertiary
                     )
                 },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
-                        tint = GitHubBlue,
+                        tint = Md3LightPrimary,
                         modifier = Modifier.size(18.dp)
                     )
                 },
@@ -270,24 +286,24 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Clear",
-                                tint = GitHubDarkTextSecondary,
+                                tint = Md3LightTextSecondary,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                     }
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = GitHubBlue,
-                    unfocusedBorderColor = GitHubDarkBorder,
-                    focusedContainerColor = GitHubDarkSurfaceVariant,
-                    unfocusedContainerColor = GitHubDarkSurfaceVariant
+                    focusedBorderColor = Md3LightPrimary,
+                    unfocusedBorderColor = Md3LightOutline,
+                    focusedContainerColor = Md3LightSurface,
+                    unfocusedContainerColor = Md3LightSurface
                 )
             )
         }
 
-        // Breadcrumbs Bar (only when not searching globally)
+        // Breadcrumbs Bar
         if (searchQuery.isBlank() && repo != null) {
             BreadcrumbBar(
                 repoName = repo.name,
@@ -316,20 +332,17 @@ fun FileTreeExplorer(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(
-                            color = GitHubBlue,
+                            color = Md3LightPrimary,
                             modifier = Modifier.size(36.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
-                            text = "Loading repository tree...",
+                            text = "Loading repository file tree...",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = GitHubDarkTextSecondary
+                            color = Md3LightTextSecondary
                         )
                     }
                 }
-            } else if (repo == null) {
-                // Empty Welcome State
-                EmptyRepoWelcomeState(onToggleSidebar = onToggleSidebar)
             } else if (searchQuery.isNotBlank()) {
                 // Search Results across entire tree
                 SearchResultsList(
@@ -355,24 +368,24 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = Icons.Default.FolderOpen,
                                 contentDescription = "Empty Directory",
-                                tint = GitHubDarkTextMuted,
+                                tint = Md3LightTextTertiary,
                                 modifier = Modifier.size(48.dp)
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = if (rawTreeItems.isEmpty()) "This repository is empty" else "Directory is empty",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = GitHubDarkTextSecondary
+                                color = Md3LightTextSecondary
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(
                                 onClick = onOpenNewFileDialog,
-                                colors = ButtonDefaults.buttonColors(containerColor = GitHubGreenBright),
-                                shape = RoundedCornerShape(6.dp)
+                                colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Create File Here")
+                                Text("Create File Here", fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -431,8 +444,8 @@ private fun BreadcrumbBar(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        tonalElevation = 1.dp
+        color = Md3LightSurfaceVariant,
+        shadowElevation = 1.dp
     ) {
         Row(
             modifier = Modifier
@@ -444,9 +457,9 @@ private fun BreadcrumbBar(
             // Root repo chip
             Row(
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
+                    .clip(RoundedCornerShape(6.dp))
                     .clickable { onNavigateToDir("") }
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                    .padding(horizontal = 6.dp, vertical = 3.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -460,7 +473,7 @@ private fun BreadcrumbBar(
                     text = repoName,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (segments.isEmpty()) GitHubBlue else MaterialTheme.colorScheme.onSurface
+                    color = if (segments.isEmpty()) Md3LightPrimary else Md3LightTextPrimary
                 )
             }
 
@@ -474,7 +487,7 @@ private fun BreadcrumbBar(
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = "/",
-                    tint = GitHubDarkTextMuted,
+                    tint = Md3LightTextTertiary,
                     modifier = Modifier.size(14.dp)
                 )
 
@@ -482,11 +495,11 @@ private fun BreadcrumbBar(
                     text = segment,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (isLast) FontWeight.Bold else FontWeight.Normal,
-                    color = if (isLast) GitHubBlue else MaterialTheme.colorScheme.onSurface,
+                    color = if (isLast) Md3LightPrimary else Md3LightTextPrimary,
                     modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
+                        .clip(RoundedCornerShape(6.dp))
                         .clickable { onNavigateToDir(thisPath) }
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .padding(horizontal = 6.dp, vertical = 3.dp)
                 )
             }
         }
@@ -502,13 +515,14 @@ private fun BatchActionBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = GitHubDarkSurfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubDarkBorder)
+        color = Md3LightSurface,
+        shadowElevation = 2.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
+                .padding(horizontal = 14.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
@@ -517,7 +531,7 @@ private fun BatchActionBar(
                     text = "$selectedCount selected",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = GitHubBlue
+                    color = Md3LightPrimary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 TextButton(onClick = onSelectAll) {
@@ -532,16 +546,16 @@ private fun BatchActionBar(
                 onClick = onDeleteSelected,
                 enabled = selectedCount > 0,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = GitHubRed,
-                    disabledContainerColor = GitHubDarkBorder
+                    containerColor = Md3LightError,
+                    disabledContainerColor = Md3LightOutlineVariant
                 ),
-                shape = RoundedCornerShape(6.dp),
+                shape = RoundedCornerShape(8.dp),
                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                 modifier = Modifier.testTag("batch_delete_action_btn")
             ) {
                 Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(4.dp))
-                Text("Delete ($selectedCount)", style = MaterialTheme.typography.labelSmall)
+                Text("Delete ($selectedCount)", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -565,23 +579,20 @@ private fun ExplorerItemRow(
             .fillMaxWidth()
             .clickable(onClick = onClick)
             .testTag("file_row_${node.name}"),
-        color = if (isSelected) GitHubBlue.copy(alpha = 0.12f) else Color.Transparent
+        color = if (isSelected) Md3LightPrimaryContainer else Md3LightSurface
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Batch Mode Checkbox
+            // Batch Checkbox
             if (isBatchMode && !node.isDirectory) {
                 Checkbox(
                     checked = isSelected,
                     onCheckedChange = { onToggleSelect() },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = GitHubBlue,
-                        uncheckedColor = GitHubDarkBorder
-                    ),
+                    colors = CheckboxDefaults.colors(checkedColor = Md3LightPrimary),
                     modifier = Modifier.size(24.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -603,7 +614,7 @@ private fun ExplorerItemRow(
                     text = node.name,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (node.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = Md3LightTextPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -616,20 +627,20 @@ private fun ExplorerItemRow(
                         Text(
                             text = "${node.children.size} items",
                             style = MaterialTheme.typography.labelSmall,
-                            color = GitHubDarkTextMuted
+                            color = Md3LightTextSecondary
                         )
                     } else {
                         Text(
                             text = FileIcons.formatFileSize(node.size),
                             style = MaterialTheme.typography.labelSmall,
-                            color = GitHubDarkTextMuted
+                            color = Md3LightTextSecondary
                         )
                         if (node.sha.isNotBlank()) {
                             Text(
                                 text = "• ${node.sha.take(7)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = FontFamily.Monospace,
-                                color = GitHubDarkTextMuted,
+                                color = Md3LightTextTertiary,
                                 fontSize = 10.sp
                             )
                         }
@@ -642,7 +653,7 @@ private fun ExplorerItemRow(
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = "Open Directory",
-                    tint = GitHubDarkTextMuted,
+                    tint = Md3LightTextTertiary,
                     modifier = Modifier.size(18.dp)
                 )
             } else {
@@ -654,7 +665,7 @@ private fun ExplorerItemRow(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "Options",
-                            tint = GitHubDarkTextSecondary,
+                            tint = Md3LightTextSecondary,
                             modifier = Modifier.size(16.dp)
                         )
                     }
@@ -662,19 +673,19 @@ private fun ExplorerItemRow(
                     DropdownMenu(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false },
-                        modifier = Modifier.background(GitHubDarkSurface)
+                        modifier = Modifier.background(Md3LightSurface)
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Open / Edit", color = MaterialTheme.colorScheme.onSurface) },
+                            text = { Text("Open / Edit", color = Md3LightTextPrimary) },
                             onClick = {
                                 showMenu = false
                                 onClick()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Delete File", color = GitHubRed) },
+                            text = { Text("Delete File", color = Md3LightError) },
                             leadingIcon = {
-                                Icon(Icons.Default.Delete, contentDescription = null, tint = GitHubRed, modifier = Modifier.size(18.dp))
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(18.dp))
                             },
                             onClick = {
                                 showMenu = false
@@ -686,7 +697,7 @@ private fun ExplorerItemRow(
             }
         }
     }
-    HorizontalDivider(color = GitHubDarkBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+    HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.6f), thickness = 0.5.dp)
 }
 
 @Composable
@@ -702,12 +713,12 @@ private fun SearchResultsList(
     Column(modifier = Modifier.fillMaxSize()) {
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = GitHubDarkSurfaceVariant
+            color = Md3LightSurfaceVariant
         ) {
             Text(
                 text = "Found ${items.size} matching files in repository",
                 style = MaterialTheme.typography.labelSmall,
-                color = GitHubDarkTextSecondary,
+                color = Md3LightTextSecondary,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
             )
         }
@@ -722,7 +733,7 @@ private fun SearchResultsList(
                 Text(
                     text = "No files match \"$searchQuery\"",
                     style = MaterialTheme.typography.bodyMedium,
-                    color = GitHubDarkTextSecondary
+                    color = Md3LightTextSecondary
                 )
             }
         } else {
@@ -744,7 +755,7 @@ private fun SearchResultsList(
                                     onOpenFile(item)
                                 }
                             },
-                        color = if (isSelected) GitHubBlue.copy(alpha = 0.12f) else Color.Transparent
+                        color = if (isSelected) Md3LightPrimaryContainer else Md3LightSurface
                     ) {
                         Row(
                             modifier = Modifier
@@ -756,7 +767,7 @@ private fun SearchResultsList(
                                 Checkbox(
                                     checked = isSelected,
                                     onCheckedChange = { onToggleSelect(item.path) },
-                                    colors = CheckboxDefaults.colors(checkedColor = GitHubBlue),
+                                    colors = CheckboxDefaults.colors(checkedColor = Md3LightPrimary),
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
@@ -776,12 +787,12 @@ private fun SearchResultsList(
                                     text = item.fileName,
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = Md3LightTextPrimary
                                 )
                                 Text(
                                     text = item.path,
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = GitHubDarkTextMuted,
+                                    color = Md3LightTextSecondary,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp,
                                     maxLines = 1,
@@ -792,61 +803,12 @@ private fun SearchResultsList(
                             Text(
                                 text = FileIcons.formatFileSize(item.size),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = GitHubDarkTextMuted
+                                color = Md3LightTextSecondary
                             )
                         }
                     }
-                    HorizontalDivider(color = GitHubDarkBorder.copy(alpha = 0.5f), thickness = 0.5.dp)
+                    HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.6f), thickness = 0.5.dp)
                 }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyRepoWelcomeState(
-    onToggleSidebar: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(32.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Icon(
-                imageVector = Icons.Default.Folder,
-                contentDescription = null,
-                tint = GitHubBlue,
-                modifier = Modifier.size(64.dp)
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Fast GitHub File Explorer",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = "Select a repository from the right sidebar to browse folders, edit files, upload directories, and commit changes instantly.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = GitHubDarkTextSecondary,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(20.dp))
-            Button(
-                onClick = onToggleSidebar,
-                colors = ButtonDefaults.buttonColors(containerColor = GitHubBlue),
-                shape = RoundedCornerShape(8.dp),
-                modifier = Modifier.testTag("welcome_open_sidebar_btn")
-            ) {
-                Icon(Icons.Default.Menu, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Open Repositories Sidebar")
             }
         }
     }

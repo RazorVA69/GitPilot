@@ -10,9 +10,10 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreenMint
+import com.example.ui.theme.GitHubGreen
 import com.example.ui.theme.GitHubOrange
 import com.example.ui.theme.GitHubPurple
+import com.example.ui.theme.GitHubTeal
 import com.example.ui.theme.GitHubYellow
 
 data class FileTypeMeta(
@@ -43,11 +44,11 @@ object FileIcons {
             "cpp", "c", "h", "hpp" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "C/C++")
             "html", "htm" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "HTML")
             "css", "scss", "sass", "less" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "CSS")
-            "json" -> FileTypeMeta(Icons.Default.Code, GitHubGreenMint, "JSON")
+            "json" -> FileTypeMeta(Icons.Default.Code, GitHubTeal, "JSON")
             "xml", "yaml", "yml", "toml" -> FileTypeMeta(Icons.Default.Settings, GitHubOrange, "Config")
             "md", "markdown", "txt", "rst" -> FileTypeMeta(Icons.Default.Description, GitHubBlue, "Doc")
-            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" -> FileTypeMeta(Icons.Default.Image, GitHubGreenMint, "Image")
-            "sh", "bash", "zsh", "bat", "cmd" -> FileTypeMeta(Icons.Default.Terminal, GitHubGreenMint, "Script")
+            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" -> FileTypeMeta(Icons.Default.Image, GitHubTeal, "Image")
+            "sh", "bash", "zsh", "bat", "cmd" -> FileTypeMeta(Icons.Default.Terminal, GitHubGreen, "Script")
             "gradle", "properties", "pro" -> FileTypeMeta(Icons.Default.Settings, GitHubBlue, "Build")
             else -> FileTypeMeta(Icons.Default.Description, Color.Gray, "File")
         }

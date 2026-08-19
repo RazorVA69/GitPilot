@@ -19,9 +19,16 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class AppScreen {
+    LOGIN,
+    REPO_LIST,
+    EXPLORER
+}
+
 enum class RepoFilterType { ALL, PUBLIC, PRIVATE, FORKS }
 
 data class GitExplorerUiState(
+    val currentScreen: AppScreen = AppScreen.LOGIN,
     val currentAccount: AccountEntity? = null,
     val accounts: List<AccountEntity> = emptyList(),
     val isAuthenticating: Boolean = false,
@@ -63,8 +70,7 @@ data class GitExplorerUiState(
     val batchProgress: Triple<Int, Int, String>? = null, // completed, total, currentFile
 
     // Dialogs & Sheets
-    val isSidebarOpen: Boolean = false,
-    val showLoginDialog: Boolean = false,
+    val isLeftDrawerOpen: Boolean = false,
     val showCommitDialog: Boolean = false,
     val showCreateUploadDialog: Boolean = false,
     val showBatchDeleteDialog: Boolean = false,
@@ -88,8 +94,15 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         // Observe local accounts
         viewModelScope.launch {
             repository.currentAccountFlow.collectLatest { account ->
-                _uiState.update { it.copy(currentAccount = account) }
-                loadRepositories()
+                _uiState.update { state ->
+                    state.copy(
+                        currentAccount = account,
+                        currentScreen = if (account != null) AppScreen.REPO_LIST else AppScreen.LOGIN
+                    )
+                }
+                if (account != null) {
+                    loadRepositories()
+                }
             }
         }
         viewModelScope.launch {
@@ -102,7 +115,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun loginWithToken(token: String) {
         val cleanToken = token.trim()
         if (cleanToken.isEmpty()) {
-            _uiState.update { it.copy(authError = "Please enter a valid Personal Access Token") }
+            _uiState.update { it.copy(authError = "Please enter a Personal Access Token") }
             return
         }
 
@@ -113,8 +126,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         isAuthenticating = false,
-                        showLoginDialog = false,
                         authError = null,
+                        currentScreen = AppScreen.REPO_LIST,
                         toastOrMessage = "Welcome, ${user.login}!"
                     )
                 }
@@ -123,7 +136,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 _uiState.update {
                     it.copy(
                         isAuthenticating = false,
-                        authError = err.message ?: "Authentication failed. Check your token permissions."
+                        authError = err.message ?: "Authentication failed. Please verify your token has 'repo' scope."
                     )
                 }
             }
@@ -133,25 +146,28 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun explorePublicUser(username: String) {
         val cleanUser = username.trim().ifBlank { "octocat" }
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingRepos = true, showLoginDialog = false) }
-            val result = repository.getRepositories(token = null) // fetches public repos
+            _uiState.update {
+                it.copy(
+                    isLoadingRepos = true,
+                    currentScreen = AppScreen.REPO_LIST,
+                    authError = null
+                )
+            }
+            val result = repository.getRepositories(token = null)
             result.onSuccess { repos ->
                 _uiState.update {
                     it.copy(
                         isLoadingRepos = false,
                         repositories = repos,
                         filteredRepositories = repos,
-                        toastOrMessage = "Loaded public repositories for $cleanUser"
+                        toastOrMessage = "Viewing public repos for $cleanUser"
                     )
-                }
-                if (repos.isNotEmpty()) {
-                    selectRepository(repos.first())
                 }
             }.onFailure { err ->
                 _uiState.update {
                     it.copy(
                         isLoadingRepos = false,
-                        errorMessage = "Failed to load public repos: ${err.message}"
+                        errorMessage = "Could not load public repos: ${err.message}"
                     )
                 }
             }
@@ -161,7 +177,12 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun switchAccount(account: AccountEntity) {
         viewModelScope.launch {
             repository.switchAccount(account.id)
-            _uiState.update { it.copy(showLoginDialog = false) }
+            _uiState.update {
+                it.copy(
+                    currentScreen = AppScreen.REPO_LIST,
+                    isLeftDrawerOpen = false
+                )
+            }
         }
     }
 
@@ -177,6 +198,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update {
                 it.copy(
                     currentAccount = null,
+                    currentScreen = AppScreen.LOGIN,
                     repositories = emptyList(),
                     filteredRepositories = emptyList(),
                     selectedRepo = null,
@@ -184,9 +206,31 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     rootExplorerNode = null,
                     activeFile = null,
                     activeFileContent = "",
-                    toastOrMessage = "Logged out"
+                    isLeftDrawerOpen = false,
+                    toastOrMessage = "Signed out"
                 )
             }
+        }
+    }
+
+    fun navigateToRepoList() {
+        _uiState.update {
+            it.copy(
+                currentScreen = AppScreen.REPO_LIST,
+                activeFile = null,
+                activeFilePath = null,
+                activeFileContent = "",
+                isLeftDrawerOpen = false
+            )
+        }
+    }
+
+    fun navigateToLogin() {
+        _uiState.update {
+            it.copy(
+                currentScreen = AppScreen.LOGIN,
+                isLeftDrawerOpen = false
+            )
         }
     }
 
@@ -203,10 +247,6 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         repositories = repos,
                         filteredRepositories = filtered
                     )
-                }
-                // Auto-select first repo if none selected
-                if (_uiState.value.selectedRepo == null && repos.isNotEmpty()) {
-                    selectRepository(repos.first())
                 }
             }.onFailure { err ->
                 _uiState.update {
@@ -268,11 +308,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 selectedFilePaths = emptySet(),
                 isBatchMode = false,
                 fileSearchQuery = "",
-                isSidebarOpen = false
+                currentScreen = AppScreen.EXPLORER,
+                isLeftDrawerOpen = false
             )
         }
 
-        // Save to recent repos
         viewModelScope.launch {
             repository.saveRecentRepo(
                 SavedRepoEntity(
@@ -369,8 +409,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     private fun filterSearchFiles(rawItems: List<GitTreeItem>, query: String): List<GitTreeItem> {
         if (query.isBlank()) return emptyList()
         val clean = query.trim().lowercase()
-        return rawItems.filter { !it.isDirectory && it.path.lowercase().contains(clean) }
-            .take(50)
+        return rawItems.filter { !it.isDirectory && it.path.lowercase().contains(clean) }.take(50)
     }
 
     fun navigateToDirectory(path: String) {
@@ -384,7 +423,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun navigateUp() {
         val current = _uiState.value.currentDirectoryPath
-        if (current.isEmpty()) return
+        if (current.isEmpty()) {
+            navigateToRepoList()
+            return
+        }
         val parent = if (current.contains('/')) current.substringBeforeLast('/') else ""
         navigateToDirectory(parent)
     }
@@ -460,7 +502,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun commitActiveFile(commitMessage: String, targetBranch: String) {
         val repo = _uiState.value.selectedRepo ?: return
         val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(showLoginDialog = true, errorMessage = "Login with PAT required to commit") }
+            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "PAT Token login required to commit") }
             return
         }
         val filePath = _uiState.value.activeFilePath ?: return
@@ -488,7 +530,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         isFileDirty = false,
                         activeFileOriginalContent = currentContent,
                         activeFileSha = commitResult.content?.sha ?: originalSha,
-                        toastOrMessage = "Successfully committed: ${commitResult.commit?.sha?.take(7) ?: "OK"}"
+                        toastOrMessage = "Committed: ${commitResult.commit?.sha?.take(7) ?: "OK"}"
                     )
                 }
                 refreshTree()
@@ -512,7 +554,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     ) {
         val repo = _uiState.value.selectedRepo ?: return
         val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(showLoginDialog = true, errorMessage = "Login with PAT required to upload/create files") }
+            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "PAT Token login required to upload/create") }
             return
         }
         val cleanDir = targetDirectory.trim().trim('/')
@@ -533,7 +575,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 repo = repo.name,
                 path = fullPath,
                 content = content,
-                sha = null, // new file
+                sha = null,
                 branch = targetBranch,
                 message = commitMessage.ifBlank { "Create $fullPath" }
             )
@@ -546,7 +588,6 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     )
                 }
                 refreshTree()
-                // Navigate to directory of new file
                 if (cleanDir.isNotEmpty()) {
                     navigateToDirectory(cleanDir)
                 }
@@ -564,7 +605,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun deleteSingleFile(path: String, sha: String, commitMessage: String) {
         val repo = _uiState.value.selectedRepo ?: return
         val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(showLoginDialog = true, errorMessage = "Login with PAT required to delete files") }
+            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "PAT Token login required to delete") }
             return
         }
         val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
@@ -645,7 +686,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun deleteSelectedFiles(commitMessage: String) {
         val repo = _uiState.value.selectedRepo ?: return
         val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(showLoginDialog = true, errorMessage = "Login required for batch deletion") }
+            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "Login required for batch deletion") }
             return
         }
         val selectedPaths = _uiState.value.selectedFilePaths
@@ -705,8 +746,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     // Modal Visibility Toggles
-    fun setSidebarOpen(isOpen: Boolean) = _uiState.update { it.copy(isSidebarOpen = isOpen) }
-    fun setShowLoginDialog(show: Boolean) = _uiState.update { it.copy(showLoginDialog = show) }
+    fun setLeftDrawerOpen(isOpen: Boolean) = _uiState.update { it.copy(isLeftDrawerOpen = isOpen) }
     fun setShowCommitDialog(show: Boolean) = _uiState.update { it.copy(showCommitDialog = show) }
     fun setShowCreateUploadDialog(show: Boolean) = _uiState.update { it.copy(showCreateUploadDialog = show) }
     fun setShowBatchDeleteDialog(show: Boolean) = _uiState.update { it.copy(showBatchDeleteDialog = show) }

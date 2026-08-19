@@ -13,10 +13,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -24,7 +21,6 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,9 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.BatchActionsModal
 import com.example.ui.components.BranchSelectorSheet
@@ -42,9 +35,11 @@ import com.example.ui.components.CodeEditorView
 import com.example.ui.components.CommitDialog
 import com.example.ui.components.CreateOrUploadModal
 import com.example.ui.components.FileTreeExplorer
-import com.example.ui.components.LoginDialog
 import com.example.ui.components.RepoSidebarDrawer
+import com.example.ui.screens.LoginScreen
+import com.example.ui.screens.RepoListScreen
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.GitExplorerViewModel
 
 class MainActivity : ComponentActivity() {
@@ -66,7 +61,7 @@ fun GitExplorerApp(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Handle toast/error notifications
+    // Feedback Notifications
     LaunchedEffect(uiState.toastOrMessage) {
         uiState.toastOrMessage?.let { msg ->
             snackbarHostState.showSnackbar(
@@ -87,12 +82,17 @@ fun GitExplorerApp(
         }
     }
 
-    // Back handling: close active file first, then close directory up, then close sidebar
-    BackHandler(enabled = uiState.isSidebarOpen || uiState.activeFile != null || uiState.currentDirectoryPath.isNotEmpty()) {
+    // Predictive Back Handling
+    BackHandler(
+        enabled = uiState.isLeftDrawerOpen ||
+                uiState.activeFile != null ||
+                (uiState.currentScreen == AppScreen.EXPLORER)
+    ) {
         when {
-            uiState.isSidebarOpen -> viewModel.setSidebarOpen(false)
+            uiState.isLeftDrawerOpen -> viewModel.setLeftDrawerOpen(false)
             uiState.activeFile != null -> viewModel.closeFile()
             uiState.currentDirectoryPath.isNotEmpty() -> viewModel.navigateUp()
+            uiState.currentScreen == AppScreen.EXPLORER -> viewModel.navigateToRepoList()
         }
     }
 
@@ -106,73 +106,106 @@ fun GitExplorerApp(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Main Content: either Code Editor or File Explorer
-            if (uiState.activeFile != null || uiState.activeFilePath != null) {
-                CodeEditorView(
-                    file = uiState.activeFile,
-                    filePath = uiState.activeFilePath ?: "",
-                    content = uiState.activeFileContent,
-                    originalContent = uiState.activeFileOriginalContent,
-                    isLoading = uiState.isLoadingFile,
-                    isDirty = uiState.isFileDirty,
-                    isMarkdownPreviewMode = uiState.isMarkdownPreviewMode,
-                    selectedBranch = uiState.selectedBranch,
-                    onContentChange = viewModel::updateEditorContent,
-                    onToggleMarkdownPreview = viewModel::toggleMarkdownPreview,
-                    onOpenCommitDialog = { viewModel.setShowCommitDialog(true) },
-                    onClose = viewModel::closeFile
-                )
-            } else {
-                FileTreeExplorer(
-                    repo = uiState.selectedRepo,
-                    selectedBranch = uiState.selectedBranch,
-                    currentPath = uiState.currentDirectoryPath,
-                    rootNode = uiState.rootExplorerNode,
-                    rawTreeItems = uiState.rawTreeItems,
-                    isLoadingTree = uiState.isLoadingTree,
-                    searchQuery = uiState.fileSearchQuery,
-                    matchingSearchFiles = uiState.matchingSearchFiles,
-                    isBatchMode = uiState.isBatchMode,
-                    selectedFilePaths = uiState.selectedFilePaths,
-                    onBranchClick = { viewModel.setShowBranchSelector(true) },
-                    onNavigateToDir = viewModel::navigateToDirectory,
-                    onNavigateUp = viewModel::navigateUp,
-                    onOpenFile = viewModel::openFile,
-                    onSearchChange = viewModel::setFileSearchQuery,
-                    onRefresh = viewModel::refreshTree,
-                    onOpenNewFileDialog = { viewModel.setShowCreateUploadDialog(true) },
-                    onToggleBatchMode = viewModel::toggleBatchMode,
-                    onToggleSelectFile = viewModel::toggleSelectFile,
-                    onSelectAllInDir = viewModel::selectAllInCurrentDirectory,
-                    onClearSelection = viewModel::clearSelectedFiles,
-                    onOpenBatchDeleteModal = { viewModel.setShowBatchDeleteDialog(true) },
-                    onDeleteSingleFile = { path, sha ->
-                        viewModel.deleteSingleFile(path, sha, "Delete $path")
-                    },
-                    onToggleSidebar = { viewModel.setSidebarOpen(!uiState.isSidebarOpen) }
-                )
+            // Main Screen Routing
+            when (uiState.currentScreen) {
+                AppScreen.LOGIN -> {
+                    LoginScreen(
+                        savedAccounts = uiState.accounts,
+                        isAuthenticating = uiState.isAuthenticating,
+                        authError = uiState.authError,
+                        onLoginWithToken = viewModel::loginWithToken,
+                        onExplorePublic = viewModel::explorePublicUser,
+                        onSwitchAccount = viewModel::switchAccount,
+                        onRemoveAccount = viewModel::removeAccount
+                    )
+                }
+
+                AppScreen.REPO_LIST -> {
+                    RepoListScreen(
+                        account = uiState.currentAccount,
+                        repositories = uiState.filteredRepositories,
+                        isLoading = uiState.isLoadingRepos,
+                        searchQuery = uiState.repoSearchQuery,
+                        filterType = uiState.repoFilterType,
+                        onSearchChange = viewModel::setRepoSearchQuery,
+                        onFilterChange = viewModel::setRepoFilterType,
+                        onSelectRepo = viewModel::selectRepository,
+                        onRefresh = viewModel::loadRepositories,
+                        onOpenLeftDrawer = { viewModel.setLeftDrawerOpen(true) },
+                        onLogout = viewModel::logout
+                    )
+                }
+
+                AppScreen.EXPLORER -> {
+                    if (uiState.activeFile != null || uiState.activeFilePath != null) {
+                        CodeEditorView(
+                            file = uiState.activeFile,
+                            filePath = uiState.activeFilePath ?: "",
+                            content = uiState.activeFileContent,
+                            originalContent = uiState.activeFileOriginalContent,
+                            isLoading = uiState.isLoadingFile,
+                            isDirty = uiState.isFileDirty,
+                            isMarkdownPreviewMode = uiState.isMarkdownPreviewMode,
+                            selectedBranch = uiState.selectedBranch,
+                            onContentChange = viewModel::updateEditorContent,
+                            onToggleMarkdownPreview = viewModel::toggleMarkdownPreview,
+                            onOpenCommitDialog = { viewModel.setShowCommitDialog(true) },
+                            onClose = viewModel::closeFile
+                        )
+                    } else {
+                        FileTreeExplorer(
+                            repo = uiState.selectedRepo,
+                            selectedBranch = uiState.selectedBranch,
+                            currentPath = uiState.currentDirectoryPath,
+                            rootNode = uiState.rootExplorerNode,
+                            rawTreeItems = uiState.rawTreeItems,
+                            isLoadingTree = uiState.isLoadingTree,
+                            searchQuery = uiState.fileSearchQuery,
+                            matchingSearchFiles = uiState.matchingSearchFiles,
+                            isBatchMode = uiState.isBatchMode,
+                            selectedFilePaths = uiState.selectedFilePaths,
+                            onBranchClick = { viewModel.setShowBranchSelector(true) },
+                            onNavigateToDir = viewModel::navigateToDirectory,
+                            onNavigateUp = viewModel::navigateUp,
+                            onNavigateToReposList = viewModel::navigateToRepoList,
+                            onOpenFile = viewModel::openFile,
+                            onSearchChange = viewModel::setFileSearchQuery,
+                            onRefresh = viewModel::refreshTree,
+                            onOpenNewFileDialog = { viewModel.setShowCreateUploadDialog(true) },
+                            onToggleBatchMode = viewModel::toggleBatchMode,
+                            onToggleSelectFile = viewModel::toggleSelectFile,
+                            onSelectAllInDir = viewModel::selectAllInCurrentDirectory,
+                            onClearSelection = viewModel::clearSelectedFiles,
+                            onOpenBatchDeleteModal = { viewModel.setShowBatchDeleteDialog(true) },
+                            onDeleteSingleFile = { path, sha ->
+                                viewModel.deleteSingleFile(path, sha, "Delete $path")
+                            },
+                            onToggleLeftDrawer = { viewModel.setLeftDrawerOpen(!uiState.isLeftDrawerOpen) }
+                        )
+                    }
+                }
             }
 
-            // Right Sidebar Drawer Overlay
+            // Left Sidebar Drawer Scrim (Click to dismiss)
             AnimatedVisibility(
-                visible = uiState.isSidebarOpen,
+                visible = uiState.isLeftDrawerOpen,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .clickable { viewModel.setSidebarOpen(false) }
+                        .background(Color.Black.copy(alpha = 0.45f))
+                        .clickable { viewModel.setLeftDrawerOpen(false) }
                 )
             }
 
-            // Right Sidebar Drawer Sliding Pane
+            // Left Sidebar Drawer Panel (Positioned on the Left Side)
             AnimatedVisibility(
-                visible = uiState.isSidebarOpen,
-                enter = slideInHorizontally(initialOffsetX = { it }),
-                exit = slideOutHorizontally(targetOffsetX = { it }),
-                modifier = Modifier.align(Alignment.CenterEnd)
+                visible = uiState.isLeftDrawerOpen,
+                enter = slideInHorizontally(initialOffsetX = { -it }),
+                exit = slideOutHorizontally(targetOffsetX = { -it }),
+                modifier = Modifier.align(Alignment.CenterStart)
             ) {
                 RepoSidebarDrawer(
                     account = uiState.currentAccount,
@@ -184,30 +217,17 @@ fun GitExplorerApp(
                     onSearchChange = viewModel::setRepoSearchQuery,
                     onFilterChange = viewModel::setRepoFilterType,
                     onSelectRepo = viewModel::selectRepository,
+                    onNavigateToAllRepos = viewModel::navigateToRepoList,
                     onRefreshRepos = viewModel::loadRepositories,
-                    onOpenLogin = { viewModel.setShowLoginDialog(true) },
-                    onCloseSidebar = { viewModel.setSidebarOpen(false) }
+                    onOpenLogin = viewModel::navigateToLogin,
+                    onCloseSidebar = { viewModel.setLeftDrawerOpen(false) },
+                    onLogout = viewModel::logout
                 )
             }
         }
     }
 
-    // Modal Dialogs
-    if (uiState.showLoginDialog) {
-        LoginDialog(
-            currentAccount = uiState.currentAccount,
-            savedAccounts = uiState.accounts,
-            isAuthenticating = uiState.isAuthenticating,
-            authError = uiState.authError,
-            onDismiss = { viewModel.setShowLoginDialog(false) },
-            onLoginWithToken = viewModel::loginWithToken,
-            onExplorePublic = viewModel::explorePublicUser,
-            onSwitchAccount = viewModel::switchAccount,
-            onRemoveAccount = viewModel::removeAccount,
-            onLogoutAll = viewModel::logout
-        )
-    }
-
+    // Modal Sheets and Dialogs
     if (uiState.showBranchSelector) {
         BranchSelectorSheet(
             branches = uiState.branches,
