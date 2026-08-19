@@ -1,17 +1,22 @@
 package com.example.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.AccountEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.SavedRepoEntity
+import com.example.data.model.DeviceCodeResponse
 import com.example.data.model.ExplorerNode
 import com.example.data.model.FileContentResponse
 import com.example.data.model.GitHubBranch
 import com.example.data.model.GitHubRepository
 import com.example.data.model.GitTreeItem
 import com.example.data.repository.GitHubRepository as GitHubRepoRepository
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,6 +38,12 @@ data class GitExplorerUiState(
     val accounts: List<AccountEntity> = emptyList(),
     val isAuthenticating: Boolean = false,
     val authError: String? = null,
+
+    // GitHub OAuth Device Login Flow
+    val deviceCodeState: DeviceCodeResponse? = null,
+    val isStartingOAuth: Boolean = false,
+    val isPollingOAuth: Boolean = false,
+    val oauthError: String? = null,
 
     // Repositories
     val repositories: List<GitHubRepository> = emptyList(),
@@ -90,21 +101,26 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     private val _uiState = MutableStateFlow(GitExplorerUiState())
     val uiState: StateFlow<GitExplorerUiState> = _uiState.asStateFlow()
 
+    private var oauthPollingJob: Job? = null
+
     init {
-        // Observe local accounts
+        // Collect current account changes
         viewModelScope.launch {
             repository.currentAccountFlow.collectLatest { account ->
-                _uiState.update { state ->
-                    state.copy(
-                        currentAccount = account,
-                        currentScreen = if (account != null) AppScreen.REPO_LIST else AppScreen.LOGIN
-                    )
-                }
+                _uiState.update { it.copy(currentAccount = account) }
                 if (account != null) {
                     loadRepositories()
+                    _uiState.update {
+                        if (it.currentScreen == AppScreen.LOGIN) it.copy(currentScreen = AppScreen.REPO_LIST)
+                        else it
+                    }
+                } else {
+                    _uiState.update { it.copy(currentScreen = AppScreen.LOGIN) }
                 }
             }
         }
+
+        // Collect all saved accounts
         viewModelScope.launch {
             repository.allAccountsFlow.collectLatest { list ->
                 _uiState.update { it.copy(accounts = list) }
@@ -112,31 +128,131 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    // ==========================================
+    // AUTHENTICATION & LOGIN FLOWS
+    // ==========================================
+
+    fun startGitHubOAuthLogin(clientId: String = GitHubRepoRepository.DEFAULT_OAUTH_CLIENT_ID) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isStartingOAuth = true,
+                    oauthError = null,
+                    authError = null
+                )
+            }
+
+            val result = repository.requestDeviceCode(clientId.trim())
+            if (result.isSuccess) {
+                val deviceData = result.getOrNull()!!
+                _uiState.update {
+                    it.copy(
+                        isStartingOAuth = false,
+                        deviceCodeState = deviceData,
+                        isPollingOAuth = true
+                    )
+                }
+                startPollingDeviceToken(clientId, deviceData)
+            } else {
+                val err = result.exceptionOrNull()?.message ?: "Failed to start GitHub OAuth"
+                _uiState.update {
+                    it.copy(
+                        isStartingOAuth = false,
+                        oauthError = err,
+                        authError = err
+                    )
+                }
+            }
+        }
+    }
+
+    private fun startPollingDeviceToken(clientId: String, deviceData: DeviceCodeResponse) {
+        oauthPollingJob?.cancel()
+        oauthPollingJob = viewModelScope.launch {
+            val intervalMs = (deviceData.interval.coerceAtLeast(5)) * 1000L
+            val expireTime = System.currentTimeMillis() + (deviceData.expiresIn * 1000L)
+
+            while (System.currentTimeMillis() < expireTime) {
+                delay(intervalMs)
+
+                val result = repository.pollDeviceToken(clientId, deviceData.deviceCode)
+                if (result.isSuccess) {
+                    val tokenResp = result.getOrNull()
+                    if (tokenResp?.accessToken != null) {
+                        _uiState.update {
+                            it.copy(
+                                isPollingOAuth = false,
+                                deviceCodeState = null,
+                                toastOrMessage = "GitHub Authorization Successful!"
+                            )
+                        }
+                        loginWithToken(tokenResp.accessToken)
+                        return@launch
+                    } else if (tokenResp?.error == "authorization_pending") {
+                        // User hasn't finished authorizing on web yet; continue polling
+                        continue
+                    } else if (tokenResp?.error == "slow_down") {
+                        delay(5000L)
+                        continue
+                    } else if (tokenResp?.error != null) {
+                        _uiState.update {
+                            it.copy(
+                                isPollingOAuth = false,
+                                oauthError = tokenResp.errorDescription ?: tokenResp.error
+                            )
+                        }
+                        return@launch
+                    }
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    isPollingOAuth = false,
+                    oauthError = "Authorization session expired. Please tap Sign In again."
+                )
+            }
+        }
+    }
+
+    fun cancelGitHubOAuthLogin() {
+        oauthPollingJob?.cancel()
+        _uiState.update {
+            it.copy(
+                deviceCodeState = null,
+                isStartingOAuth = false,
+                isPollingOAuth = false,
+                oauthError = null
+            )
+        }
+    }
+
     fun loginWithToken(token: String) {
         val cleanToken = token.trim()
         if (cleanToken.isEmpty()) {
-            _uiState.update { it.copy(authError = "Please enter a Personal Access Token") }
+            _uiState.update { it.copy(authError = "Please enter a valid Personal Access Token (PAT).") }
             return
         }
 
         viewModelScope.launch {
             _uiState.update { it.copy(isAuthenticating = true, authError = null) }
             val result = repository.saveAccount(cleanToken)
-            result.onSuccess { user ->
+            if (result.isSuccess) {
+                val user = result.getOrNull()
                 _uiState.update {
                     it.copy(
                         isAuthenticating = false,
                         authError = null,
                         currentScreen = AppScreen.REPO_LIST,
-                        toastOrMessage = "Welcome, ${user.login}!"
+                        toastOrMessage = "Welcome, @${user?.login}!"
                     )
                 }
-                loadRepositories()
-            }.onFailure { err ->
+            } else {
+                val errorMsg = result.exceptionOrNull()?.message ?: "Failed to authenticate with GitHub."
                 _uiState.update {
                     it.copy(
                         isAuthenticating = false,
-                        authError = err.message ?: "Authentication failed. Please verify your token has 'repo' scope."
+                        authError = errorMsg
                     )
                 }
             }
@@ -144,51 +260,56 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun explorePublicUser(username: String) {
-        val cleanUser = username.trim().ifBlank { "octocat" }
+        val target = username.trim().ifEmpty { "octocat" }
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
-                    isLoadingRepos = true,
-                    currentScreen = AppScreen.REPO_LIST,
+                    isAuthenticating = true,
                     authError = null
                 )
             }
-            val result = repository.getRepositories(token = null)
-            result.onSuccess { repos ->
-                _uiState.update {
-                    it.copy(
-                        isLoadingRepos = false,
-                        repositories = repos,
-                        filteredRepositories = repos,
-                        toastOrMessage = "Viewing public repos for $cleanUser"
-                    )
+            try {
+                val res = repository.getRepositories(null)
+                if (res.isSuccess) {
+                    val repos = res.getOrNull() ?: emptyList()
+                    _uiState.update {
+                        it.copy(
+                            isAuthenticating = false,
+                            repositories = repos,
+                            filteredRepositories = repos,
+                            currentScreen = AppScreen.REPO_LIST,
+                            toastOrMessage = "Browsing public repositories"
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isAuthenticating = false,
+                            authError = res.exceptionOrNull()?.message ?: "Failed to load public repositories."
+                        )
+                    }
                 }
-            }.onFailure { err ->
+            } catch (e: Exception) {
                 _uiState.update {
                     it.copy(
-                        isLoadingRepos = false,
-                        errorMessage = "Could not load public repos: ${err.message}"
+                        isAuthenticating = false,
+                        authError = e.message ?: "Failed to explore user."
                     )
                 }
             }
         }
     }
 
-    fun switchAccount(account: AccountEntity) {
+    fun switchAccount(id: Long) {
         viewModelScope.launch {
-            repository.switchAccount(account.id)
-            _uiState.update {
-                it.copy(
-                    currentScreen = AppScreen.REPO_LIST,
-                    isLeftDrawerOpen = false
-                )
-            }
+            repository.switchAccount(id)
+            _uiState.update { it.copy(isLeftDrawerOpen = false) }
         }
     }
 
-    fun removeAccount(account: AccountEntity) {
+    fun removeAccount(id: Long) {
         viewModelScope.launch {
-            repository.removeAccount(account.id)
+            repository.removeAccount(id)
         }
     }
 
@@ -197,33 +318,21 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             repository.logout()
             _uiState.update {
                 it.copy(
-                    currentAccount = null,
                     currentScreen = AppScreen.LOGIN,
+                    currentAccount = null,
                     repositories = emptyList(),
                     filteredRepositories = emptyList(),
                     selectedRepo = null,
-                    rawTreeItems = emptyList(),
-                    rootExplorerNode = null,
-                    activeFile = null,
-                    activeFileContent = "",
                     isLeftDrawerOpen = false,
-                    toastOrMessage = "Signed out"
+                    toastOrMessage = "Logged out"
                 )
             }
         }
     }
 
-    fun navigateToRepoList() {
-        _uiState.update {
-            it.copy(
-                currentScreen = AppScreen.REPO_LIST,
-                activeFile = null,
-                activeFilePath = null,
-                activeFileContent = "",
-                isLeftDrawerOpen = false
-            )
-        }
-    }
+    // ==========================================
+    // NAVIGATION
+    // ==========================================
 
     fun navigateToLogin() {
         _uiState.update {
@@ -234,25 +343,44 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun navigateToRepoList() {
+        _uiState.update {
+            it.copy(
+                currentScreen = AppScreen.REPO_LIST,
+                isLeftDrawerOpen = false,
+                activeFile = null,
+                activeFilePath = null
+            )
+        }
+    }
+
+    fun setLeftDrawerOpen(isOpen: Boolean) {
+        _uiState.update { it.copy(isLeftDrawerOpen = isOpen) }
+    }
+
+    // ==========================================
+    // REPOSITORIES
+    // ==========================================
+
     fun loadRepositories() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingRepos = true) }
             val token = _uiState.value.currentAccount?.token
             val result = repository.getRepositories(token)
-            result.onSuccess { repos ->
+            if (result.isSuccess) {
+                val repos = result.getOrNull() ?: emptyList()
                 _uiState.update { state ->
-                    val filtered = filterRepos(repos, state.repoSearchQuery, state.repoFilterType)
                     state.copy(
-                        isLoadingRepos = false,
                         repositories = repos,
-                        filteredRepositories = filtered
+                        isLoadingRepos = false,
+                        filteredRepositories = filterRepos(repos, state.repoSearchQuery, state.repoFilterType)
                     )
                 }
-            }.onFailure { err ->
+            } else {
                 _uiState.update {
                     it.copy(
                         isLoadingRepos = false,
-                        errorMessage = "Could not fetch repositories: ${err.message}"
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to load repositories"
                     )
                 }
             }
@@ -261,155 +389,127 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setRepoSearchQuery(query: String) {
         _uiState.update { state ->
-            val filtered = filterRepos(state.repositories, query, state.repoFilterType)
-            state.copy(repoSearchQuery = query, filteredRepositories = filtered)
+            state.copy(
+                repoSearchQuery = query,
+                filteredRepositories = filterRepos(state.repositories, query, state.repoFilterType)
+            )
         }
     }
 
     fun setRepoFilterType(filterType: RepoFilterType) {
         _uiState.update { state ->
-            val filtered = filterRepos(state.repositories, state.repoSearchQuery, filterType)
-            state.copy(repoFilterType = filterType, filteredRepositories = filtered)
+            state.copy(
+                repoFilterType = filterType,
+                filteredRepositories = filterRepos(state.repositories, state.repoSearchQuery, filterType)
+            )
         }
     }
 
     private fun filterRepos(
-        all: List<GitHubRepository>,
+        repos: List<GitHubRepository>,
         query: String,
-        filterType: RepoFilterType
+        filter: RepoFilterType
     ): List<GitHubRepository> {
-        return all.filter { repo ->
-            val matchesQuery = query.isBlank() ||
-                    repo.name.contains(query, ignoreCase = true) ||
-                    (repo.description?.contains(query, ignoreCase = true) == true) ||
-                    (repo.language?.contains(query, ignoreCase = true) == true)
-
-            val matchesType = when (filterType) {
+        return repos.filter { repo ->
+            val matchesFilter = when (filter) {
                 RepoFilterType.ALL -> true
                 RepoFilterType.PUBLIC -> !repo.private
                 RepoFilterType.PRIVATE -> repo.private
                 RepoFilterType.FORKS -> repo.fork
             }
-            matchesQuery && matchesType
+            val matchesQuery = query.isBlank() ||
+                    repo.name.contains(query, ignoreCase = true) ||
+                    (repo.description?.contains(query, ignoreCase = true) == true) ||
+                    (repo.language?.contains(query, ignoreCase = true) == true)
+
+            matchesFilter && matchesQuery
         }
     }
 
     fun selectRepository(repo: GitHubRepository) {
-        _uiState.update {
-            it.copy(
-                selectedRepo = repo,
-                selectedBranch = repo.defaultBranch,
-                currentDirectoryPath = "",
-                rawTreeItems = emptyList(),
-                rootExplorerNode = null,
-                activeFile = null,
-                activeFilePath = null,
-                activeFileContent = "",
-                selectedFilePaths = emptySet(),
-                isBatchMode = false,
-                fileSearchQuery = "",
-                currentScreen = AppScreen.EXPLORER,
-                isLeftDrawerOpen = false
-            )
-        }
-
         viewModelScope.launch {
-            repository.saveRecentRepo(
-                SavedRepoEntity(
-                    fullName = repo.fullName,
-                    owner = repo.owner?.login ?: repo.fullName.substringBefore('/'),
-                    name = repo.name,
-                    defaultBranch = repo.defaultBranch,
-                    isPrivate = repo.private
+            _uiState.update {
+                it.copy(
+                    selectedRepo = repo,
+                    selectedBranch = repo.defaultBranch,
+                    currentDirectoryPath = "",
+                    activeFile = null,
+                    activeFilePath = null,
+                    currentScreen = AppScreen.EXPLORER,
+                    isLeftDrawerOpen = false
                 )
-            )
+            }
+            repository.saveRecentRepo(repo)
+            loadBranches(repo.owner.login, repo.name)
+            loadTree(repo.owner.login, repo.name, repo.defaultBranch)
         }
-
-        loadBranches(repo)
-        loadGitTree(repo, repo.defaultBranch)
     }
 
-    private fun loadBranches(repo: GitHubRepository) {
-        val token = _uiState.value.currentAccount?.token
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
+    // ==========================================
+    // BRANCHES & TREE EXPLORER
+    // ==========================================
+
+    private fun loadBranches(owner: String, repo: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoadingBranches = true) }
-            val result = repository.getBranches(token, owner, repo.name)
-            result.onSuccess { branches ->
+            val token = _uiState.value.currentAccount?.token
+            val result = repository.getBranches(token, owner, repo)
+            if (result.isSuccess) {
                 _uiState.update {
                     it.copy(
-                        isLoadingBranches = false,
-                        branches = branches
+                        branches = result.getOrNull() ?: emptyList(),
+                        isLoadingBranches = false
                     )
                 }
-            }.onFailure {
+            } else {
                 _uiState.update { it.copy(isLoadingBranches = false) }
             }
         }
     }
 
-    fun selectBranch(branchName: String) {
+    fun selectBranch(branch: String) {
         val repo = _uiState.value.selectedRepo ?: return
         _uiState.update {
             it.copy(
-                selectedBranch = branchName,
-                showBranchSelector = false,
+                selectedBranch = branch,
                 currentDirectoryPath = "",
                 activeFile = null,
                 activeFilePath = null,
-                activeFileContent = "",
-                selectedFilePaths = emptySet()
+                showBranchSelector = false
             )
         }
-        loadGitTree(repo, branchName)
+        loadTree(repo.owner.login, repo.name, branch)
     }
 
-    fun refreshTree() {
-        val repo = _uiState.value.selectedRepo ?: return
-        loadGitTree(repo, _uiState.value.selectedBranch)
-    }
-
-    private fun loadGitTree(repo: GitHubRepository, branch: String) {
-        val token = _uiState.value.currentAccount?.token
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
+    fun loadTree(owner: String, repo: String, branch: String) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoadingTree = true, errorMessage = null) }
-            val result = repository.getGitTree(token, owner, repo.name, branch)
-            result.onSuccess { treeItems ->
-                val hierarchy = GitHubRepoRepository.buildHierarchyTree(treeItems)
+            _uiState.update { it.copy(isLoadingTree = true) }
+            val token = _uiState.value.currentAccount?.token
+            val result = repository.getFileTreeRecursive(token, owner, repo, branch)
+            if (result.isSuccess) {
+                val (rootNode, rawItems) = result.getOrNull()!!
                 _uiState.update {
                     it.copy(
                         isLoadingTree = false,
-                        rawTreeItems = treeItems,
-                        rootExplorerNode = hierarchy,
-                        matchingSearchFiles = filterSearchFiles(treeItems, it.fileSearchQuery)
+                        rootExplorerNode = rootNode,
+                        rawTreeItems = rawItems,
+                        matchingSearchFiles = filterTreeFiles(rawItems, it.fileSearchQuery)
                     )
                 }
-            }.onFailure { err ->
+            } else {
                 _uiState.update {
                     it.copy(
                         isLoadingTree = false,
-                        errorMessage = "Could not load tree: ${err.message}"
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to load repository tree"
                     )
                 }
             }
         }
     }
 
-    fun setFileSearchQuery(query: String) {
-        _uiState.update { state ->
-            val matching = filterSearchFiles(state.rawTreeItems, query)
-            state.copy(
-                fileSearchQuery = query,
-                matchingSearchFiles = matching
-            )
-        }
-    }
-
-    private fun filterSearchFiles(rawItems: List<GitTreeItem>, query: String): List<GitTreeItem> {
-        if (query.isBlank()) return emptyList()
-        val clean = query.trim().lowercase()
-        return rawItems.filter { !it.isDirectory && it.path.lowercase().contains(clean) }.take(50)
+    fun refreshTree() {
+        val repo = _uiState.value.selectedRepo ?: return
+        loadTree(repo.owner.login, repo.name, _uiState.value.selectedBranch)
     }
 
     fun navigateToDirectory(path: String) {
@@ -423,53 +523,89 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun navigateUp() {
         val current = _uiState.value.currentDirectoryPath
-        if (current.isEmpty()) {
-            navigateToRepoList()
-            return
-        }
+        if (current.isEmpty()) return
         val parent = if (current.contains('/')) current.substringBeforeLast('/') else ""
-        navigateToDirectory(parent)
+        _uiState.update { it.copy(currentDirectoryPath = parent) }
     }
+
+    fun setFileSearchQuery(query: String) {
+        _uiState.update { state ->
+            state.copy(
+                fileSearchQuery = query,
+                matchingSearchFiles = filterTreeFiles(state.rawTreeItems, query)
+            )
+        }
+    }
+
+    private fun filterTreeFiles(items: List<GitTreeItem>, query: String): List<GitTreeItem> {
+        if (query.isBlank()) return emptyList()
+        return items.filter {
+            !it.isDirectory && (it.path.contains(query, ignoreCase = true) || it.fileName.contains(query, ignoreCase = true))
+        }
+    }
+
+    // ==========================================
+    // FILE VIEWER & EDITOR
+    // ==========================================
 
     fun openFile(item: GitTreeItem) {
         val repo = _uiState.value.selectedRepo ?: return
-        val token = _uiState.value.currentAccount?.token
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
-        val branch = _uiState.value.selectedBranch
-
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isLoadingFile = true,
                     activeFilePath = item.path,
                     activeFileSha = item.sha,
-                    errorMessage = null,
-                    fileSearchQuery = ""
+                    activeFileContent = "",
+                    activeFileOriginalContent = "",
+                    isFileDirty = false,
+                    isMarkdownPreviewMode = false
                 )
             }
-            val result = repository.getFileContent(token, owner, repo.name, item.path, branch)
-            result.onSuccess { (decodedText, fileContent) ->
+
+            val token = _uiState.value.currentAccount?.token
+            val result = repository.getFileContent(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                path = item.path,
+                branch = _uiState.value.selectedBranch
+            )
+
+            if (result.isSuccess) {
+                val (fileResp, decodedContent) = result.getOrNull()!!
                 _uiState.update {
                     it.copy(
                         isLoadingFile = false,
-                        activeFile = fileContent,
-                        activeFilePath = fileContent.path,
-                        activeFileSha = fileContent.sha,
-                        activeFileContent = decodedText,
-                        activeFileOriginalContent = decodedText,
-                        isFileDirty = false,
-                        isMarkdownPreviewMode = fileContent.name.endsWith(".md", ignoreCase = true)
+                        activeFile = fileResp,
+                        activeFileSha = fileResp.sha,
+                        activeFileContent = decodedContent,
+                        activeFileOriginalContent = decodedContent,
+                        isFileDirty = false
                     )
                 }
-            }.onFailure { err ->
+            } else {
                 _uiState.update {
                     it.copy(
                         isLoadingFile = false,
-                        errorMessage = "Could not load file: ${err.message}"
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to open file"
                     )
                 }
             }
         }
+    }
+
+    fun updateEditorContent(newContent: String) {
+        _uiState.update {
+            it.copy(
+                activeFileContent = newContent,
+                isFileDirty = newContent != it.activeFileOriginalContent
+            )
+        }
+    }
+
+    fun toggleMarkdownPreview() {
+        _uiState.update { it.copy(isMarkdownPreviewMode = !it.isMarkdownPreviewMode) }
     }
 
     fun closeFile() {
@@ -480,65 +616,56 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 activeFileSha = null,
                 activeFileContent = "",
                 activeFileOriginalContent = "",
-                isFileDirty = false
+                isFileDirty = false,
+                isMarkdownPreviewMode = false
             )
         }
     }
 
-    fun updateEditorContent(newContent: String) {
-        _uiState.update { state ->
-            val isDirty = newContent != state.activeFileOriginalContent
-            state.copy(
-                activeFileContent = newContent,
-                isFileDirty = isDirty
-            )
-        }
-    }
+    // ==========================================
+    // COMMITS & FILE CREATION / UPLOAD
+    // ==========================================
 
-    fun toggleMarkdownPreview() {
-        _uiState.update { it.copy(isMarkdownPreviewMode = !it.isMarkdownPreviewMode) }
-    }
+    fun commitActiveFile(commitMessage: String, branch: String) {
+        val state = _uiState.value
+        val repo = state.selectedRepo ?: return
+        val path = state.activeFilePath ?: return
+        val token = state.currentAccount?.token
 
-    fun commitActiveFile(commitMessage: String, targetBranch: String) {
-        val repo = _uiState.value.selectedRepo ?: return
-        val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "PAT Token login required to commit") }
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "Please login with a PAT token to commit changes.") }
             return
         }
-        val filePath = _uiState.value.activeFilePath ?: return
-        val currentContent = _uiState.value.activeFileContent
-        val originalSha = _uiState.value.activeFileSha
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isCommitting = true, errorMessage = null) }
-            val result = repository.createOrUpdateFile(
+            _uiState.update { it.copy(isCommitting = true) }
+            val result = repository.commitFileChanges(
                 token = token,
-                owner = owner,
+                owner = repo.owner.login,
                 repo = repo.name,
-                path = filePath,
-                content = currentContent,
-                sha = originalSha,
-                branch = targetBranch,
-                message = commitMessage.ifBlank { "Update $filePath" }
+                path = path,
+                content = state.activeFileContent,
+                commitMessage = commitMessage,
+                branch = branch,
+                fileSha = state.activeFileSha
             )
-            result.onSuccess { commitResult ->
+
+            if (result.isSuccess) {
                 _uiState.update {
                     it.copy(
                         isCommitting = false,
                         showCommitDialog = false,
+                        activeFileOriginalContent = it.activeFileContent,
                         isFileDirty = false,
-                        activeFileOriginalContent = currentContent,
-                        activeFileSha = commitResult.content?.sha ?: originalSha,
-                        toastOrMessage = "Committed: ${commitResult.commit?.sha?.take(7) ?: "OK"}"
+                        toastOrMessage = "Changes committed successfully!"
                     )
                 }
                 refreshTree()
-            }.onFailure { err ->
+            } else {
                 _uiState.update {
                     it.copy(
                         isCommitting = false,
-                        errorMessage = "Commit failed: ${err.message}"
+                        errorMessage = result.exceptionOrNull()?.message ?: "Commit failed"
                     )
                 }
             }
@@ -546,103 +673,58 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun createOrUploadFile(
-        targetDirectory: String,
+        targetDir: String,
         fileName: String,
         content: String,
         commitMessage: String,
-        targetBranch: String
+        branch: String
     ) {
         val repo = _uiState.value.selectedRepo ?: return
-        val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "PAT Token login required to upload/create") }
-            return
-        }
-        val cleanDir = targetDirectory.trim().trim('/')
-        val cleanName = fileName.trim().trim('/')
-        if (cleanName.isEmpty()) {
-            _uiState.update { it.copy(errorMessage = "File name cannot be empty") }
+        val token = _uiState.value.currentAccount?.token
+
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "Please login with a PAT token to create or upload files.") }
             return
         }
 
-        val fullPath = if (cleanDir.isEmpty()) cleanName else "$cleanDir/$cleanName"
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
+        val fullPath = if (targetDir.isBlank()) fileName else "${targetDir.trim('/')}/$fileName"
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isCommitting = true, errorMessage = null) }
-            val result = repository.createOrUpdateFile(
+            _uiState.update { it.copy(isCommitting = true) }
+            val result = repository.commitFileChanges(
                 token = token,
-                owner = owner,
+                owner = repo.owner.login,
                 repo = repo.name,
                 path = fullPath,
                 content = content,
-                sha = null,
-                branch = targetBranch,
-                message = commitMessage.ifBlank { "Create $fullPath" }
+                commitMessage = commitMessage,
+                branch = branch,
+                fileSha = null
             )
-            result.onSuccess {
+
+            if (result.isSuccess) {
                 _uiState.update {
                     it.copy(
                         isCommitting = false,
                         showCreateUploadDialog = false,
-                        toastOrMessage = "Created $fullPath"
+                        toastOrMessage = "File created & committed: $fileName"
                     )
                 }
                 refreshTree()
-                if (cleanDir.isNotEmpty()) {
-                    navigateToDirectory(cleanDir)
-                }
-            }.onFailure { err ->
+            } else {
                 _uiState.update {
                     it.copy(
                         isCommitting = false,
-                        errorMessage = "Failed to create file: ${err.message}"
+                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to create file"
                     )
                 }
             }
         }
     }
 
-    fun deleteSingleFile(path: String, sha: String, commitMessage: String) {
-        val repo = _uiState.value.selectedRepo ?: return
-        val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "PAT Token login required to delete") }
-            return
-        }
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
-        val branch = _uiState.value.selectedBranch
-
-        viewModelScope.launch {
-            _uiState.update { it.copy(isCommitting = true, errorMessage = null) }
-            val result = repository.deleteFile(
-                token = token,
-                owner = owner,
-                repo = repo.name,
-                path = path,
-                sha = sha,
-                branch = branch,
-                message = commitMessage.ifBlank { "Delete $path" }
-            )
-            result.onSuccess {
-                _uiState.update {
-                    it.copy(
-                        isCommitting = false,
-                        toastOrMessage = "Deleted $path"
-                    )
-                }
-                if (_uiState.value.activeFilePath == path) {
-                    closeFile()
-                }
-                refreshTree()
-            }.onFailure { err ->
-                _uiState.update {
-                    it.copy(
-                        isCommitting = false,
-                        errorMessage = "Failed to delete: ${err.message}"
-                    )
-                }
-            }
-        }
-    }
+    // ==========================================
+    // BATCH SELECTION & MULTI-DELETE
+    // ==========================================
 
     fun toggleBatchMode() {
         _uiState.update {
@@ -655,27 +737,20 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun toggleSelectFile(path: String) {
         _uiState.update { state ->
-            val updated = state.selectedFilePaths.toMutableSet()
-            if (updated.contains(path)) {
-                updated.remove(path)
-            } else {
-                updated.add(path)
-            }
-            state.copy(selectedFilePaths = updated)
+            val set = state.selectedFilePaths.toMutableSet()
+            if (set.contains(path)) set.remove(path) else set.add(path)
+            state.copy(selectedFilePaths = set)
         }
     }
 
     fun selectAllInCurrentDirectory() {
-        val currentDir = _uiState.value.currentDirectoryPath
-        val allMatchingBlobs = _uiState.value.rawTreeItems.filter {
-            !it.isDirectory && (currentDir.isEmpty() || it.path.startsWith("$currentDir/"))
-        }.map { it.path }
+        val state = _uiState.value
+        val rootNode = state.rootExplorerNode ?: return
+        val current = GitHubRepoRepository.findNodeAtDirectory(rootNode, state.currentDirectoryPath) ?: return
 
-        _uiState.update { state ->
-            val updated = state.selectedFilePaths.toMutableSet().apply {
-                addAll(allMatchingBlobs)
-            }
-            state.copy(selectedFilePaths = updated)
+        val filesInDir = current.children.filter { !it.isDirectory }.map { it.path }.toSet()
+        _uiState.update {
+            it.copy(selectedFilePaths = it.selectedFilePaths + filesInDir)
         }
     }
 
@@ -683,74 +758,111 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(selectedFilePaths = emptySet()) }
     }
 
-    fun deleteSelectedFiles(commitMessage: String) {
+    fun deleteSingleFile(path: String, sha: String, message: String) {
         val repo = _uiState.value.selectedRepo ?: return
-        val token = _uiState.value.currentAccount?.token ?: run {
-            _uiState.update { it.copy(currentScreen = AppScreen.LOGIN, errorMessage = "Login required for batch deletion") }
+        val token = _uiState.value.currentAccount?.token
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "PAT token required to delete files.") }
             return
         }
-        val selectedPaths = _uiState.value.selectedFilePaths
-        if (selectedPaths.isEmpty()) return
-
-        val filesToDelete = _uiState.value.rawTreeItems
-            .filter { selectedPaths.contains(it.path) }
-            .map { Pair(it.path, it.sha) }
-
-        val owner = repo.owner?.login ?: repo.fullName.substringBefore('/')
-        val branch = _uiState.value.selectedBranch
 
         viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isBatchDeleting = true,
-                    batchProgress = Triple(0, filesToDelete.size, "Starting...")
-                )
+            val result = repository.deleteFile(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                path = path,
+                fileSha = sha,
+                commitMessage = message,
+                branch = _uiState.value.selectedBranch
+            )
+            if (result.isSuccess) {
+                _uiState.update { it.copy(toastOrMessage = "Deleted $path") }
+                refreshTree()
+            } else {
+                _uiState.update { it.copy(errorMessage = result.exceptionOrNull()?.message ?: "Failed to delete") }
             }
+        }
+    }
 
+    fun deleteSelectedFiles(commitMessage: String) {
+        val state = _uiState.value
+        val repo = state.selectedRepo ?: return
+        val token = state.currentAccount?.token
+        if (token.isNullOrBlank()) {
+            _uiState.update { it.copy(errorMessage = "PAT token required to delete files.") }
+            return
+        }
+
+        val itemsToDelete = state.rawTreeItems
+            .filter { state.selectedFilePaths.contains(it.path) }
+            .map { it.path to it.sha }
+
+        if (itemsToDelete.isEmpty()) return
+
+        viewModelScope.launch {
+            _uiState.update { it.copy(isBatchDeleting = true) }
             val result = repository.deleteMultipleFiles(
                 token = token,
-                owner = owner,
+                owner = repo.owner.login,
                 repo = repo.name,
-                files = filesToDelete,
-                branch = branch,
-                messagePrefix = commitMessage.ifBlank { "Batch delete ${filesToDelete.size} files" },
-                onProgress = { done, total, file ->
-                    _uiState.update {
-                        it.copy(batchProgress = Triple(done, total, file))
-                    }
+                files = itemsToDelete,
+                branch = state.selectedBranch,
+                baseMessage = commitMessage
+            ) { completed, total, currentFile ->
+                _uiState.update {
+                    it.copy(batchProgress = Triple(completed, total, currentFile))
                 }
-            )
+            }
 
-            result.onSuccess { count ->
+            if (result.isSuccess) {
                 _uiState.update {
                     it.copy(
                         isBatchDeleting = false,
                         showBatchDeleteDialog = false,
-                        isBatchMode = false,
                         selectedFilePaths = emptySet(),
+                        isBatchMode = false,
                         batchProgress = null,
-                        toastOrMessage = "Deleted $count files"
+                        toastOrMessage = "Deleted ${result.getOrNull()} files successfully"
                     )
                 }
                 refreshTree()
-            }.onFailure { err ->
+            } else {
                 _uiState.update {
                     it.copy(
                         isBatchDeleting = false,
-                        batchProgress = null,
-                        errorMessage = "Batch deletion error: ${err.message}"
+                        errorMessage = "Batch delete failed"
                     )
                 }
             }
         }
     }
 
-    // Modal Visibility Toggles
-    fun setLeftDrawerOpen(isOpen: Boolean) = _uiState.update { it.copy(isLeftDrawerOpen = isOpen) }
-    fun setShowCommitDialog(show: Boolean) = _uiState.update { it.copy(showCommitDialog = show) }
-    fun setShowCreateUploadDialog(show: Boolean) = _uiState.update { it.copy(showCreateUploadDialog = show) }
-    fun setShowBatchDeleteDialog(show: Boolean) = _uiState.update { it.copy(showBatchDeleteDialog = show) }
-    fun setShowBranchSelector(show: Boolean) = _uiState.update { it.copy(showBranchSelector = show) }
-    fun clearToast() = _uiState.update { it.copy(toastOrMessage = null) }
-    fun clearError() = _uiState.update { it.copy(errorMessage = null) }
+    // ==========================================
+    // DIALOG VISIBILITY CONTROLLERS
+    // ==========================================
+
+    fun setShowBranchSelector(show: Boolean) {
+        _uiState.update { it.copy(showBranchSelector = show) }
+    }
+
+    fun setShowCommitDialog(show: Boolean) {
+        _uiState.update { it.copy(showCommitDialog = show) }
+    }
+
+    fun setShowCreateUploadDialog(show: Boolean) {
+        _uiState.update { it.copy(showCreateUploadDialog = show) }
+    }
+
+    fun setShowBatchDeleteDialog(show: Boolean) {
+        _uiState.update { it.copy(showBatchDeleteDialog = show) }
+    }
+
+    fun clearToast() {
+        _uiState.update { it.copy(toastOrMessage = null) }
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
 }

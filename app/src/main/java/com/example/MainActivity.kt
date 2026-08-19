@@ -113,7 +113,13 @@ fun GitExplorerApp(
                         savedAccounts = uiState.accounts,
                         isAuthenticating = uiState.isAuthenticating,
                         authError = uiState.authError,
+                        deviceCodeState = uiState.deviceCodeState,
+                        isStartingOAuth = uiState.isStartingOAuth,
+                        isPollingOAuth = uiState.isPollingOAuth,
+                        oauthError = uiState.oauthError,
                         onLoginWithToken = viewModel::loginWithToken,
+                        onStartGitHubOAuth = viewModel::startGitHubOAuthLogin,
+                        onCancelOAuth = viewModel::cancelGitHubOAuthLogin,
                         onExplorePublic = viewModel::explorePublicUser,
                         onSwitchAccount = viewModel::switchAccount,
                         onRemoveAccount = viewModel::removeAccount

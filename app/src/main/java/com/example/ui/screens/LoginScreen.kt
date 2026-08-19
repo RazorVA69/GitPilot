@@ -1,9 +1,12 @@
 package com.example.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,8 +18,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,22 +25,32 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,6 +58,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -62,20 +74,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.local.AccountEntity
+import com.example.data.model.DeviceCodeResponse
+import com.example.data.repository.GitHubRepository
 import com.example.ui.theme.GitHubBlue
 import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubPurple
 import com.example.ui.theme.GitHubYellow
 import com.example.ui.theme.Md3LightBackground
 import com.example.ui.theme.Md3LightError
@@ -90,234 +108,388 @@ import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
 import com.example.ui.theme.Md3LightTextTertiary
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     savedAccounts: List<AccountEntity>,
     isAuthenticating: Boolean,
     authError: String?,
+    deviceCodeState: DeviceCodeResponse? = null,
+    isStartingOAuth: Boolean = false,
+    isPollingOAuth: Boolean = false,
+    oauthError: String? = null,
     onLoginWithToken: (String) -> Unit,
+    onStartGitHubOAuth: (clientId: String) -> Unit = {},
+    onCancelOAuth: () -> Unit = {},
     onExplorePublic: (String) -> Unit,
-    onSwitchAccount: (AccountEntity) -> Unit,
-    onRemoveAccount: (AccountEntity) -> Unit,
+    onSwitchAccount: (Long) -> Unit,
+    onRemoveAccount: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: GitHub OAuth, 1: PAT Token, 2: Public User
+
     var tokenInput by remember { mutableStateOf("") }
-    var publicUsernameInput by remember { mutableStateOf("") }
     var isTokenVisible by remember { mutableStateOf(false) }
-    var selectedTab by remember { mutableIntStateOf(if (savedAccounts.isNotEmpty()) 0 else 1) }
+    var publicUsernameInput by remember { mutableStateOf("") }
+    var customClientId by remember { mutableStateOf(GitHubRepository.DEFAULT_OAUTH_CLIENT_ID) }
+    var showClientIdConfig by remember { mutableStateOf(false) }
 
-    val scrollState = rememberScrollState()
+    val quickTokensUrl = "https://github.com/settings/tokens/new?scopes=repo,read:org,user,workflow&description=GitExplorer"
 
-    Column(
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(Md3LightBackground)
-            .verticalScroll(scrollState)
-            .padding(horizontal = 24.dp, vertical = 32.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Hero Logo Card
-        Surface(
-            modifier = Modifier.size(72.dp),
-            shape = RoundedCornerShape(20.dp),
-            color = Md3LightPrimaryContainer,
-            shadowElevation = 2.dp
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Icon(
-                    imageVector = Icons.Default.Key,
-                    contentDescription = "GitExplorer Logo",
-                    tint = Md3LightPrimary,
-                    modifier = Modifier.size(36.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        // Title & Description
-        Text(
-            text = "Welcome to GitExplorer",
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.ExtraBold,
-            color = Md3LightTextPrimary,
-            textAlign = TextAlign.Center
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(
-            text = "Fast GitHub file navigation, directory uploads, multi-file editing, and direct branch commits.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Md3LightTextSecondary,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp)
-        )
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Main Login Card
-        Card(
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .testTag("login_main_card"),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(modifier = Modifier.padding(20.dp)) {
-                // Tabs
-                TabRow(
-                    selectedTabIndex = selectedTab,
-                    containerColor = Md3LightSurfaceVariant,
-                    contentColor = Md3LightPrimary,
-                    modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                ) {
-                    if (savedAccounts.isNotEmpty()) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // App Brand Header Icon
+            Surface(
+                modifier = Modifier.size(68.dp),
+                shape = RoundedCornerShape(20.dp),
+                color = Md3LightPrimaryContainer,
+                shadowElevation = 2.dp
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.VpnKey,
+                        contentDescription = "GitHub Auth",
+                        tint = Md3LightPrimary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Text(
+                text = "Welcome to GitExplorer",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = Md3LightTextPrimary,
+                textAlign = TextAlign.Center
+            )
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            Text(
+                text = "Fast GitHub file navigation, directory uploads, multi-file editing, and direct branch commits.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = Md3LightTextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Main Auth Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("login_main_card"),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                border = BorderStroke(1.dp, Md3LightOutlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    // Auth Tabs
+                    TabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = Md3LightSurfaceVariant,
+                        contentColor = Md3LightPrimary,
+                        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                    ) {
                         Tab(
                             selected = selectedTab == 0,
                             onClick = { selectedTab = 0 },
-                            text = { Text("Saved (${savedAccounts.size})", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
+                            text = { Text("GitHub Login", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("PAT Token", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                        )
+                        Tab(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            text = { Text("Public User", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
                         )
                     }
-                    Tab(
-                        selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
-                        text = { Text("PAT Token", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                    )
-                    Tab(
-                        selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
-                        text = { Text("Public User", fontWeight = FontWeight.Bold, fontSize = 12.sp) }
-                    )
-                }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
-                // Error Message Display
-                if (authError != null) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = Md3LightErrorContainer
-                    ) {
-                        Text(
-                            text = authError,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Md3LightError,
-                            modifier = Modifier.padding(12.dp)
-                        )
+                    // Error Notification Banner
+                    val activeError = authError ?: oauthError
+                    if (!activeError.isNullOrBlank()) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 16.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = Md3LightErrorContainer
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = Md3LightError,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = activeError,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Md3LightError,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
 
-                when (selectedTab) {
-                    0 -> {
-                        // Saved Accounts
-                        Text(
-                            text = "Choose an account to continue",
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Md3LightTextPrimary
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+                    // TAB 0: OFFICIAL GITHUB OAUTH / DEVICE FLOW
+                    if (selectedTab == 0) {
+                        if (deviceCodeState == null) {
+                            Text(
+                                text = "Sign In With GitHub",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Md3LightTextPrimary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Authenticate securely via GitHub's official authorization. Grants access to your repositories and organizations without manual token creation.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Md3LightTextSecondary
+                            )
 
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                            for (account in savedAccounts) {
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable { onSwitchAccount(account) }
-                                        .testTag("saved_account_${account.username}"),
-                                    color = Md3LightSurfaceVariant,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Big Green GitHub Login Button
+                            Button(
+                                onClick = { onStartGitHubOAuth(customClientId) },
+                                enabled = !isStartingOAuth && !isAuthenticating,
+                                colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .testTag("github_oauth_login_btn")
+                            ) {
+                                if (isStartingOAuth) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        modifier = Modifier.size(20.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Connecting to GitHub...", color = Color.White, fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Sign In with GitHub",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Advanced OAuth App Client ID Toggle
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                TextButton(onClick = { showClientIdConfig = !showClientIdConfig }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = Md3LightTextTertiary
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (showClientIdConfig) "Hide OAuth Client ID" else "Use Custom OAuth Client ID",
+                                        fontSize = 11.sp,
+                                        color = Md3LightTextTertiary
+                                    )
+                                }
+                            }
+
+                            AnimatedVisibility(visible = showClientIdConfig) {
+                                Column(modifier = Modifier.padding(top = 4.dp)) {
+                                    OutlinedTextField(
+                                        value = customClientId,
+                                        onValueChange = { customClientId = it },
+                                        label = { Text("OAuth App Client ID", fontSize = 11.sp) },
+                                        placeholder = { Text("e.g. Iv1.8b22e1189912782b") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = Md3LightPrimary,
+                                            unfocusedBorderColor = Md3LightOutline
+                                        )
+                                    )
+                                }
+                            }
+                        } else {
+                            // DEVICE FLOW ACTIVE AUTHORIZATION VIEW
+                            Surface(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                color = Md3LightSurfaceVariant,
+                                border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Row(
+                                    Text(
+                                        text = "Authorize On GitHub",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Md3LightTextPrimary
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Enter this one-time code on the GitHub authorization page:",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Md3LightTextSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    // Display Code Box with Copy
+                                    Surface(
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = Color.White,
+                                        border = BorderStroke(1.5.dp, Md3LightPrimary),
                                         modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        if (account.avatarUrl != null) {
-                                            AsyncImage(
-                                                model = account.avatarUrl,
-                                                contentDescription = "Avatar",
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                            )
-                                        } else {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(40.dp)
-                                                    .clip(CircleShape)
-                                                    .background(Md3LightOutline),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(Icons.Default.Person, contentDescription = null, tint = Color.White)
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                clipboardManager.setText(AnnotatedString(deviceCodeState.userCode))
                                             }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Text(
-                                                text = account.name ?: account.username,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Md3LightTextPrimary
+                                                text = deviceCodeState.userCode,
+                                                style = MaterialTheme.typography.headlineMedium,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = Md3LightPrimary,
+                                                letterSpacing = 3.sp
                                             )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Icon(
+                                                imageVector = Icons.Default.ContentCopy,
+                                                contentDescription = "Copy code",
+                                                tint = Md3LightPrimary,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Action to Open Browser
+                                    Button(
+                                        onClick = {
+                                            clipboardManager.setText(AnnotatedString(deviceCodeState.userCode))
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deviceCodeState.verificationUri))
+                                            context.startActivity(intent)
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Open GitHub & Authorize", fontWeight = FontWeight.Bold)
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    if (isPollingOAuth) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                color = Md3LightPrimary,
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
                                             Text(
-                                                text = "@${account.username}",
+                                                text = "Waiting for authorization in browser...",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 color = Md3LightTextSecondary
                                             )
                                         }
+                                    }
 
-                                        IconButton(
-                                            onClick = { onRemoveAccount(account) },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Delete,
-                                                contentDescription = "Remove",
-                                                tint = Md3LightTextTertiary,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    TextButton(onClick = onCancelOAuth) {
+                                        Text("Cancel", color = Md3LightTextSecondary, fontSize = 12.sp)
                                     }
                                 }
                             }
                         }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-                        TextButton(
-                            onClick = { selectedTab = 1 },
-                            modifier = Modifier.align(Alignment.CenterHorizontally)
-                        ) {
-                            Text("+ Add New Token Account", color = Md3LightPrimary, fontWeight = FontWeight.Bold)
-                        }
                     }
 
-                    1 -> {
-                        // Personal Access Token (PAT)
+                    // TAB 1: PAT TOKEN FLOW
+                    if (selectedTab == 1) {
                         Text(
-                            text = "GitHub Personal Access Token (PAT)",
-                            style = MaterialTheme.typography.labelLarge,
+                            text = "Personal Access Token (PAT)",
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Md3LightTextPrimary
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Generate a Classic or Fine-Grained token with 'repo' scope from GitHub Settings -> Developer settings -> Personal access tokens.",
+                            text = "Paste a GitHub Personal Access Token (Classic or Fine-Grained) with 'repo' scope.",
                             style = MaterialTheme.typography.bodySmall,
                             color = Md3LightTextSecondary
                         )
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Quick 1-Click Generate Button on GitHub
+                        OutlinedButton(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(quickTokensUrl))
+                                context.startActivity(intent)
+                            },
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = Md3LightPrimary)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Generate PAT on GitHub with 1-Click", fontSize = 12.sp, color = Md3LightPrimary, fontWeight = FontWeight.SemiBold)
+                        }
 
                         Spacer(modifier = Modifier.height(14.dp))
 
@@ -326,29 +498,26 @@ fun LoginScreen(
                             onValueChange = { tokenInput = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("login_pat_input"),
-                            placeholder = {
-                                Text("ghp_xxxxxxxxxxxxxxxxxxxx or github_pat_...", color = Md3LightTextTertiary, fontSize = 13.sp)
-                            },
+                                .testTag("login_pat_token_input"),
+                            placeholder = { Text("ghp_... or github_pat_...", color = Md3LightTextTertiary, fontSize = 13.sp) },
                             leadingIcon = {
-                                Icon(Icons.Default.Lock, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Lock, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(18.dp))
                             },
                             trailingIcon = {
                                 IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
                                     Icon(
                                         imageVector = if (isTokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                         contentDescription = "Toggle Visibility",
-                                        tint = Md3LightTextSecondary
+                                        tint = Md3LightTextSecondary,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             },
-                            visualTransformation = if (isTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             singleLine = true,
+                            visualTransformation = if (isTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { onLoginWithToken(tokenInput) }),
                             shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                if (tokenInput.isNotBlank()) onLoginWithToken(tokenInput)
-                            }),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Md3LightPrimary,
                                 unfocusedBorderColor = Md3LightOutline,
@@ -357,32 +526,7 @@ fun LoginScreen(
                             )
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        // Permissions checklist banner
-                        Surface(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Md3LightSurfaceVariant,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Security, contentDescription = null, tint = GitHubGreen, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Required Permissions", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = GitHubGreen)
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text(
-                                    text = "✔ repo (Access public/private repositories, commits, and trees)\n✔ Local on-device storage only (Tokens are never sent elsewhere)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Md3LightTextSecondary,
-                                    fontSize = 11.sp
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
                             onClick = { onLoginWithToken(tokenInput) },
@@ -392,53 +536,75 @@ fun LoginScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .testTag("login_submit_btn")
+                                .testTag("login_pat_submit_btn")
                         ) {
                             if (isAuthenticating) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Validating PAT Token...", color = Color.White, fontWeight = FontWeight.Bold)
-                            } else {
-                                Text("Log In & Load Repositories", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
                                 Spacer(modifier = Modifier.width(8.dp))
+                                Text("Validating & Loading...", color = Color.White, fontWeight = FontWeight.Bold)
+                            } else {
+                                Text("Log In & Load Repositories", fontWeight = FontWeight.Bold)
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                         }
                     }
 
-                    2 -> {
-                        // Public Mode
+                    // TAB 2: PUBLIC USER / DEMO
+                    if (selectedTab == 2) {
                         Text(
-                            text = "Explore Any GitHub User Public Repos",
-                            style = MaterialTheme.typography.labelLarge,
+                            text = "Explore Any GitHub User",
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = Md3LightTextPrimary
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Browse public repositories without entering credentials. (Read-only mode).",
+                            text = "View and navigate public repositories and files without a token (Read-only mode).",
                             style = MaterialTheme.typography.bodySmall,
                             color = Md3LightTextSecondary
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Quick presets chips
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf("torvalds", "google", "android", "kotlin", "facebook").forEach { name ->
+                                FilterChip(
+                                    selected = publicUsernameInput == name,
+                                    onClick = { publicUsernameInput = name },
+                                    label = { Text("@$name", fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Md3LightPrimaryContainer,
+                                        selectedLabelColor = Md3LightPrimary
+                                    )
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         OutlinedTextField(
                             value = publicUsernameInput,
                             onValueChange = { publicUsernameInput = it },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .testTag("login_public_username_input"),
-                            placeholder = { Text("e.g. torvalds, square, google, octocat", color = Md3LightTextTertiary, fontSize = 13.sp) },
+                                .testTag("login_public_user_input"),
+                            placeholder = { Text("GitHub username (e.g. torvalds)", color = Md3LightTextTertiary, fontSize = 13.sp) },
                             leadingIcon = {
-                                Icon(Icons.Default.Public, contentDescription = null, tint = GitHubYellow, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Person, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(18.dp))
                             },
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                onExplorePublic(publicUsernameInput.ifBlank { "octocat" })
-                            }),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Md3LightPrimary,
                                 unfocusedBorderColor = Md3LightOutline,
@@ -447,44 +613,126 @@ fun LoginScreen(
                             )
                         )
 
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // Quick demo buttons
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf("octocat", "torvalds", "google", "square").forEach { sample ->
-                                Surface(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { publicUsernameInput = sample }
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                    color = Md3LightSurfaceVariant
-                                ) {
-                                    Text(sample, style = MaterialTheme.typography.labelSmall, color = Md3LightPrimary)
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(20.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
                         Button(
-                            onClick = { onExplorePublic(publicUsernameInput.ifBlank { "octocat" }) },
+                            onClick = { onExplorePublic(publicUsernameInput) },
+                            enabled = !isAuthenticating,
                             colors = ButtonDefaults.buttonColors(containerColor = Md3LightPrimary),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(50.dp)
-                                .testTag("login_explore_public_btn")
+                                .testTag("login_public_submit_btn")
                         ) {
-                            Text("Explore Public Repositories", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            if (isAuthenticating) {
+                                CircularProgressIndicator(
+                                    color = Color.White,
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Loading Repositories...", color = Color.White)
+                            } else {
+                                Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Explore Repositories", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(24.dp))
+            // Saved Accounts Switcher List
+            if (savedAccounts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                    border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Saved Accounts",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Md3LightTextPrimary
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        for (acc in savedAccounts) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { onSwitchAccount(acc.id) }
+                                    .padding(vertical = 8.dp, horizontal = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    if (acc.avatarUrl != null) {
+                                        AsyncImage(
+                                            model = acc.avatarUrl,
+                                            contentDescription = "Avatar",
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .clip(CircleShape)
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountCircle,
+                                            contentDescription = null,
+                                            tint = Md3LightPrimary,
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    Column {
+                                        Text(
+                                            text = (acc.name?.takeIf { it.isNotBlank() }) ?: acc.username,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Md3LightTextPrimary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = "@${acc.username}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = Md3LightTextSecondary
+                                        )
+                                    }
+                                }
+
+                                IconButton(
+                                    onClick = { onRemoveAccount(acc.id) },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Delete,
+                                        contentDescription = "Remove account",
+                                        tint = Md3LightError,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                            HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(30.dp))
+        }
     }
 }

@@ -3,6 +3,7 @@ package com.example.data.repository
 import android.util.Base64
 import com.example.data.api.GitHubApiClient
 import com.example.data.api.GitHubApiService
+import com.example.data.api.GitHubAuthService
 import com.example.data.local.AccountEntity
 import com.example.data.local.AppDao
 import com.example.data.local.FileDraftEntity
@@ -10,24 +11,125 @@ import com.example.data.local.SavedRepoEntity
 import com.example.data.model.CommitResultResponse
 import com.example.data.model.CreateOrUpdateFilePayload
 import com.example.data.model.DeleteFilePayload
+import com.example.data.model.DeviceCodeRequest
+import com.example.data.model.DeviceCodeResponse
 import com.example.data.model.ExplorerNode
 import com.example.data.model.FileContentResponse
 import com.example.data.model.GitHubBranch
 import com.example.data.model.GitHubRepository
 import com.example.data.model.GitHubUser
 import com.example.data.model.GitTreeItem
+import com.example.data.model.OAuthTokenRequest
+import com.example.data.model.OAuthTokenResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import java.net.UnknownHostException
 import java.nio.charset.StandardCharsets
 
 class GitHubRepository(
     private val apiService: GitHubApiService = GitHubApiClient.apiService,
+    private val authService: GitHubAuthService = GitHubApiClient.authService,
     private val appDao: AppDao
 ) {
     val currentAccountFlow: Flow<AccountEntity?> = appDao.getCurrentAccount()
     val allAccountsFlow: Flow<List<AccountEntity>> = appDao.getAllAccounts()
     val savedReposFlow: Flow<List<SavedRepoEntity>> = appDao.getSavedRepos()
+
+    companion object {
+        const val DEFAULT_OAUTH_CLIENT_ID = "Iv1.8b22e1189912782b"
+
+        fun buildExplorerTree(items: List<GitTreeItem>): ExplorerNode {
+            val root = ExplorerNode(
+                name = "",
+                path = "",
+                isDirectory = true,
+                sha = ""
+            )
+
+            for (item in items) {
+                val segments = item.path.split('/')
+                var currentNode = root
+
+                for (i in segments.indices) {
+                    val segment = segments[i]
+                    val isLast = i == segments.size - 1
+                    val currentFullPath = segments.take(i + 1).joinToString("/")
+
+                    var child = currentNode.children.find { it.name == segment }
+                    if (child == null) {
+                        child = ExplorerNode(
+                            name = segment,
+                            path = currentFullPath,
+                            isDirectory = if (isLast) item.isDirectory else true,
+                            sha = if (isLast) item.sha else "",
+                            size = if (isLast) item.size else null
+                        )
+                        currentNode.children.add(child)
+                    }
+                    currentNode = child
+                }
+            }
+
+            sortTreeNodes(root)
+            return root
+        }
+
+        private fun sortTreeNodes(node: ExplorerNode) {
+            node.children.sortWith(
+                compareBy<ExplorerNode> { !it.isDirectory }
+                    .thenBy { it.name.lowercase() }
+            )
+            for (child in node.children) {
+                if (child.isDirectory) {
+                    sortTreeNodes(child)
+                }
+            }
+        }
+
+        fun findNodeAtDirectory(root: ExplorerNode, directoryPath: String): ExplorerNode? {
+            if (directoryPath.isBlank()) return root
+            val segments = directoryPath.trim('/').split('/')
+            var current = root
+            for (segment in segments) {
+                current = current.children.find { it.name == segment && it.isDirectory } ?: return null
+            }
+            return current
+        }
+    }
+
+    suspend fun requestDeviceCode(clientId: String = DEFAULT_OAUTH_CLIENT_ID): Result<DeviceCodeResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = authService.requestDeviceCode(DeviceCodeRequest(clientId = clientId))
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "Failed to start GitHub login: HTTP ${response.code()}"
+                Result.failure(Exception(friendlyErrorMessage(error, null)))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun pollDeviceToken(clientId: String, deviceCode: String): Result<OAuthTokenResponse> = withContext(Dispatchers.IO) {
+        try {
+            val response = authService.pollDeviceToken(
+                OAuthTokenRequest(
+                    clientId = clientId,
+                    deviceCode = deviceCode
+                )
+            )
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception(error))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     suspend fun saveAccount(token: String): Result<GitHubUser> = withContext(Dispatchers.IO) {
         try {
@@ -48,11 +150,17 @@ class GitHubRepository(
                 appDao.insertAccount(account)
                 Result.success(user)
             } else {
-                val errorMsg = response.errorBody()?.string() ?: "Failed to authenticate: HTTP ${response.code()}"
-                Result.failure(Exception(errorMsg))
+                val rawError = response.errorBody()?.string()
+                val code = response.code()
+                val msg = when (code) {
+                    401 -> "Invalid GitHub Token (401 Unauthorized). Please ensure your token is copied correctly and has 'repo' scope."
+                    403 -> "GitHub API Rate Limited or Access Forbidden (403). Ensure token has proper permissions."
+                    else -> "Authentication failed: HTTP $code. ${rawError ?: ""}"
+                }
+                Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
@@ -75,7 +183,6 @@ class GitHubRepository(
             val response = if (authHeader != null) {
                 apiService.getUserRepositories(authHeader)
             } else {
-                // Default popular/sample public showcase if no token
                 apiService.getPublicRepositories("octocat")
             }
 
@@ -83,10 +190,16 @@ class GitHubRepository(
                 val repos = response.body()!!
                 Result.success(repos)
             } else {
-                Result.failure(Exception("Failed to load repositories: HTTP ${response.code()}"))
+                val code = response.code()
+                val msg = when (code) {
+                    401 -> "Session expired or invalid token (401). Please re-enter your PAT token or login again."
+                    403 -> "GitHub rate limit exceeded or access denied (403)."
+                    else -> "Failed to load repositories: HTTP $code"
+                }
+                Result.failure(Exception(msg))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
@@ -100,69 +213,76 @@ class GitHubRepository(
                 Result.failure(Exception("Failed to load branches: HTTP ${response.code()}"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
-    suspend fun getGitTree(token: String?, owner: String, repo: String, branchOrSha: String): Result<List<GitTreeItem>> = withContext(Dispatchers.IO) {
+    suspend fun getFileTreeRecursive(
+        token: String?,
+        owner: String,
+        repo: String,
+        branch: String
+    ): Result<Pair<ExplorerNode, List<GitTreeItem>>> = withContext(Dispatchers.IO) {
         try {
             val authHeader = GitHubApiClient.formatAuthHeader(token)
-            val response = apiService.getGitTreeRecursive(authHeader, owner, repo, branchOrSha, recursive = 1)
+            val response = apiService.getGitTreeRecursive(authHeader, owner, repo, branch, recursive = 1)
             if (response.isSuccessful && response.body() != null) {
-                Result.success(response.body()!!.tree)
+                val treeItems = response.body()!!.tree
+                val rootNode = buildExplorerTree(treeItems)
+                Result.success(Pair(rootNode, treeItems))
             } else {
-                Result.failure(Exception("Failed to fetch repository tree: HTTP ${response.code()} ${response.errorBody()?.string()}"))
+                Result.failure(Exception("Failed to load tree: HTTP ${response.code()}"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
-    suspend fun getFileContent(token: String?, owner: String, repo: String, path: String, ref: String?): Result<Pair<String, FileContentResponse>> = withContext(Dispatchers.IO) {
+    suspend fun getFileContent(
+        token: String?,
+        owner: String,
+        repo: String,
+        path: String,
+        branch: String?
+    ): Result<Pair<FileContentResponse, String>> = withContext(Dispatchers.IO) {
         try {
             val authHeader = GitHubApiClient.formatAuthHeader(token)
-            val response = apiService.getFileContent(authHeader, owner, repo, path, ref)
+            val response = apiService.getFileContent(authHeader, owner, repo, path, branch)
             if (response.isSuccessful && response.body() != null) {
-                val fileContent = response.body()!!
-                val decodedText = if (!fileContent.content.isNullOrBlank()) {
-                    try {
-                        val cleanBase64 = fileContent.content.replace("\n", "").replace("\r", "")
-                        val bytes = Base64.decode(cleanBase64, Base64.DEFAULT)
-                        String(bytes, StandardCharsets.UTF_8)
-                    } catch (e: Exception) {
-                        "[Binary content or unsupported encoding]"
-                    }
-                } else {
-                    ""
-                }
-                Result.success(Pair(decodedText, fileContent))
+                val file = response.body()!!
+                val decoded = decodeFileContent(file.content, file.encoding)
+                Result.success(Pair(file, decoded))
             } else {
-                Result.failure(Exception("Failed to fetch file content: HTTP ${response.code()}"))
+                Result.failure(Exception("Failed to fetch file: HTTP ${response.code()}"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
-    suspend fun createOrUpdateFile(
+    suspend fun commitFileChanges(
         token: String,
         owner: String,
         repo: String,
         path: String,
         content: String,
-        sha: String?,
+        commitMessage: String,
         branch: String,
-        message: String
+        fileSha: String?
     ): Result<CommitResultResponse> = withContext(Dispatchers.IO) {
         try {
             val authHeader = GitHubApiClient.formatAuthHeader(token)
-                ?: return@withContext Result.failure(IllegalArgumentException("Authentication required to commit"))
+                ?: return@withContext Result.failure(Exception("Authentication token required to commit"))
 
-            val encodedContent = Base64.encodeToString(content.toByteArray(StandardCharsets.UTF_8), Base64.NO_WRAP)
+            val base64Content = Base64.encodeToString(
+                content.toByteArray(StandardCharsets.UTF_8),
+                Base64.NO_WRAP
+            )
+
             val payload = CreateOrUpdateFilePayload(
-                message = message.ifBlank { if (sha != null) "Update $path" else "Create $path" },
-                content = encodedContent,
-                sha = sha,
+                message = commitMessage.ifBlank { "Update $path" },
+                content = base64Content,
+                sha = fileSha,
                 branch = branch
             )
 
@@ -170,11 +290,11 @@ class GitHubRepository(
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                val err = response.errorBody()?.string() ?: "Commit failed with HTTP ${response.code()}"
-                Result.failure(Exception(err))
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Commit failed: $error"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
@@ -183,17 +303,17 @@ class GitHubRepository(
         owner: String,
         repo: String,
         path: String,
-        sha: String,
-        branch: String,
-        message: String
+        fileSha: String,
+        commitMessage: String,
+        branch: String
     ): Result<CommitResultResponse> = withContext(Dispatchers.IO) {
         try {
             val authHeader = GitHubApiClient.formatAuthHeader(token)
-                ?: return@withContext Result.failure(IllegalArgumentException("Authentication required to delete"))
+                ?: return@withContext Result.failure(Exception("Authentication token required to delete files"))
 
             val payload = DeleteFilePayload(
-                message = message.ifBlank { "Delete $path" },
-                sha = sha,
+                message = commitMessage.ifBlank { "Delete $path" },
+                sha = fileSha,
                 branch = branch
             )
 
@@ -201,11 +321,11 @@ class GitHubRepository(
             if (response.isSuccessful && response.body() != null) {
                 Result.success(response.body()!!)
             } else {
-                val err = response.errorBody()?.string() ?: "Delete failed with HTTP ${response.code()}"
-                Result.failure(Exception(err))
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Delete failed for $path: $error"))
             }
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
     }
 
@@ -213,149 +333,93 @@ class GitHubRepository(
         token: String,
         owner: String,
         repo: String,
-        files: List<Pair<String, String>>, // list of (path, sha)
+        files: List<Pair<String, String>>,
         branch: String,
-        messagePrefix: String,
+        baseMessage: String,
         onProgress: (completed: Int, total: Int, currentFile: String) -> Unit
     ): Result<Int> = withContext(Dispatchers.IO) {
-        var deletedCount = 0
-        val total = files.size
-        for ((index, file) in files.withIndex()) {
-            val (path, sha) = file
-            onProgress(index, total, path)
-            val result = deleteFile(
+        var successCount = 0
+        for ((index, item) in files.withIndex()) {
+            val (path, sha) = item
+            onProgress(index, files.size, path)
+            val res = deleteFile(
                 token = token,
                 owner = owner,
                 repo = repo,
                 path = path,
-                sha = sha,
+                fileSha = sha,
+                commitMessage = "$baseMessage - $path",
+                branch = branch
+            )
+            if (res.isSuccess) {
+                successCount++
+            }
+        }
+        onProgress(files.size, files.size, "Done")
+        Result.success(successCount)
+    }
+
+    suspend fun saveDraft(repoFullName: String, branch: String, filePath: String, content: String, sha: String?) = withContext(Dispatchers.IO) {
+        appDao.saveDraft(
+            FileDraftEntity(
+                id = "$repoFullName:$branch:$filePath",
+                repoFullName = repoFullName,
                 branch = branch,
-                message = "$messagePrefix: Delete $path"
+                filePath = filePath,
+                draftContent = content,
+                originalSha = sha,
+                lastUpdated = System.currentTimeMillis()
             )
-            if (result.isSuccess) {
-                deletedCount++
-            } else {
-                return@withContext Result.failure(
-                    Exception("Failed on '$path': ${result.exceptionOrNull()?.message}")
-                )
-            }
-        }
-        onProgress(total, total, "Done")
-        Result.success(deletedCount)
+        )
     }
 
-    suspend fun saveRecentRepo(repo: SavedRepoEntity) = withContext(Dispatchers.IO) {
-        appDao.insertSavedRepo(repo)
+    suspend fun getDraft(repoFullName: String, branch: String, filePath: String): FileDraftEntity? = withContext(Dispatchers.IO) {
+        appDao.getDraft("$repoFullName:$branch:$filePath")
     }
 
-    suspend fun saveDraft(draft: FileDraftEntity) = withContext(Dispatchers.IO) {
-        appDao.saveDraft(draft)
+    suspend fun clearDraft(repoFullName: String, branch: String, filePath: String) = withContext(Dispatchers.IO) {
+        appDao.deleteDraft("$repoFullName:$branch:$filePath")
     }
 
-    suspend fun getDraft(id: String): FileDraftEntity? = withContext(Dispatchers.IO) {
-        appDao.getDraft(id)
-    }
-
-    suspend fun clearDraft(id: String) = withContext(Dispatchers.IO) {
-        appDao.deleteDraft(id)
-    }
-
-    companion object {
-        /**
-         * Ultra-fast tree hierarchy builder from GitHub flat tree items.
-         */
-        fun buildHierarchyTree(items: List<GitTreeItem>): ExplorerNode {
-            val root = ExplorerNode(
-                path = "",
-                name = "root",
-                isDirectory = true,
-                sha = "",
-                isExpanded = true
+    suspend fun saveRecentRepo(repo: GitHubRepository) = withContext(Dispatchers.IO) {
+        appDao.insertSavedRepo(
+            SavedRepoEntity(
+                fullName = repo.fullName,
+                owner = repo.owner.login,
+                name = repo.name,
+                defaultBranch = repo.defaultBranch,
+                isPrivate = repo.private,
+                isFavorite = false,
+                lastOpened = System.currentTimeMillis()
             )
+        )
+    }
 
-            val dirMap = mutableMapOf<String, ExplorerNode>()
-            dirMap[""] = root
-
-            // Sort so directories come first or natural path ordering
-            val sortedItems = items.sortedBy { it.path }
-
-            for (item in sortedItems) {
-                val pathSegments = item.path.split('/')
-                var currentPath = ""
-                var parentNode = root
-
-                for (i in 0 until pathSegments.size - 1) {
-                    val segment = pathSegments[i]
-                    currentPath = if (currentPath.isEmpty()) segment else "$currentPath/$segment"
-
-                    var dirNode = dirMap[currentPath]
-                    if (dirNode == null) {
-                        dirNode = ExplorerNode(
-                            path = currentPath,
-                            name = segment,
-                            isDirectory = true,
-                            sha = ""
-                        )
-                        dirMap[currentPath] = dirNode
-                        parentNode.children.add(dirNode)
-                    }
-                    parentNode = dirNode
-                }
-
-                val lastSegment = pathSegments.last()
-                val isDir = item.isDirectory
-                val node = if (isDir) {
-                    dirMap[item.path] ?: ExplorerNode(
-                        path = item.path,
-                        name = lastSegment,
-                        isDirectory = true,
-                        sha = item.sha
-                    ).also {
-                        dirMap[item.path] = it
-                        parentNode.children.add(it)
-                    }
-                } else {
-                    ExplorerNode(
-                        path = item.path,
-                        name = lastSegment,
-                        isDirectory = false,
-                        sha = item.sha,
-                        size = item.size,
-                        extension = item.extension
-                    ).also {
-                        parentNode.children.add(it)
-                    }
-                }
+    private fun decodeFileContent(rawContent: String?, encoding: String?): String {
+        if (rawContent == null) return ""
+        return if (encoding.equals("base64", ignoreCase = true)) {
+            try {
+                val clean = rawContent.replace("\n", "").replace("\r", "")
+                val decodedBytes = Base64.decode(clean, Base64.DEFAULT)
+                String(decodedBytes, StandardCharsets.UTF_8)
+            } catch (e: Exception) {
+                rawContent
             }
-
-            // Sort children recursively: directories first, then alphabetically
-            fun sortRecursive(node: ExplorerNode) {
-                node.children.sortWith(
-                    compareBy<ExplorerNode> { !it.isDirectory }
-                        .thenBy { it.name.lowercase() }
-                )
-                for (child in node.children) {
-                    if (child.isDirectory) {
-                        sortRecursive(child)
-                    }
-                }
-            }
-            sortRecursive(root)
-
-            return root
+        } else {
+            rawContent
         }
+    }
 
-        fun findNodeAtDirectory(root: ExplorerNode, directoryPath: String): ExplorerNode? {
-            if (directoryPath.isBlank() || directoryPath == "/" || directoryPath == "root") {
-                return root
-            }
-            val segments = directoryPath.trim('/').split('/')
-            var current: ExplorerNode? = root
-            for (segment in segments) {
-                current = current?.children?.firstOrNull { it.isDirectory && it.name == segment }
-                if (current == null) return null
-            }
-            return current
+    private fun friendlyErrorMessage(serverError: String?, throwable: Throwable?): String {
+        if (throwable is UnknownHostException || throwable?.message?.contains("Unable to resolve host", ignoreCase = true) == true) {
+            return "Connection error: Unable to reach GitHub. Please check your internet connection and retry."
         }
+        if (throwable?.message?.contains("timeout", ignoreCase = true) == true) {
+            return "Connection timed out. GitHub servers took too long to respond. Please try again."
+        }
+        if (serverError != null) {
+            return serverError
+        }
+        return throwable?.localizedMessage ?: "An unexpected error occurred. Please try again."
     }
 }

@@ -5,11 +5,11 @@ import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
 data class GitHubUser(
-    val id: Long,
-    val login: String,
-    val name: String?,
-    @Json(name = "avatar_url") val avatarUrl: String?,
-    val bio: String?,
+    val id: Long = 0,
+    val login: String = "",
+    val name: String? = null,
+    @Json(name = "avatar_url") val avatarUrl: String? = null,
+    val bio: String? = null,
     @Json(name = "public_repos") val publicRepos: Int = 0,
     @Json(name = "total_private_repos") val totalPrivateRepos: Int = 0,
     @Json(name = "followers") val followers: Int = 0,
@@ -19,9 +19,9 @@ data class GitHubUser(
 
 @JsonClass(generateAdapter = true)
 data class GitHubRepository(
-    val id: Long,
-    val name: String,
-    @Json(name = "full_name") val fullName: String,
+    val id: Long = 0,
+    val name: String = "",
+    @Json(name = "full_name") val fullName: String = "",
     val private: Boolean = false,
     val description: String? = null,
     val fork: Boolean = false,
@@ -30,14 +30,14 @@ data class GitHubRepository(
     @Json(name = "forks_count") val forksCount: Int = 0,
     @Json(name = "default_branch") val defaultBranch: String = "main",
     @Json(name = "updated_at") val updatedAt: String? = null,
-    val owner: RepoOwner? = null,
+    val owner: RepoOwner = RepoOwner(0, "user"),
     @Json(name = "html_url") val htmlUrl: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class RepoOwner(
     val id: Long = 0,
-    val login: String,
+    val login: String = "",
     @Json(name = "avatar_url") val avatarUrl: String? = null
 )
 
