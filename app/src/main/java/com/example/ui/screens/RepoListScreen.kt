@@ -1,6 +1,8 @@
 package com.example.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -428,7 +430,12 @@ fun RepoListScreen(
                             isWorking = workingRepoId == repo.id,
                             onClick = { onSelectRepo(repo) },
                             onLongClick = { selectedRepoForActions = repo },
-                            modifier = Modifier.animateItem()
+                            modifier = Modifier.animateItem(
+                                placementSpec = spring(
+                                    dampingRatio = Spring.DampingRatioLowBouncy,
+                                    stiffness = Spring.StiffnessLow
+                                )
+                            )
                         )
                     }
                 }

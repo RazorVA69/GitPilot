@@ -147,139 +147,138 @@ fun LoginScreen(
             .fillMaxSize()
             .background(Md3LightBackground)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 36.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // App Brand Header Icon
-            Surface(
-                modifier = Modifier.size(68.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = Md3LightPrimaryContainer,
-                shadowElevation = 2.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.VpnKey,
-                        contentDescription = "GitHub Auth",
-                        tint = Md3LightPrimary,
-                        modifier = Modifier.size(36.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "Welcome to GitExplorer",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = Md3LightTextPrimary,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = "Fast GitHub file navigation, directory uploads, multi-file editing, and direct branch commits.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = Md3LightTextSecondary,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp)
-            )
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Main Auth Card
-            Card(
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("login_main_card"),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp, vertical = 36.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    // Auth Tabs
-                    TabRow(
-                        selectedTabIndex = pagerState.currentPage,
-                        containerColor = Md3LightSurfaceVariant,
-                        contentColor = Md3LightPrimary,
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp))
-                    ) {
-                        Tab(
-                            selected = pagerState.currentPage == 0,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
-                            },
-                            text = { Text("GitHub Login", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        )
-                        Tab(
-                            selected = pagerState.currentPage == 1,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(1)
-                                }
-                            },
-                            text = { Text("PAT Token", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
-                        )
-                        Tab(
-                            selected = pagerState.currentPage == 2,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(2)
-                                }
-                            },
-                            text = { Text("Public User", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // App Brand Header Icon
+                Surface(
+                    modifier = Modifier.size(68.dp),
+                    shape = RoundedCornerShape(20.dp),
+                    color = Md3LightPrimaryContainer,
+                    shadowElevation = 2.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.VpnKey,
+                            contentDescription = "GitHub Auth",
+                            tint = Md3LightPrimary,
+                            modifier = Modifier.size(36.dp)
                         )
                     }
+                }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                    // Error Notification Banner
-                    val activeError = authError ?: oauthError
-                    if (!activeError.isNullOrBlank()) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 16.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            color = Md3LightErrorContainer
+                Text(
+                    text = "Welcome to GitExplorer",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Md3LightTextPrimary,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = "Fast GitHub file navigation, directory uploads, multi-file editing, and direct branch commits.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = Md3LightTextSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Main Auth Card
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("login_main_card"),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                    border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                ) {
+                    Column(modifier = Modifier.padding(20.dp)) {
+                        // Auth Tabs
+                        TabRow(
+                            selectedTabIndex = pagerState.currentPage,
+                            containerColor = Md3LightSurfaceVariant,
+                            contentColor = Md3LightPrimary,
+                            modifier = Modifier.clip(RoundedCornerShape(12.dp))
                         ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                            Tab(
+                                selected = pagerState.currentPage == 0,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(0)
+                                    }
+                                },
+                                text = { Text("GitHub Login", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = pagerState.currentPage == 1,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(1)
+                                    }
+                                },
+                                text = { Text("PAT Token", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            )
+                            Tab(
+                                selected = pagerState.currentPage == 2,
+                                onClick = {
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(2)
+                                    }
+                                },
+                                text = { Text("Public User", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(18.dp))
+
+                        // Error Notification Banner
+                        val activeError = authError ?: oauthError
+                        if (!activeError.isNullOrBlank()) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 16.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                color = Md3LightErrorContainer
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = null,
-                                    tint = Md3LightError,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text(
-                                    text = activeError,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = Md3LightError,
-                                    fontWeight = FontWeight.Medium
-                                )
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = Md3LightError,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = activeError,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = Md3LightError,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    // Swipeable HorizontalPager across Login Screens
-                    HorizontalPager(
-                        state = pagerState,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { page ->
                         when (page) {
                             0 -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {

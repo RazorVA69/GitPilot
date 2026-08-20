@@ -68,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
@@ -360,7 +361,8 @@ fun CodeEditorView(
 
                     DropdownMenu(
                         expanded = showMoreMenu,
-                        onDismissRequest = { showMoreMenu = false }
+                        onDismissRequest = { showMoreMenu = false },
+                        properties = androidx.compose.ui.window.PopupProperties(focusable = false)
                     ) {
                         // Zoom In
                         DropdownMenuItem(
@@ -660,70 +662,123 @@ fun CodeEditorView(
                     )
                 }
             } else {
-                // Code Editor with High Performance Synchronized Gutter
+                // Code Editor with High Performance Synchronized Gutter & Custom Scrollbars
                 val verticalScrollState = rememberScrollState()
                 val horizontalScrollState = rememberScrollState()
 
-                Row(modifier = Modifier.fillMaxSize()) {
-                    // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
-                    if (showLineNumbers) {
-                        val digits = remember(lineCount) { lineCount.toString().length }
-                        val gutterWidth = (digits * 9 + 18).dp.coerceAtLeast(36.dp)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
+                        if (showLineNumbers) {
+                            val digits = remember(lineCount) { lineCount.toString().length }
+                            val gutterWidth = (digits * 9 + 18).dp.coerceAtLeast(36.dp)
 
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(gutterWidth)
-                                .background(Md3LightCodeGutter)
-                                .verticalScroll(verticalScrollState)
-                                .padding(top = 12.dp, bottom = 12.dp, start = 4.dp, end = 6.dp)
-                        ) {
-                            Text(
-                                text = lineNumbersText,
-                                fontSize = fontSize.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = Md3LightTextTertiary,
-                                textAlign = TextAlign.End,
-                                lineHeight = (fontSize * 1.5).sp,
-                                modifier = Modifier.fillMaxWidth()
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(gutterWidth)
+                                    .background(Md3LightCodeGutter)
+                                    .verticalScroll(verticalScrollState)
+                                    .padding(top = 12.dp, bottom = if (!isWordWrapEnabled) 20.dp else 12.dp, start = 4.dp, end = 6.dp)
+                            ) {
+                                Text(
+                                    text = lineNumbersText,
+                                    fontSize = fontSize.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Md3LightTextTertiary,
+                                    textAlign = TextAlign.End,
+                                    lineHeight = (fontSize * 1.5).sp,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            // Gutter Divider
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(1.dp)
+                                    .background(Md3LightCodeBorder)
                             )
                         }
 
-                        // Gutter Divider
-                        Box(
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .width(1.dp)
-                                .background(Md3LightCodeBorder)
+                        // Text Editor Field
+                        val textModifier = if (isWordWrapEnabled) {
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(verticalScrollState)
+                                .padding(top = 12.dp, bottom = 12.dp, start = 12.dp, end = 18.dp)
+                        } else {
+                            Modifier
+                                .fillMaxSize()
+                                .verticalScroll(verticalScrollState)
+                                .horizontalScroll(horizontalScrollState)
+                                .padding(top = 12.dp, bottom = 20.dp, start = 12.dp, end = 24.dp)
+                        }
+
+                        BasicTextField(
+                            value = content,
+                            onValueChange = { handleTextChange(it) },
+                            modifier = textModifier.testTag("code_editor_textarea"),
+                            textStyle = TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = fontSize.sp,
+                                color = Md3LightTextPrimary,
+                                lineHeight = (fontSize * 1.5).sp
+                            ),
+                            cursorBrush = SolidColor(GitHubBlue)
                         )
                     }
 
-                    // Text Editor Field
-                    val textModifier = if (isWordWrapEnabled) {
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(verticalScrollState)
-                            .padding(12.dp)
-                    } else {
-                        Modifier
-                            .fillMaxSize()
-                            .verticalScroll(verticalScrollState)
-                            .horizontalScroll(horizontalScrollState)
-                            .padding(12.dp)
+                    // Vertical Right Scrollbar
+                    if (verticalScrollState.maxValue > 0) {
+                        val verticalFraction = verticalScrollState.value.toFloat() / verticalScrollState.maxValue.toFloat()
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .width(6.dp)
+                                .padding(vertical = 4.dp, horizontal = 1.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .fillMaxHeight(0.2f)
+                                    .fillMaxWidth()
+                                    .graphicsLayer {
+                                        // Offset vertically proportional to scroll position
+                                        val availableSpace = size.height * 4f // 1f - 0.2f = 0.8f fraction space
+                                        translationY = verticalFraction * availableSpace
+                                    }
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Md3LightTextSecondary.copy(alpha = 0.45f))
+                            )
+                        }
                     }
 
-                    BasicTextField(
-                        value = content,
-                        onValueChange = { handleTextChange(it) },
-                        modifier = textModifier.testTag("code_editor_textarea"),
-                        textStyle = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = fontSize.sp,
-                            color = Md3LightTextPrimary,
-                            lineHeight = (fontSize * 1.5).sp
-                        ),
-                        cursorBrush = SolidColor(GitHubBlue)
-                    )
+                    // Horizontal Bottom Scrollbar (Hidden if word wrapping is enabled or max scroll <= 0)
+                    if (!isWordWrapEnabled && horizontalScrollState.maxValue > 0) {
+                        val horizontalFraction = horizontalScrollState.value.toFloat() / horizontalScrollState.maxValue.toFloat()
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .height(6.dp)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .fillMaxWidth(0.25f)
+                                    .fillMaxHeight()
+                                    .graphicsLayer {
+                                        val availableSpace = size.width * 3f // 1f - 0.25f = 0.75f fraction space
+                                        translationX = horizontalFraction * availableSpace
+                                    }
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Md3LightTextSecondary.copy(alpha = 0.45f))
+                            )
+                        }
+                    }
                 }
             }
         }
