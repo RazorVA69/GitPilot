@@ -298,7 +298,7 @@ fun CreateOrUploadModal(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Quick Path Selector Chips
+                // Quick Path Selector Chips (Smooth pills, no cut-off corners)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -310,11 +310,19 @@ fun CreateOrUploadModal(
                         selected = targetDirectory.isBlank(),
                         onClick = { targetDirectory = "" },
                         label = { Text("Repo Root ( / )", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Folder,
+                                contentDescription = null,
+                                tint = GitHubBlue,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        },
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Md3LightPrimaryContainer,
                             selectedLabelColor = Md3LightPrimary
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(16.dp)
                     )
 
                     if (initialDirectory.isNotBlank()) {
@@ -322,11 +330,19 @@ fun CreateOrUploadModal(
                             selected = targetDirectory == initialDirectory,
                             onClick = { targetDirectory = initialDirectory },
                             label = { Text("Current ($initialDirectory)", fontSize = 11.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Folder,
+                                    contentDescription = null,
+                                    tint = GitHubBlue,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            },
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = Md3LightPrimaryContainer,
                                 selectedLabelColor = Md3LightPrimary
                             ),
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(16.dp)
                         )
                     }
 
@@ -341,7 +357,15 @@ fun CreateOrUploadModal(
                                         Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp))
                                     }
                                 },
-                                shape = RoundedCornerShape(8.dp)
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = GitHubBlue,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                },
+                                shape = RoundedCornerShape(16.dp)
                             )
 
                             DropdownMenu(
@@ -380,7 +404,7 @@ fun CreateOrUploadModal(
                         .testTag("target_dir_input"),
                     placeholder = { Text("Leave blank for repo root or enter folder path...") },
                     leadingIcon = {
-                        Icon(Icons.Default.Folder, contentDescription = null, tint = GitHubYellow, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Default.Folder, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(20.dp))
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(

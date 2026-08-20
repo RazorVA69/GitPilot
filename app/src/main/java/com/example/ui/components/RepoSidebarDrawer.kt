@@ -365,7 +365,7 @@ fun RepoSidebarDrawer(
                             selectedContainerColor = Md3LightPrimaryContainer,
                             selectedLabelColor = Md3LightPrimary
                         ),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(16.dp)
                     )
                 }
             }

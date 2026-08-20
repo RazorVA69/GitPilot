@@ -504,7 +504,7 @@ fun DeviceStorageExplorerModal(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pinned",
-                        tint = GitHubYellow,
+                        tint = GitHubBlue,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -516,73 +516,78 @@ fun DeviceStorageExplorerModal(
                     )
                 }
 
-                // Render Pinned Folder Chips
+                // Render Pinned Folder Pills (Smooth rounded shape, never cut off, any folder can be unpinned)
                 pinnedFolderPaths.forEach { path ->
                     val file = File(path)
                     val label = if (path == defaultRoot.absolutePath) "Storage Root" else file.name
                     val isCurrent = currentDir.absolutePath == path
 
-                    FilterChip(
-                        selected = isCurrent,
-                        onClick = {
-                            if (file.exists() && file.canRead()) {
-                                currentDir = file
-                            }
-                        },
-                        label = {
-                            Text(
-                                text = label,
-                                fontSize = 11.sp,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        leadingIcon = {
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable {
+                                if (file.exists() && file.canRead()) {
+                                    currentDir = file
+                                }
+                            },
+                        color = if (isCurrent) Md3LightPrimaryContainer else Md3LightSurfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isCurrent) Md3LightPrimary.copy(alpha = 0.5f) else Md3LightOutlineVariant
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = if (isCurrent) Md3LightPrimary else GitHubYellow
+                                tint = GitHubBlue
                             )
-                        },
-                        trailingIcon = {
-                            if (path != defaultRoot.absolutePath) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Unpin",
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .clickable { folderToUnpinPrompt = path },
-                                    tint = Md3LightTextTertiary
-                                )
-                            }
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Md3LightPrimaryContainer,
-                            selectedLabelColor = Md3LightPrimary
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = label,
+                                fontSize = 11.sp,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrent) Md3LightPrimary else Md3LightTextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Unpin",
+                                modifier = Modifier
+                                    .size(13.dp)
+                                    .clip(CircleShape)
+                                    .clickable { folderToUnpinPrompt = path },
+                                tint = Md3LightTextTertiary
+                            )
+                        }
+                    }
                 }
 
-                // Button to Pin Current Directory
+                // Button to Pin Current Directory (Smooth pill, no cut corners)
                 val isAlreadyPinned = pinnedFolderPaths.contains(currentDir.absolutePath)
                 if (!isAlreadyPinned) {
                     Surface(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable { pinCurrentFolder() },
                         color = GitHubGreen.copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
                                 tint = GitHubGreen,
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -764,7 +769,7 @@ fun DeviceStorageExplorerModal(
                                     Icon(
                                         imageVector = Icons.Default.Folder,
                                         contentDescription = "Folder",
-                                        tint = GitHubYellow,
+                                        tint = GitHubBlue,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 } else {

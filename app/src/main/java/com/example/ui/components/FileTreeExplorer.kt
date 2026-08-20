@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -539,7 +540,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pinned",
-                        tint = GitHubYellow,
+                        tint = GitHubBlue,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -551,66 +552,73 @@ fun FileTreeExplorer(
                     )
                 }
 
-                // Pinned Folder Chips
+                // Pinned Folder Pills (Smooth rounded pill shape with unpin support)
                 pinnedFolders.forEach { folderPath ->
                     val displayName = folderPath.substringAfterLast('/')
                     val isCurrent = currentPath == folderPath
 
-                    FilterChip(
-                        selected = isCurrent,
-                        onClick = { onNavigateToDir(folderPath) },
-                        label = {
-                            Text(
-                                text = displayName,
-                                fontSize = 11.sp,
-                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        leadingIcon = {
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onNavigateToDir(folderPath) },
+                        color = if (isCurrent) Md3LightPrimaryContainer else Md3LightSurfaceVariant,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isCurrent) Md3LightPrimary.copy(alpha = 0.5f) else Md3LightOutlineVariant
+                        ),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = if (isCurrent) Md3LightPrimary else GitHubYellow
+                                tint = GitHubBlue
                             )
-                        },
-                        trailingIcon = {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = displayName,
+                                fontSize = 11.sp,
+                                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isCurrent) Md3LightPrimary else Md3LightTextPrimary
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Unpin",
                                 modifier = Modifier
-                                    .size(14.dp)
+                                    .size(13.dp)
+                                    .clip(CircleShape)
                                     .clickable { onTogglePinFolder(folderPath) },
                                 tint = Md3LightTextTertiary
                             )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Md3LightPrimaryContainer,
-                            selectedLabelColor = Md3LightPrimary
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
+                        }
+                    }
                 }
 
-                // Pin Current Directory Quick Action
+                // Pin Current Directory Quick Action (Smooth pill with clean borders)
                 if (currentPath.isNotBlank() && !pinnedFolders.contains(currentPath)) {
                     val currentFolderName = currentPath.substringAfterLast('/')
                     Surface(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(16.dp))
                             .clickable { onTogglePinFolder(currentPath) },
                         color = GitHubGreen.copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f)),
+                        shape = RoundedCornerShape(16.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
                                 tint = GitHubGreen,
-                                modifier = Modifier.size(12.dp)
+                                modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
@@ -889,7 +897,7 @@ private fun BreadcrumbBar(
                 Icon(
                     imageVector = Icons.Default.Folder,
                     contentDescription = "Root",
-                    tint = GitHubYellow,
+                    tint = GitHubBlue,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
@@ -1030,7 +1038,7 @@ private fun ExplorerItemRow(
             Icon(
                 imageVector = Icons.Default.Folder,
                 contentDescription = "Directory",
-                tint = GitHubYellow,
+                tint = GitHubBlue,
                 modifier = Modifier.size(24.dp)
             )
         } else {
@@ -1058,7 +1066,7 @@ private fun ExplorerItemRow(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pinned",
-                        tint = GitHubYellow,
+                        tint = GitHubBlue,
                         modifier = Modifier.size(13.dp)
                     )
                 }
