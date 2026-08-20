@@ -411,140 +411,145 @@ fun RepoSidebarDrawer(
                             val isPinned = pinnedRepoIds.contains(repo.id)
                             val isWorking = workingRepoId == repo.id
 
-                            Surface(
+                            Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .animateItem()
-                                    .combinedClickable(
-                                        onClick = {
-                                            onSelectRepo(repo)
-                                            onCloseSidebar()
-                                        },
-                                        onLongClick = {
-                                            selectedRepoForActions = repo
-                                        }
-                                    )
-                                    .testTag("sidebar_repo_item_${repo.name}"),
-                                color = if (isSelected) Md3LightPrimaryContainer.copy(alpha = 0.5f) else Color.Transparent
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = if (repo.private) Icons.Default.Lock else (if (repo.fork) Icons.Default.ForkRight else Icons.Default.Book),
-                                            contentDescription = null,
-                                            tint = if (isSelected) Md3LightPrimary else (if (isPinned) GitHubYellow else Md3LightTextSecondary),
-                                            modifier = Modifier.size(16.dp)
-                                        )
-
-                                        Spacer(modifier = Modifier.width(10.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text(
-                                                    text = repo.name,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = if (isSelected || isPinned) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isSelected) Md3LightPrimary else Md3LightTextPrimary,
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-
-                                                if (isPinned) {
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Icon(
-                                                        imageVector = Icons.Default.PushPin,
-                                                        contentDescription = "Pinned",
-                                                        tint = GitHubYellow,
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                }
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {
+                                                onSelectRepo(repo)
+                                                onCloseSidebar()
+                                            },
+                                            onLongClick = {
+                                                selectedRepoForActions = repo
                                             }
+                                        )
+                                        .testTag("sidebar_repo_item_${repo.name}"),
+                                    color = if (isSelected) Md3LightPrimaryContainer.copy(alpha = 0.5f) else Color.Transparent
+                                ) {
+                                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = if (repo.private) Icons.Default.Lock else (if (repo.fork) Icons.Default.ForkRight else Icons.Default.Book),
+                                                contentDescription = null,
+                                                tint = if (isSelected) Md3LightPrimary else (if (isPinned) GitHubYellow else Md3LightTextSecondary),
+                                                modifier = Modifier.size(16.dp)
+                                            )
 
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                if (isWorking) {
-                                                    Surface(
-                                                        shape = RoundedCornerShape(4.dp),
-                                                        color = GitHubGreen.copy(alpha = 0.15f)
-                                                    ) {
-                                                        Row(
-                                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                            verticalAlignment = Alignment.CenterVertically
+                                            Spacer(modifier = Modifier.width(10.dp))
+
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        text = repo.name,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = if (isSelected || isPinned) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isSelected) Md3LightPrimary else Md3LightTextPrimary,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+
+                                                    if (isPinned) {
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Icon(
+                                                            imageVector = Icons.Default.PushPin,
+                                                            contentDescription = "Pinned",
+                                                            tint = GitHubYellow,
+                                                            modifier = Modifier.size(12.dp)
+                                                        )
+                                                    }
+                                                }
+
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    if (isWorking) {
+                                                        Surface(
+                                                            shape = RoundedCornerShape(4.dp),
+                                                            color = GitHubGreen.copy(alpha = 0.15f)
                                                         ) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.Bolt,
-                                                                contentDescription = null,
-                                                                tint = GitHubGreen,
-                                                                modifier = Modifier.size(10.dp)
+                                                            Row(
+                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.Bolt,
+                                                                    contentDescription = null,
+                                                                    tint = GitHubGreen,
+                                                                    modifier = Modifier.size(10.dp)
+                                                                )
+                                                                Text(
+                                                                    text = "Working Repo",
+                                                                    fontSize = 9.sp,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = GitHubGreen
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (!repo.language.isNullOrBlank()) {
+                                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(6.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(getLanguageColor(repo.language))
                                                             )
+                                                            Spacer(modifier = Modifier.width(4.dp))
                                                             Text(
-                                                                text = "Working Repo",
-                                                                fontSize = 9.sp,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = GitHubGreen
+                                                                text = repo.language,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = Md3LightTextSecondary,
+                                                                fontSize = 10.sp
                                                             )
                                                         }
                                                     }
                                                 }
+                                            }
 
-                                                if (!repo.language.isNullOrBlank()) {
-                                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(6.dp)
-                                                                .clip(CircleShape)
-                                                                .background(getLanguageColor(repo.language))
-                                                        )
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Text(
-                                                            text = repo.language,
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            color = Md3LightTextSecondary,
-                                                            fontSize = 10.sp
-                                                        )
-                                                    }
+                                            if (repo.stargazersCount > 0) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Star,
+                                                        contentDescription = null,
+                                                        tint = GitHubYellow,
+                                                        modifier = Modifier.size(12.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(2.dp))
+                                                    Text(
+                                                        text = "${repo.stargazersCount}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = Md3LightTextSecondary,
+                                                        fontSize = 10.sp
+                                                    )
                                                 }
                                             }
-                                        }
 
-                                        if (repo.stargazersCount > 0) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = { selectedRepoForActions = repo },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
                                                 Icon(
-                                                    imageVector = Icons.Default.Star,
-                                                    contentDescription = null,
-                                                    tint = GitHubYellow,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(2.dp))
-                                                Text(
-                                                    text = "${repo.stargazersCount}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = Md3LightTextSecondary,
-                                                    fontSize = 10.sp
+                                                    imageVector = Icons.Default.MoreVert,
+                                                    contentDescription = "Repo options",
+                                                    tint = Md3LightTextTertiary,
+                                                    modifier = Modifier.size(16.dp)
                                                 )
                                             }
-                                        }
-
-                                        IconButton(
-                                            onClick = { selectedRepoForActions = repo },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.MoreVert,
-                                                contentDescription = "Repo options",
-                                                tint = Md3LightTextTertiary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
                                         }
                                     }
                                 }
+                                HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.4f), thickness = 0.5.dp)
                             }
-                            HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.4f), thickness = 0.5.dp)
                         }
                     }
                 }

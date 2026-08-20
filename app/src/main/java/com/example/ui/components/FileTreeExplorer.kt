@@ -315,12 +315,57 @@ fun FileTreeExplorer(
                 }
             },
             actions = {
-                // Back to Repositories
-                IconButton(onClick = onNavigateToReposList) {
+                // Search Files Button
+                IconButton(
+                    onClick = { isSearchExpanded = !isSearchExpanded },
+                    modifier = Modifier.testTag("explorer_search_toggle_btn")
+                ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back to Repositories",
-                        tint = Md3LightTextSecondary
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search Files",
+                        tint = if (isSearchExpanded) GitHubBlue else Md3LightTextPrimary
+                    )
+                }
+
+                // Multi-Select Mode Button
+                IconButton(
+                    onClick = onToggleBatchMode,
+                    modifier = Modifier.testTag("explorer_multiselect_btn")
+                ) {
+                    if (isBatchMode) {
+                        Surface(
+                            shape = CircleShape,
+                            color = GitHubGreen.copy(alpha = 0.15f),
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Checklist,
+                                    contentDescription = "Exit Multi-Select",
+                                    tint = GitHubGreen,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Checklist,
+                            contentDescription = "Multi-Select Mode",
+                            tint = Md3LightTextPrimary
+                        )
+                    }
+                }
+
+                // Sync & Refresh Button
+                IconButton(
+                    onClick = onRefresh,
+                    modifier = Modifier.testTag("explorer_sync_btn")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Sync,
+                        contentDescription = "Sync Repository",
+                        tint = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitHubBlue else Md3LightTextPrimary,
+                        modifier = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) Modifier.rotate(syncRotation) else Modifier
                     )
                 }
 
@@ -353,47 +398,6 @@ fun FileTreeExplorer(
                         expanded = showOverflowMenu,
                         onDismissRequest = { showOverflowMenu = false }
                     ) {
-                        DropdownMenuItem(
-                            text = { Text("Search Files") },
-                            leadingIcon = {
-                                Icon(Icons.Default.Search, contentDescription = null, tint = GitHubBlue)
-                            },
-                            onClick = {
-                                isSearchExpanded = true
-                                showOverflowMenu = false
-                            }
-                        )
-
-                        DropdownMenuItem(
-                            text = {
-                                Text(if (isBatchMode) "Exit Multi-Select Mode" else "Multi-Select Mode")
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Checklist,
-                                    contentDescription = null,
-                                    tint = if (isBatchMode) GitHubGreen else Md3LightTextSecondary
-                                )
-                            },
-                            onClick = {
-                                onToggleBatchMode()
-                                showOverflowMenu = false
-                            }
-                        )
-
-                        DropdownMenuItem(
-                            text = { Text("Sync & Refresh Tree") },
-                            leadingIcon = {
-                                Icon(Icons.Default.Refresh, contentDescription = null, tint = GitHubBlue)
-                            },
-                            onClick = {
-                                onRefresh()
-                                showOverflowMenu = false
-                            }
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
                         Text(
                             text = "SORT BY",
                             style = MaterialTheme.typography.labelSmall,
@@ -478,6 +482,8 @@ fun FileTreeExplorer(
                             }
                         )
 
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
                         DropdownMenuItem(
                             text = {
                                 Row(
@@ -496,6 +502,19 @@ fun FileTreeExplorer(
                             },
                             onClick = {
                                 onToggleFileTreeSortReverse()
+                                showOverflowMenu = false
+                            }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        DropdownMenuItem(
+                            text = { Text("Back to Repositories") },
+                            leadingIcon = {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Md3LightTextSecondary)
+                            },
+                            onClick = {
+                                onNavigateToReposList()
                                 showOverflowMenu = false
                             }
                         )
@@ -789,6 +808,7 @@ fun FileTreeExplorer(
                     selectedFilePaths = selectedFilePaths,
                     onOpenFile = onOpenFile,
                     onToggleSelect = onToggleSelectFile,
+                    onToggleBatchMode = onToggleBatchMode,
                     onCutItem = onCutItem,
                     onCopyItem = onCopyItem,
                     onDeleteSingle = onDeleteSingleFile
@@ -887,8 +907,13 @@ fun FileTreeExplorer(
                                     }
                                 },
                                 onLongClick = {
+                                    if (!isBatchMode) {
+                                        onToggleBatchMode()
+                                    }
                                     if (childNode.isDirectory) {
-                                        folderForActionDialog = childNode
+                                        onToggleSelectFolder(childNode.path)
+                                    } else {
+                                        onToggleSelectFile(childNode.path)
                                     }
                                 },
                                 onToggleSelect = {
@@ -1329,6 +1354,7 @@ private fun ExplorerItemRow(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SearchResultsList(
     items: List<GitTreeItem>,
@@ -1337,6 +1363,7 @@ private fun SearchResultsList(
     selectedFilePaths: Set<String>,
     onOpenFile: (GitTreeItem) -> Unit,
     onToggleSelect: (String) -> Unit,
+    onToggleBatchMode: () -> Unit = {},
     onCutItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onCopyItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onDeleteSingle: (path: String, sha: String) -> Unit
@@ -1381,10 +1408,18 @@ private fun SearchResultsList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
-                            if (isBatchMode) onToggleSelect(item.path)
-                            else onOpenFile(item)
-                        }
+                        .combinedClickable(
+                            onClick = {
+                                if (isBatchMode) onToggleSelect(item.path)
+                                else onOpenFile(item)
+                            },
+                            onLongClick = {
+                                if (!isBatchMode) {
+                                    onToggleBatchMode()
+                                }
+                                onToggleSelect(item.path)
+                            }
+                        )
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

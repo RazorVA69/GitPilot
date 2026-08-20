@@ -131,11 +131,14 @@ fun GitExplorerApp(
     BackHandler(
         enabled = uiState.isLeftDrawerOpen ||
                 uiState.activeFile != null ||
+                uiState.isBatchMode ||
+                uiState.selectedFilePaths.isNotEmpty() ||
                 (uiState.currentScreen == AppScreen.EXPLORER)
     ) {
         when {
             uiState.isLeftDrawerOpen -> viewModel.setLeftDrawerOpen(false)
             uiState.activeFile != null -> viewModel.closeFile()
+            uiState.isBatchMode || uiState.selectedFilePaths.isNotEmpty() -> viewModel.clearSelectionAndBatchMode()
             uiState.currentDirectoryPath.isNotEmpty() -> viewModel.navigateUp()
             uiState.currentScreen == AppScreen.EXPLORER -> viewModel.navigateToRepoList()
         }

@@ -497,7 +497,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 currentScreen = AppScreen.REPO_LIST,
                 isLeftDrawerOpen = false,
                 activeFile = null,
-                activeFilePath = null
+                activeFilePath = null,
+                isBatchMode = false,
+                selectedFilePaths = emptySet()
             )
         }
     }
@@ -653,6 +655,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     currentDirectoryPath = "",
                     activeFile = null,
                     activeFilePath = null,
+                    isBatchMode = false,
+                    selectedFilePaths = emptySet(),
                     pinnedFolders = savedPinnedFolders,
                     currentScreen = AppScreen.EXPLORER,
                     isLeftDrawerOpen = false,
@@ -781,7 +785,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update {
             it.copy(
                 currentDirectoryPath = path.trim('/'),
-                fileSearchQuery = ""
+                fileSearchQuery = "",
+                isBatchMode = false,
+                selectedFilePaths = emptySet()
             )
         }
     }
@@ -790,7 +796,25 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val current = _uiState.value.currentDirectoryPath
         if (current.isEmpty()) return
         val parent = if (current.contains('/')) current.substringBeforeLast('/') else ""
-        _uiState.update { it.copy(currentDirectoryPath = parent) }
+        _uiState.update {
+            it.copy(
+                currentDirectoryPath = parent,
+                isBatchMode = false,
+                selectedFilePaths = emptySet()
+            )
+        }
+    }
+
+    fun navigateHome() {
+        _uiState.update {
+            it.copy(
+                currentDirectoryPath = "",
+                activeFile = null,
+                activeFilePath = null,
+                isBatchMode = false,
+                selectedFilePaths = emptySet()
+            )
+        }
     }
 
     fun setFileSearchQuery(query: String) {
@@ -1175,6 +1199,24 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun clearSelection() {
         _uiState.update { it.copy(selectedFilePaths = emptySet()) }
+    }
+
+    fun clearSelectionAndBatchMode() {
+        _uiState.update {
+            it.copy(
+                isBatchMode = false,
+                selectedFilePaths = emptySet()
+            )
+        }
+    }
+
+    fun setBatchMode(enabled: Boolean) {
+        _uiState.update {
+            it.copy(
+                isBatchMode = enabled,
+                selectedFilePaths = if (!enabled) emptySet() else it.selectedFilePaths
+            )
+        }
     }
 
     fun clearSelectedFiles() {
