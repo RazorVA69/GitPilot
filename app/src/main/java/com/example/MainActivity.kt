@@ -184,6 +184,7 @@ fun GitExplorerApp(
                     RepoListScreen(
                         account = uiState.currentAccount,
                         repositories = uiState.filteredRepositories,
+                        allRepositories = uiState.repositories,
                         isLoading = uiState.isLoadingRepos,
                         searchQuery = uiState.repoSearchQuery,
                         filterType = uiState.repoFilterType,
@@ -235,6 +236,8 @@ fun GitExplorerApp(
                             pinnedFolders = uiState.pinnedFolders,
                             fileTreeSortOption = uiState.fileTreeSortOption,
                             isFileTreeSortReversed = uiState.isFileTreeSortReversed,
+                            clipboard = uiState.clipboard,
+                            isPasting = uiState.isPasting,
                             onBranchClick = { viewModel.setShowBranchSelector(true) },
                             onNavigateToDir = viewModel::navigateToDirectory,
                             onNavigateUp = viewModel::navigateUp,
@@ -252,6 +255,12 @@ fun GitExplorerApp(
                             onDeleteSingleFile = { path, sha ->
                                 viewModel.deleteSingleFile(path, sha)
                             },
+                            onCutItem = { path, isDir, sha -> viewModel.cutItem(path, isDir, sha) },
+                            onCopyItem = { path, isDir, sha -> viewModel.copyItem(path, isDir, sha) },
+                            onCutSelection = viewModel::cutSelection,
+                            onCopySelection = viewModel::copySelection,
+                            onClearClipboard = viewModel::clearClipboard,
+                            onPasteClipboard = viewModel::pasteClipboard,
                             onTogglePinFolder = viewModel::togglePinFolder,
                             onFileTreeSortChange = viewModel::setFileTreeSortOption,
                             onToggleFileTreeSortReverse = viewModel::toggleFileTreeSortReverse,
@@ -285,6 +294,7 @@ fun GitExplorerApp(
                 RepoSidebarDrawer(
                     account = uiState.currentAccount,
                     repositories = uiState.filteredRepositories,
+                    allRepositories = uiState.repositories,
                     selectedRepo = uiState.selectedRepo,
                     isLoading = uiState.isLoadingRepos,
                     searchQuery = uiState.repoSearchQuery,

@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +38,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
@@ -63,6 +67,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -71,6 +76,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -104,6 +110,7 @@ import com.example.ui.theme.Md3LightSurfaceVariant
 import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
 import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.viewmodel.ClipboardState
 import com.example.ui.viewmodel.FileTreeSortOption
 import com.example.ui.viewmodel.SyncStatus
 
@@ -125,6 +132,8 @@ fun FileTreeExplorer(
     pinnedFolders: Set<String> = emptySet(),
     fileTreeSortOption: FileTreeSortOption = FileTreeSortOption.FOLDERS_FIRST,
     isFileTreeSortReversed: Boolean = false,
+    clipboard: ClipboardState? = null,
+    isPasting: Boolean = false,
     onBranchClick: () -> Unit,
     onNavigateToDir: (String) -> Unit,
     onNavigateUp: () -> Unit,
@@ -140,6 +149,12 @@ fun FileTreeExplorer(
     onClearSelection: () -> Unit,
     onOpenBatchDeleteModal: () -> Unit,
     onDeleteSingleFile: (path: String, sha: String) -> Unit,
+    onCutItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
+    onCopyItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
+    onCutSelection: () -> Unit = {},
+    onCopySelection: () -> Unit = {},
+    onClearClipboard: () -> Unit = {},
+    onPasteClipboard: (destinationDir: String) -> Unit = {},
     onTogglePinFolder: (String) -> Unit = {},
     onFileTreeSortChange: (FileTreeSortOption) -> Unit = {},
     onToggleFileTreeSortReverse: () -> Unit = {},
@@ -149,6 +164,24 @@ fun FileTreeExplorer(
     var isSearchExpanded by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var folderForActionDialog by remember { mutableStateOf<ExplorerNode?>(null) }
+
+    // Scroll state memory per directory path
+    val folderScrollPositions = remember { mutableMapOf<String, Pair<Int, Int>>() }
+    val folderListState = remember(currentPath) {
+        LazyListState(
+            firstVisibleItemIndex = folderScrollPositions[currentPath]?.first ?: 0,
+            firstVisibleItemScrollOffset = folderScrollPositions[currentPath]?.second ?: 0
+        )
+    }
+
+    DisposableEffect(currentPath) {
+        onDispose {
+            folderScrollPositions[currentPath] = Pair(
+                folderListState.firstVisibleItemIndex,
+                folderListState.firstVisibleItemScrollOffset
+            )
+        }
+    }
 
     val infiniteTransition = rememberInfiniteTransition(label = "sync_spin")
     val syncRotation by infiniteTransition.animateFloat(
@@ -640,8 +673,91 @@ fun FileTreeExplorer(
                 selectedCount = selectedFilePaths.size,
                 onSelectAll = onSelectAllInDir,
                 onClear = onClearSelection,
+                onCut = onCutSelection,
+                onCopy = onCopySelection,
                 onDelete = onOpenBatchDeleteModal
             )
+        }
+
+        // Clipboard Floating Paste Indicator Bar
+        AnimatedVisibility(visible = clipboard != null) {
+            clipboard?.let { clip ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    color = Md3LightPrimaryContainer,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightPrimary.copy(alpha = 0.4f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(
+                                imageVector = if (clip.isCut) Icons.Default.ContentCut else Icons.Default.ContentCopy,
+                                contentDescription = null,
+                                tint = Md3LightPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "${if (clip.isCut) "Cut" else "Copied"} ${clip.items.size} item(s)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Md3LightPrimary
+                                )
+                                Text(
+                                    text = "Target: ${if (currentPath.isBlank()) "Root (/)" else "/$currentPath"}",
+                                    fontSize = 10.sp,
+                                    color = Md3LightTextSecondary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            TextButton(
+                                onClick = onClearClipboard,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Cancel", fontSize = 11.sp, color = Md3LightTextSecondary)
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { onPasteClipboard(currentPath) },
+                                enabled = !isPasting,
+                                colors = ButtonDefaults.buttonColors(containerColor = Md3LightPrimary),
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
+                            ) {
+                                if (isPasting) {
+                                    CircularProgressIndicator(
+                                        color = Color.White,
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Pasting...", fontSize = 11.sp)
+                                } else {
+                                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Paste Here", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Main Explorer Content List
@@ -673,6 +789,8 @@ fun FileTreeExplorer(
                     selectedFilePaths = selectedFilePaths,
                     onOpenFile = onOpenFile,
                     onToggleSelect = onToggleSelectFile,
+                    onCutItem = onCutItem,
+                    onCopyItem = onCopyItem,
                     onDeleteSingle = onDeleteSingleFile
                 )
             } else {
@@ -723,6 +841,7 @@ fun FileTreeExplorer(
                     }
                 } else {
                     LazyColumn(
+                        state = folderListState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 72.dp)
                     ) {
@@ -779,8 +898,11 @@ fun FileTreeExplorer(
                                         onToggleSelectFile(childNode.path)
                                     }
                                 },
+                                onCut = { onCutItem(childNode.path, childNode.isDirectory, childNode.sha) },
+                                onCopy = { onCopyItem(childNode.path, childNode.isDirectory, childNode.sha) },
                                 onDelete = { onDeleteSingleFile(childNode.path, childNode.sha) },
-                                onTogglePinFolder = { onTogglePinFolder(childNode.path) }
+                                onTogglePinFolder = { onTogglePinFolder(childNode.path) },
+                                modifier = Modifier.animateItem()
                             )
                         }
                     }
@@ -945,6 +1067,8 @@ private fun BatchActionBar(
     selectedCount: Int,
     onSelectAll: () -> Unit,
     onClear: () -> Unit,
+    onCut: () -> Unit = {},
+    onCopy: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     Surface(
@@ -952,42 +1076,77 @@ private fun BatchActionBar(
         color = Md3LightSurfaceVariant,
         border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = "$selectedCount selected",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = Md3LightPrimary
-                )
-                Spacer(modifier = Modifier.width(16.dp))
-                TextButton(onClick = onSelectAll) {
-                    Text("Select All", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                }
-                TextButton(onClick = onClear) {
-                    Text("Clear", fontSize = 12.sp, color = Md3LightTextSecondary)
-                }
-            }
-
-            Button(
-                onClick = onDelete,
-                enabled = selectedCount > 0,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Md3LightError,
-                    disabledContainerColor = Md3LightOutlineVariant
-                ),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Delete ($selectedCount)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "$selectedCount selected",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Md3LightPrimary
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    TextButton(
+                        onClick = onSelectAll,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("Select All", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    TextButton(
+                        onClick = onClear,
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Text("Clear", fontSize = 12.sp, color = Md3LightTextSecondary)
+                    }
+                }
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onCut,
+                        enabled = selectedCount > 0,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCut, contentDescription = null, modifier = Modifier.size(14.dp), tint = Md3LightPrimary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Cut", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Md3LightPrimary)
+                    }
+
+                    OutlinedButton(
+                        onClick = onCopy,
+                        enabled = selectedCount > 0,
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = Md3LightPrimary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Copy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Md3LightPrimary)
+                    }
+
+                    Button(
+                        onClick = onDelete,
+                        enabled = selectedCount > 0,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Md3LightError,
+                            disabledContainerColor = Md3LightOutlineVariant
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Delete ($selectedCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
             }
         }
     }
@@ -1004,13 +1163,16 @@ private fun ExplorerItemRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onToggleSelect: () -> Unit,
+    onCut: () -> Unit = {},
+    onCopy: () -> Unit = {},
     onDelete: () -> Unit,
-    onTogglePinFolder: () -> Unit = {}
+    onTogglePinFolder: () -> Unit = {},
+    modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
@@ -1099,6 +1261,34 @@ private fun ExplorerItemRow(
                 expanded = showMenu,
                 onDismissRequest = { showMenu = false }
             ) {
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Cut (Move)")
+                        }
+                    },
+                    onClick = {
+                        onCut()
+                        showMenu = false
+                    }
+                )
+
+                DropdownMenuItem(
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Copy")
+                        }
+                    },
+                    onClick = {
+                        onCopy()
+                        showMenu = false
+                    }
+                )
+
                 if (node.isDirectory) {
                     DropdownMenuItem(
                         text = {
@@ -1147,6 +1337,8 @@ private fun SearchResultsList(
     selectedFilePaths: Set<String>,
     onOpenFile: (GitTreeItem) -> Unit,
     onToggleSelect: (String) -> Unit,
+    onCutItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
+    onCopyItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onDeleteSingle: (path: String, sha: String) -> Unit
 ) {
     if (items.isEmpty()) {
@@ -1184,6 +1376,7 @@ private fun SearchResultsList(
         ) {
             items(items, key = { it.path }) { item ->
                 val isSelected = selectedFilePaths.contains(item.path)
+                var showMenu by remember { mutableStateOf(false) }
 
                 Row(
                     modifier = Modifier
@@ -1239,6 +1432,68 @@ private fun SearchResultsList(
                             style = MaterialTheme.typography.labelSmall,
                             color = Md3LightTextTertiary
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { showMenu = true },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More actions",
+                                tint = Md3LightTextTertiary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.ContentCut, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Cut (Move)")
+                                    }
+                                },
+                                onClick = {
+                                    onCutItem(item.path, item.isDirectory, item.sha)
+                                    showMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Copy")
+                                    }
+                                },
+                                onClick = {
+                                    onCopyItem(item.path, item.isDirectory, item.sha)
+                                    showMenu = false
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Delete", color = Md3LightError)
+                                    }
+                                },
+                                onClick = {
+                                    onDeleteSingle(item.path, item.sha)
+                                    showMenu = false
+                                }
+                            )
+                        }
                     }
                 }
 

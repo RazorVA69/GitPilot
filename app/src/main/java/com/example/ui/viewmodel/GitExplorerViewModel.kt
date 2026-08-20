@@ -49,6 +49,21 @@ enum class FileTreeSortOption {
 
 enum class SyncStatus { IDLE, SYNCING, SYNCED, ERROR }
 
+data class ClipboardItem(
+    val path: String,
+    val isDirectory: Boolean,
+    val sha: String = "",
+    val name: String = path.substringAfterLast('/')
+)
+
+data class ClipboardState(
+    val items: List<ClipboardItem>,
+    val isCut: Boolean, // true for cut/move, false for copy
+    val sourceRepoOwner: String,
+    val sourceRepoName: String,
+    val sourceBranch: String
+)
+
 data class GitExplorerUiState(
     val currentScreen: AppScreen = AppScreen.LOGIN,
     val currentAccount: AccountEntity? = null,
@@ -86,6 +101,11 @@ data class GitExplorerUiState(
     val pinnedFolders: Set<String> = emptySet(), // Pinned folders for current repo
     val fileTreeSortOption: FileTreeSortOption = FileTreeSortOption.FOLDERS_FIRST,
     val isFileTreeSortReversed: Boolean = false,
+
+    // Clipboard (Cut / Copy / Paste)
+    val clipboard: ClipboardState? = null,
+    val isPasting: Boolean = false,
+    val pasteProgress: Triple<Int, Int, String>? = null,
 
     // Live Sync
     val syncStatus: SyncStatus = SyncStatus.IDLE,
@@ -1163,6 +1183,201 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun deleteSelectedFiles(commitMessage: String = "") {
         deleteSelectedBatch(commitMessage)
+    }
+
+    // ==========================================
+    // CLIPBOARD (CUT / COPY / PASTE)
+    // ==========================================
+
+    fun cutItem(path: String, isDirectory: Boolean, sha: String = "") {
+        val repo = _uiState.value.selectedRepo ?: return
+        val item = ClipboardItem(path = path, isDirectory = isDirectory, sha = sha)
+        _uiState.update {
+            it.copy(
+                clipboard = ClipboardState(
+                    items = listOf(item),
+                    isCut = true,
+                    sourceRepoOwner = repo.owner.login,
+                    sourceRepoName = repo.name,
+                    sourceBranch = it.selectedBranch
+                ),
+                toastOrMessage = "Cut \"${item.name}\""
+            )
+        }
+    }
+
+    fun copyItem(path: String, isDirectory: Boolean, sha: String = "") {
+        val repo = _uiState.value.selectedRepo ?: return
+        val item = ClipboardItem(path = path, isDirectory = isDirectory, sha = sha)
+        _uiState.update {
+            it.copy(
+                clipboard = ClipboardState(
+                    items = listOf(item),
+                    isCut = false,
+                    sourceRepoOwner = repo.owner.login,
+                    sourceRepoName = repo.name,
+                    sourceBranch = it.selectedBranch
+                ),
+                toastOrMessage = "Copied \"${item.name}\""
+            )
+        }
+    }
+
+    fun cutSelection() {
+        val repo = _uiState.value.selectedRepo ?: return
+        val selected = _uiState.value.selectedFilePaths
+        if (selected.isEmpty()) return
+
+        val items = selected.map { path ->
+            val isDir = _uiState.value.rawTreeItems.none { it.path == path } ||
+                    _uiState.value.rawTreeItems.any { it.path.startsWith("$path/") }
+            val sha = _uiState.value.rawTreeItems.find { it.path == path }?.sha ?: ""
+            ClipboardItem(path = path, isDirectory = isDir, sha = sha)
+        }
+
+        _uiState.update {
+            it.copy(
+                clipboard = ClipboardState(
+                    items = items,
+                    isCut = true,
+                    sourceRepoOwner = repo.owner.login,
+                    sourceRepoName = repo.name,
+                    sourceBranch = it.selectedBranch
+                ),
+                isBatchMode = false,
+                selectedFilePaths = emptySet(),
+                toastOrMessage = "Cut ${items.size} item(s)"
+            )
+        }
+    }
+
+    fun copySelection() {
+        val repo = _uiState.value.selectedRepo ?: return
+        val selected = _uiState.value.selectedFilePaths
+        if (selected.isEmpty()) return
+
+        val items = selected.map { path ->
+            val isDir = _uiState.value.rawTreeItems.none { it.path == path } ||
+                    _uiState.value.rawTreeItems.any { it.path.startsWith("$path/") }
+            val sha = _uiState.value.rawTreeItems.find { it.path == path }?.sha ?: ""
+            ClipboardItem(path = path, isDirectory = isDir, sha = sha)
+        }
+
+        _uiState.update {
+            it.copy(
+                clipboard = ClipboardState(
+                    items = items,
+                    isCut = false,
+                    sourceRepoOwner = repo.owner.login,
+                    sourceRepoName = repo.name,
+                    sourceBranch = it.selectedBranch
+                ),
+                isBatchMode = false,
+                selectedFilePaths = emptySet(),
+                toastOrMessage = "Copied ${items.size} item(s)"
+            )
+        }
+    }
+
+    fun clearClipboard() {
+        _uiState.update { it.copy(clipboard = null) }
+    }
+
+    fun pasteClipboard(targetDirectory: String) {
+        val repo = _uiState.value.selectedRepo ?: return
+        val clipboard = _uiState.value.clipboard ?: return
+        if (clipboard.items.isEmpty()) return
+
+        val cleanTarget = targetDirectory.trim().trim('/')
+        val branch = _uiState.value.selectedBranch
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isPasting = true,
+                    pasteProgress = Triple(0, clipboard.items.size, "Preparing to ${if (clipboard.isCut) "move" else "copy"}...")
+                )
+            }
+
+            val token = _uiState.value.currentAccount?.token
+            var successCount = 0
+            var failCount = 0
+
+            val rawTree = _uiState.value.rawTreeItems
+            val filesToProcess = mutableListOf<Pair<GitTreeItem, String>>() // Pair<srcItem, destFullPath>
+
+            for (clipItem in clipboard.items) {
+                if (clipItem.isDirectory) {
+                    val folderPrefix = "${clipItem.path}/"
+                    val dirFiles = rawTree.filter { !it.isDirectory && it.path.startsWith(folderPrefix) }
+                    for (df in dirFiles) {
+                        val relativeSubPath = df.path.removePrefix(clipItem.path).trimStart('/')
+                        val destPath = if (cleanTarget.isEmpty()) "${clipItem.name}/$relativeSubPath" else "$cleanTarget/${clipItem.name}/$relativeSubPath"
+                        filesToProcess.add(Pair(df, destPath))
+                    }
+                } else {
+                    val singleFile = rawTree.find { it.path == clipItem.path }
+                        ?: GitTreeItem(path = clipItem.path, type = "blob", sha = clipItem.sha)
+                    val destPath = if (cleanTarget.isEmpty()) clipItem.name else "$cleanTarget/${clipItem.name}"
+                    filesToProcess.add(Pair(singleFile, destPath))
+                }
+            }
+
+            val distinctFiles = filesToProcess.distinctBy { it.second }
+
+            for ((idx, filePair) in distinctFiles.withIndex()) {
+                val (srcItem, destPath) = filePair
+                _uiState.update {
+                    it.copy(pasteProgress = Triple(idx, distinctFiles.size, "${if (clipboard.isCut) "Moving" else "Copying"} ${srcItem.fileName}..."))
+                }
+
+                val contentResult = repository.getFileContent(token, clipboard.sourceRepoOwner, clipboard.sourceRepoName, srcItem.path, clipboard.sourceBranch)
+                if (contentResult.isSuccess) {
+                    val (_, decodedContent) = contentResult.getOrNull()!!
+                    val existingDestSha = rawTree.find { it.path == destPath }?.sha
+
+                    val commitResult = repository.commitFile(
+                        token = token,
+                        owner = repo.owner.login,
+                        repo = repo.name,
+                        path = destPath,
+                        content = decodedContent,
+                        message = "${if (clipboard.isCut) "Move" else "Copy"} ${srcItem.path} to $destPath",
+                        sha = existingDestSha,
+                        branch = branch
+                    )
+
+                    if (commitResult.isSuccess) {
+                        successCount++
+                        if (clipboard.isCut && srcItem.path != destPath) {
+                            repository.deleteFile(
+                                token = token,
+                                owner = clipboard.sourceRepoOwner,
+                                repo = clipboard.sourceRepoName,
+                                path = srcItem.path,
+                                sha = srcItem.sha,
+                                message = "Delete ${srcItem.path} after move",
+                                branch = clipboard.sourceBranch
+                            )
+                        }
+                    } else {
+                        failCount++
+                    }
+                } else {
+                    failCount++
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    isPasting = false,
+                    pasteProgress = null,
+                    clipboard = if (clipboard.isCut) null else clipboard,
+                    toastOrMessage = "${if (clipboard.isCut) "Moved" else "Copied"} $successCount item(s)" + if (failCount > 0) " ($failCount failed)" else ""
+                )
+            }
+            syncActiveRepository(isSilent = false)
+        }
     }
 
     // ==========================================

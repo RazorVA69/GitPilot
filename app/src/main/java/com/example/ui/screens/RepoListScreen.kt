@@ -19,7 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -96,6 +101,7 @@ import com.example.ui.viewmodel.RepoSortOption
 fun RepoListScreen(
     account: AccountEntity?,
     repositories: List<GitHubRepository>,
+    allRepositories: List<GitHubRepository> = repositories,
     isLoading: Boolean,
     searchQuery: String,
     filterType: RepoFilterType,
@@ -116,10 +122,13 @@ fun RepoListScreen(
     var isSearchVisible by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedRepoForActions by remember { mutableStateOf<GitHubRepository?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 
-    val publicCount = remember(repositories) { repositories.count { !it.private } }
-    val privateCount = remember(repositories) { repositories.count { it.private } }
-    val forksCount = remember(repositories) { repositories.count { it.fork } }
+    val allCount = remember(allRepositories) { allRepositories.size }
+    val publicCount = remember(allRepositories) { allRepositories.count { !it.private } }
+    val privateCount = remember(allRepositories) { allRepositories.count { it.private } }
+    val forksCount = remember(allRepositories) { allRepositories.count { it.fork } }
 
     Scaffold(
         topBar = {
@@ -134,7 +143,7 @@ fun RepoListScreen(
                         )
                         if (account != null) {
                             Text(
-                                text = "@${account.username} • ${repositories.size} repos",
+                                text = "@${account.username} • $allCount repos",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Md3LightTextSecondary
                             )
@@ -327,7 +336,7 @@ fun RepoListScreen(
                 FilterChip(
                     selected = filterType == RepoFilterType.ALL,
                     onClick = { onFilterChange(RepoFilterType.ALL) },
-                    label = { Text("All (${repositories.size})", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
+                    label = { Text("All ($allCount)", fontSize = 12.sp, fontWeight = FontWeight.SemiBold) },
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = Md3LightPrimaryContainer,
                         selectedLabelColor = Md3LightPrimary
@@ -407,6 +416,7 @@ fun RepoListScreen(
                 }
             } else {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -417,7 +427,8 @@ fun RepoListScreen(
                             isPinned = pinnedRepoIds.contains(repo.id),
                             isWorking = workingRepoId == repo.id,
                             onClick = { onSelectRepo(repo) },
-                            onLongClick = { selectedRepoForActions = repo }
+                            onLongClick = { selectedRepoForActions = repo },
+                            modifier = Modifier.animateItem()
                         )
                     }
                 }
@@ -457,6 +468,7 @@ fun RepoListScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 onTogglePinRepo(repo.id)
+                                coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
                         color = Md3LightSurfaceVariant
@@ -494,6 +506,7 @@ fun RepoListScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 onSetWorkingRepo(if (isWorking) null else repo.id)
+                                coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
                         color = if (isWorking) GitHubGreen.copy(alpha = 0.12f) else Md3LightSurfaceVariant

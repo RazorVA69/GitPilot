@@ -21,7 +21,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -97,6 +101,7 @@ import com.example.ui.viewmodel.RepoSortOption
 fun RepoSidebarDrawer(
     account: AccountEntity?,
     repositories: List<GitHubRepository>,
+    allRepositories: List<GitHubRepository> = repositories,
     selectedRepo: GitHubRepository?,
     isLoading: Boolean,
     searchQuery: String,
@@ -119,6 +124,13 @@ fun RepoSidebarDrawer(
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedRepoForActions by remember { mutableStateOf<GitHubRepository?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
+
+    val allCount = remember(allRepositories) { allRepositories.size }
+    val publicCount = remember(allRepositories) { allRepositories.count { !it.private } }
+    val privateCount = remember(allRepositories) { allRepositories.count { it.private } }
+    val forksCount = remember(allRepositories) { allRepositories.count { it.fork } }
 
     Surface(
         modifier = modifier
@@ -353,10 +365,10 @@ fun RepoSidebarDrawer(
                         label = {
                             Text(
                                 text = when (filter) {
-                                    RepoFilterType.ALL -> "All"
-                                    RepoFilterType.PUBLIC -> "Public"
-                                    RepoFilterType.PRIVATE -> "Private"
-                                    RepoFilterType.FORKS -> "Forks"
+                                    RepoFilterType.ALL -> "All ($allCount)"
+                                    RepoFilterType.PUBLIC -> "Public ($publicCount)"
+                                    RepoFilterType.PRIVATE -> "Private ($privateCount)"
+                                    RepoFilterType.FORKS -> "Forks ($forksCount)"
                                 },
                                 fontSize = 11.sp
                             )
@@ -390,6 +402,7 @@ fun RepoSidebarDrawer(
                     }
                 } else {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
@@ -401,6 +414,7 @@ fun RepoSidebarDrawer(
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .animateItem()
                                     .combinedClickable(
                                         onClick = {
                                             onSelectRepo(repo)
@@ -570,6 +584,7 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 onTogglePinRepo(repo.id)
+                                coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
                         color = Md3LightSurfaceVariant
@@ -607,6 +622,7 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable {
                                 onSetWorkingRepo(if (isWorking) null else repo.id)
+                                coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
                         color = if (isWorking) GitHubGreen.copy(alpha = 0.12f) else Md3LightSurfaceVariant
