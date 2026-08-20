@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -666,7 +669,10 @@ fun CodeEditorView(
                 val verticalScrollState = rememberScrollState()
                 val horizontalScrollState = rememberScrollState()
 
-                Box(modifier = Modifier.fillMaxSize()) {
+                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                    val containerHeight = maxHeight
+                    val containerWidth = maxWidth
+
                     Row(modifier = Modifier.fillMaxSize()) {
                         // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
                         if (showLineNumbers) {
@@ -730,52 +736,69 @@ fun CodeEditorView(
                     }
 
                     // Vertical Right Scrollbar
-                    if (verticalScrollState.maxValue > 0) {
-                        val verticalFraction = verticalScrollState.value.toFloat() / verticalScrollState.maxValue.toFloat()
+                    val vMax = verticalScrollState.maxValue
+                    if (vMax > 0) {
+                        val verticalFraction = (verticalScrollState.value.toFloat() / vMax.toFloat()).coerceIn(0f, 1f)
+                        val thumbHeight = (containerHeight * 0.25f).coerceIn(40.dp, 120.dp)
+                        val availableTrack = containerHeight - thumbHeight - 12.dp
+                        val offsetY = (availableTrack * verticalFraction).coerceAtLeast(0.dp)
+
                         Box(
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
                                 .fillMaxHeight()
-                                .width(6.dp)
+                                .width(8.dp)
                                 .padding(vertical = 4.dp, horizontal = 1.dp)
                         ) {
+                            // Track background
                             Box(
                                 modifier = Modifier
-                                    .align(Alignment.TopCenter)
-                                    .fillMaxHeight(0.2f)
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color.Black.copy(alpha = 0.05f))
+                            )
+                            // Scrollbar Thumb
+                            Box(
+                                modifier = Modifier
+                                    .offset(y = offsetY)
                                     .fillMaxWidth()
-                                    .graphicsLayer {
-                                        // Offset vertically proportional to scroll position
-                                        val availableSpace = size.height * 4f // 1f - 0.2f = 0.8f fraction space
-                                        translationY = verticalFraction * availableSpace
-                                    }
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Md3LightTextSecondary.copy(alpha = 0.45f))
+                                    .height(thumbHeight)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF57606A).copy(alpha = 0.8f))
                             )
                         }
                     }
 
                     // Horizontal Bottom Scrollbar (Hidden if word wrapping is enabled or max scroll <= 0)
-                    if (!isWordWrapEnabled && horizontalScrollState.maxValue > 0) {
-                        val horizontalFraction = horizontalScrollState.value.toFloat() / horizontalScrollState.maxValue.toFloat()
+                    val hMax = horizontalScrollState.maxValue
+                    if (!isWordWrapEnabled && hMax > 0) {
+                        val horizontalFraction = (horizontalScrollState.value.toFloat() / hMax.toFloat()).coerceIn(0f, 1f)
+                        val thumbWidth = (containerWidth * 0.3f).coerceIn(48.dp, 140.dp)
+                        val availableTrack = containerWidth - thumbWidth - 12.dp
+                        val offsetX = (availableTrack * horizontalFraction).coerceAtLeast(0.dp)
+
                         Box(
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
                                 .fillMaxWidth()
-                                .height(6.dp)
+                                .height(8.dp)
                                 .padding(horizontal = 4.dp, vertical = 1.dp)
                         ) {
+                            // Track background
                             Box(
                                 modifier = Modifier
-                                    .align(Alignment.CenterStart)
-                                    .fillMaxWidth(0.25f)
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color.Black.copy(alpha = 0.05f))
+                            )
+                            // Scrollbar Thumb
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = offsetX)
                                     .fillMaxHeight()
-                                    .graphicsLayer {
-                                        val availableSpace = size.width * 3f // 1f - 0.25f = 0.75f fraction space
-                                        translationX = horizontalFraction * availableSpace
-                                    }
-                                    .clip(RoundedCornerShape(3.dp))
-                                    .background(Md3LightTextSecondary.copy(alpha = 0.45f))
+                                    .width(thumbWidth)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Color(0xFF57606A).copy(alpha = 0.8f))
                             )
                         }
                     }
@@ -785,7 +808,9 @@ fun CodeEditorView(
 
         // BOTTOM STATUS BAR
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
             color = Md3LightSurface,
             border = androidx.compose.foundation.BorderStroke(0.5.dp, Md3LightOutlineVariant)
         ) {

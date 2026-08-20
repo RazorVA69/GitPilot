@@ -1,7 +1,7 @@
 package com.example.ui.components
 
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -417,9 +417,17 @@ fun RepoSidebarDrawer(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .animateItem(
-                                        placementSpec = spring(
-                                            dampingRatio = Spring.DampingRatioLowBouncy,
-                                            stiffness = Spring.StiffnessLow
+                                        placementSpec = tween(
+                                            durationMillis = 350,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        fadeInSpec = tween(
+                                            durationMillis = 250,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        fadeOutSpec = tween(
+                                            durationMillis = 250,
+                                            easing = FastOutSlowInEasing
                                         )
                                     )
                             ) {
