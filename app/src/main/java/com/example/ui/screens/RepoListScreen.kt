@@ -23,7 +23,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,24 +33,18 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -130,15 +124,15 @@ fun RepoListScreen(
                             text = "Repositories",
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = GitText1
+                            color = GitText1,
+                            fontSize = 18.sp
                         )
-                        if (account != null) {
-                            Text(
-                                text = "@${account.username} · $allCount repos",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = GitText2
-                            )
-                        }
+                        Text(
+                            text = "@${account?.username ?: "BlazeFTL"} · $allCount repos",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GitText2,
+                            fontSize = 12.sp
+                        )
                     }
                 },
                 navigationIcon = {
@@ -164,131 +158,27 @@ fun RepoListScreen(
                         Icon(
                             imageVector = if (isSearchVisible) Icons.Default.Close else Icons.Default.Search,
                             contentDescription = "Search",
-                            tint = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitText2
+                            tint = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitText1
                         )
                     }
 
-                    // Sort menu
-                    Box {
-                        IconButton(
-                            onClick = { showSortMenu = true },
-                            modifier = Modifier.testTag("repo_list_sort_btn")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sort,
-                                contentDescription = "Sort",
-                                tint = GitText2
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Last Activity")
-                                        if (sortOption == RepoSortOption.LAST_ACTIVITY) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.LAST_ACTIVITY)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Name (A → Z)")
-                                        if (sortOption == RepoSortOption.NAME_ASC) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.NAME_ASC)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Name (Z → A)")
-                                        if (sortOption == RepoSortOption.NAME_DESC) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.NAME_DESC)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Most Stars ⭐")
-                                        if (sortOption == RepoSortOption.STARS_DESC) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.STARS_DESC)
-                                    showSortMenu = false
-                                }
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onRefresh,
-                        modifier = Modifier.testTag("repo_list_refresh_btn")
+                    // Green Squircle Profile Badge (SS 2 style)
+                    Surface(
+                        modifier = Modifier
+                            .padding(end = 16.dp, start = 4.dp)
+                            .size(32.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(onClick = onOpenLeftDrawer),
+                        shape = RoundedCornerShape(8.dp),
+                        color = GitAccent
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh",
-                            tint = GitText2
-                        )
-                    }
-
-                    if (account != null) {
-                        if (account.avatarUrl != null) {
-                            AsyncImage(
-                                model = account.avatarUrl,
-                                contentDescription = "Avatar",
-                                modifier = Modifier
-                                    .padding(end = 12.dp)
-                                    .size(30.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(onClick = onOpenLeftDrawer)
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = account?.username?.take(1)?.uppercase() ?: "B",
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
                             )
-                        } else {
-                            Surface(
-                                modifier = Modifier
-                                    .padding(end = 12.dp)
-                                    .size(30.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable(onClick = onOpenLeftDrawer),
-                                shape = RoundedCornerShape(8.dp),
-                                color = GitAccent
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = account.username.take(1).uppercase(),
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 13.sp
-                                    )
-                                }
-                            }
                         }
                     }
                 },
@@ -298,13 +188,14 @@ fun RepoListScreen(
                 )
             )
         },
-        containerColor = GitBg,
+        containerColor = GitSurface,
         modifier = modifier
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .background(GitSurface)
         ) {
             // Instant Search Field
             AnimatedVisibility(visible = isSearchVisible || searchQuery.isNotEmpty()) {
@@ -313,7 +204,7 @@ fun RepoListScreen(
                     onValueChange = onSearchChange,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
                         .testTag("repo_list_search_input"),
                     placeholder = { Text("Filter repositories...", color = GitText3, fontSize = 13.sp) },
                     leadingIcon = {
@@ -331,18 +222,18 @@ fun RepoListScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GitAccent,
                         unfocusedBorderColor = GitBorderStrong,
-                        focusedContainerColor = GitSurface,
-                        unfocusedContainerColor = GitSurface
+                        focusedContainerColor = GitSurface2,
+                        unfocusedContainerColor = GitSurface2
                     )
                 )
             }
 
-            // Filter Chips Bar (HTML-style)
+            // Filter Chips Bar (SS 2 style)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 val filterItems = listOf(
@@ -365,9 +256,9 @@ fun RepoListScreen(
                         Text(
                             text = "$label · $count",
                             fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             color = if (isSelected) GitText1 else GitText2,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
                 }
@@ -375,16 +266,16 @@ fun RepoListScreen(
 
             HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
-            // Repositories List
+            // Repositories List (Continuous Flat List with Dividers matching SS 2)
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = Md3LightPrimary, modifier = Modifier.size(36.dp))
+                        CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(36.dp))
                         Spacer(modifier = Modifier.height(12.dp))
-                        Text("Loading repositories...", color = Md3LightTextSecondary)
+                        Text("Loading repositories...", color = GitText2, fontSize = 13.sp)
                     }
                 }
             } else if (repositories.isEmpty()) {
@@ -398,7 +289,7 @@ fun RepoListScreen(
                         Icon(
                             imageVector = Icons.Default.Book,
                             contentDescription = null,
-                            tint = Md3LightTextTertiary,
+                            tint = GitText3,
                             modifier = Modifier.size(54.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
@@ -406,25 +297,26 @@ fun RepoListScreen(
                             text = if (searchQuery.isNotEmpty()) "No repositories match \"$searchQuery\"" else "No repositories found",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Md3LightTextPrimary
+                            color = GitText1
                         )
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
                             text = "Check your filters or refresh to load repositories.",
                             style = MaterialTheme.typography.bodySmall,
-                            color = Md3LightTextSecondary
+                            color = GitText2
                         )
                     }
                 }
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(GitSurface),
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    items(repositories, key = { it.id }) { repo ->
-                        RepositoryCard(
+                    itemsIndexed(repositories, key = { _, repo -> repo.id }) { index, repo ->
+                        RepositoryRowItem(
                             repo = repo,
                             isPinned = pinnedRepoIds.contains(repo.id),
                             isWorking = workingRepoId == repo.id,
@@ -445,6 +337,11 @@ fun RepoListScreen(
                                 )
                             )
                         )
+                        HorizontalDivider(
+                            color = GitBorder,
+                            thickness = 1.dp,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
                     }
                 }
             }
@@ -463,7 +360,7 @@ fun RepoListScreen(
                     Icon(
                         imageVector = if (repo.private) Icons.Default.Lock else Icons.Default.Book,
                         contentDescription = null,
-                        tint = Md3LightPrimary,
+                        tint = GitAccent,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -472,7 +369,7 @@ fun RepoListScreen(
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select quick action for this repository:", fontSize = 13.sp, color = Md3LightTextSecondary)
+                    Text("Select quick action for this repository:", fontSize = 13.sp, color = GitText2)
 
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -486,7 +383,7 @@ fun RepoListScreen(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = Md3LightSurfaceVariant
+                        color = GitSurface2
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -495,7 +392,7 @@ fun RepoListScreen(
                             Icon(
                                 imageVector = Icons.Default.PushPin,
                                 contentDescription = null,
-                                tint = if (isPinned) GitHubYellow else Md3LightTextPrimary,
+                                tint = if (isPinned) GitYellow else GitText1,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
@@ -508,7 +405,7 @@ fun RepoListScreen(
                                 Text(
                                     text = if (isPinned) "Remove priority pin" else "Keep at the top of your sidebar & repo list",
                                     fontSize = 11.sp,
-                                    color = Md3LightTextSecondary
+                                    color = GitText2
                                 )
                             }
                         }
@@ -524,7 +421,7 @@ fun RepoListScreen(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = if (isWorking) GitHubGreen.copy(alpha = 0.12f) else Md3LightSurfaceVariant
+                        color = if (isWorking) GitAccentSoft else GitSurface2
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -533,7 +430,7 @@ fun RepoListScreen(
                             Icon(
                                 imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
-                                tint = if (isWorking) GitHubGreen else Md3LightTextPrimary,
+                                tint = if (isWorking) GitAccent else GitText1,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
@@ -542,12 +439,12 @@ fun RepoListScreen(
                                     text = if (isWorking) "Remove Working Repository" else "Set as Working Repository",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
-                                    color = if (isWorking) GitHubGreen else Md3LightTextPrimary
+                                    color = if (isWorking) GitAccent else GitText1
                                 )
                                 Text(
                                     text = "Auto-opens automatically whenever you launch the app",
                                     fontSize = 11.sp,
-                                    color = Md3LightTextSecondary
+                                    color = GitText2
                                 )
                             }
                         }
@@ -556,7 +453,7 @@ fun RepoListScreen(
             },
             confirmButton = {
                 TextButton(onClick = { selectedRepoForActions = null }) {
-                    Text("Close")
+                    Text("Close", color = GitAccent)
                 }
             }
         )
@@ -565,7 +462,7 @@ fun RepoListScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun RepositoryCard(
+fun RepositoryRowItem(
     repo: GitHubRepository,
     isPinned: Boolean = false,
     isWorking: Boolean = false,
@@ -573,117 +470,73 @@ fun RepositoryCard(
     onLongClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    Card(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .testTag("repo_card_${repo.name}"),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = GitSurface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
-        border = BorderStroke(
-            1.dp,
-            if (isWorking) GitAccent.copy(alpha = 0.8f) else if (isPinned) GitYellow.copy(alpha = 0.8f) else GitBorder
-        )
+            .testTag("repo_row_${repo.name}"),
+        color = GitSurface
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            // Repo Name & Badges
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp)
+        ) {
+            // Repo Name Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = when {
-                            repo.private -> Icons.Default.Lock
-                            repo.fork -> Icons.Default.ForkRight
-                            else -> Icons.Default.Book
-                        },
-                        contentDescription = null,
-                        tint = if (repo.private) GitYellow else GitAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = repo.name,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GitText1,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                Text(
+                    text = repo.name,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = GitText1,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
 
-                    if (isPinned) {
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = "Pinned",
-                            tint = GitYellow,
-                            modifier = Modifier.size(14.dp)
-                        )
-                    }
+                if (isPinned) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.PushPin,
+                        contentDescription = "Pinned",
+                        tint = GitYellow,
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    if (isWorking) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = GitAccentSoft,
-                            border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Bolt, contentDescription = null, tint = GitAccent, modifier = Modifier.size(12.dp))
-                                Spacer(modifier = Modifier.width(2.dp))
-                                Text("Working", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = GitAccent)
-                            }
-                        }
-                    }
-
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (repo.private) GitYellow.copy(alpha = 0.12f) else GitSurface2,
-                        border = BorderStroke(
-                            1.dp,
-                            if (repo.private) GitYellow.copy(alpha = 0.3f) else GitBorder
-                        )
-                    ) {
-                        Text(
-                            text = if (repo.private) "Private" else "Public",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (repo.private) GitYellow else GitText2,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                            fontSize = 11.sp
-                        )
-                    }
+                if (isWorking) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Icon(
+                        imageVector = Icons.Default.Bolt,
+                        contentDescription = "Working",
+                        tint = GitAccent,
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
             }
 
-            // Description
+            // Description Row (SS 2 format)
             if (!repo.description.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = repo.description,
-                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 13.sp,
                     color = GitText2,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                    overflow = TextOverflow.Ellipsis,
+                    lineHeight = 18.sp
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Metadata Row: Language, Stars, Forks, Default Branch
+            // Metadata Row (SS 2 format: Language dot + Name, Star count, Branch dot + Name)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -694,72 +547,54 @@ fun RepositoryCard(
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
                             modifier = Modifier
-                                .size(9.dp)
+                                .size(8.dp)
                                 .clip(CircleShape)
                                 .background(getLanguageColor(repo.language))
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = repo.language,
-                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 12.sp,
                             color = GitText2
                         )
                     }
                 }
 
-                // Stars
+                // Stars (SS 2: outlined star ☆ + count)
                 if (repo.stargazersCount > 0) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Star,
+                            imageVector = Icons.Outlined.StarOutline,
                             contentDescription = "Stars",
-                            tint = GitYellow,
-                            modifier = Modifier.size(13.dp)
+                            tint = GitText2,
+                            modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = "${repo.stargazersCount}",
-                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 12.sp,
                             color = GitText2
                         )
                     }
                 }
 
-                // Forks
-                if (repo.forksCount > 0) {
+                // Default branch with green dot
+                if (repo.defaultBranch.isNotBlank()) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.ForkRight,
-                            contentDescription = "Forks",
-                            tint = GitText2,
-                            modifier = Modifier.size(13.dp)
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .clip(CircleShape)
+                                .background(GitAccent)
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "${repo.forksCount}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = GitText2
+                            text = repo.defaultBranch,
+                            fontSize = 12.sp,
+                            color = GitAccent,
+                            fontWeight = FontWeight.Medium
                         )
                     }
-                }
-
-                // Default branch
-                Spacer(modifier = Modifier.weight(1f))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(GitAccent)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = repo.defaultBranch,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GitAccent,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium
-                    )
                 }
             }
         }

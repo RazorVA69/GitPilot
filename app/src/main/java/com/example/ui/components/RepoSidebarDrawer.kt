@@ -31,22 +31,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Book
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.ForkRight
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PushPin
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Sort
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.BookmarkBorder
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -153,143 +153,172 @@ fun RepoSidebarDrawer(
                 .fillMaxHeight()
                 .navigationBarsPadding()
         ) {
-            // Header: Account Info & Actions
-            Surface(
+            // Header: User Profile & Close button (SS 4)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding(),
-                color = GitSurface2
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Green Squircle Profile Avatar
+                        Surface(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp),
+                            color = GitAccent
+                        ) {
                             if (account?.avatarUrl != null) {
                                 AsyncImage(
                                     model = account.avatarUrl,
                                     contentDescription = "Avatar",
-                                    modifier = Modifier
-                                        .size(38.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                    modifier = Modifier.fillMaxSize()
                                 )
                             } else {
-                                Surface(
-                                    modifier = Modifier.size(38.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = GitAccent
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Text(
-                                            text = account?.username?.take(1)?.uppercase() ?: "P",
-                                            color = Color.White,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp
-                                        )
-                                    }
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = account?.username?.take(1)?.uppercase() ?: "B",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
                                 }
-                            }
-
-                            Spacer(modifier = Modifier.width(12.dp))
-
-                            Column {
-                                Text(
-                                    text = account?.name ?: (account?.username ?: "Public Mode"),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GitText1,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (account != null) "@${account.username}" else "Not logged in",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = GitText2
-                                )
                             }
                         }
 
-                        IconButton(
-                            onClick = onCloseSidebar,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .testTag("close_left_sidebar_btn")
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close Sidebar", tint = GitText2, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            Text(
+                                text = account?.name ?: (account?.username ?: "BlazeFTL"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = GitText1,
+                                fontSize = 15.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "@${account?.username ?: "BlazeFTL"}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GitText2,
+                                fontSize = 12.sp
+                            )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Action buttons (All Repos / Switch Account / Logout)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    IconButton(
+                        onClick = onCloseSidebar,
+                        modifier = Modifier
+                            .size(32.dp)
+                            .testTag("close_left_sidebar_btn")
                     ) {
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    onNavigateToAllRepos()
-                                    onCloseSidebar()
-                                },
-                            shape = RoundedCornerShape(8.dp),
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorder)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(Icons.Default.Dashboard, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("All Repos", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GitText1, maxLines = 1)
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Close Sidebar",
+                            tint = GitText2,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
 
-                        Surface(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable(onClick = onOpenLogin),
-                            shape = RoundedCornerShape(8.dp),
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorder)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Add, contentDescription = "Add Account", tint = GitText1, modifier = Modifier.size(16.dp))
-                            }
-                        }
+                Spacer(modifier = Modifier.height(14.dp))
 
-                        Surface(
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable(onClick = onLogout),
-                            shape = RoundedCornerShape(8.dp),
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorder)
+                // Action Pill Row: "⊞ All Repos", "+", "➔" (SS 4 style)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // All Repos Pill
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                onNavigateToAllRepos()
+                                onCloseSidebar()
+                            },
+                        shape = RoundedCornerShape(10.dp),
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Md3LightError, modifier = Modifier.size(16.dp))
-                            }
+                            Icon(
+                                imageVector = Icons.Default.GridView,
+                                contentDescription = null,
+                                tint = GitText1,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "All Repos",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GitText1,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    // Add / New Account Pill
+                    Surface(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onOpenLogin),
+                        shape = RoundedCornerShape(10.dp),
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorder)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add Account",
+                                tint = GitText1,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    // Logout / Switch Pill
+                    Surface(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable(onClick = onLogout),
+                        shape = RoundedCornerShape(10.dp),
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorder)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Logout,
+                                contentDescription = "Logout",
+                                tint = GitText1,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }
             }
 
-            HorizontalDivider(color = GitBorder, thickness = 1.dp)
-
-            // Search Bar & Sort Button
+            // Search Bar & Sort Button (SS 4 style)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
@@ -298,9 +327,90 @@ fun RepoSidebarDrawer(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("sidebar_repo_search_input"),
-                    placeholder = { Text("Filter repos...", fontSize = 12.sp, color = GitText3) },
+                    placeholder = { Text("Filter repos...", fontSize = 13.sp, color = GitText3) },
                     leadingIcon = {
                         Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2)
+                    },
+                    trailingIcon = {
+                        Box {
+                            IconButton(
+                                onClick = { showSortMenu = true },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SwapVert,
+                                    contentDescription = "Sort repos",
+                                    tint = GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Last Activity")
+                                            if (sortOption == RepoSortOption.LAST_ACTIVITY) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.LAST_ACTIVITY)
+                                        showSortMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Name (A → Z)")
+                                            if (sortOption == RepoSortOption.NAME_ASC) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.NAME_ASC)
+                                        showSortMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Name (Z → A)")
+                                            if (sortOption == RepoSortOption.NAME_DESC) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.NAME_DESC)
+                                        showSortMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Most Stars ⭐")
+                                            if (sortOption == RepoSortOption.STARS_DESC) {
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.STARS_DESC)
+                                        showSortMenu = false
+                                    }
+                                )
+                            }
+                        }
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -309,94 +419,16 @@ fun RepoSidebarDrawer(
                         focusedContainerColor = GitSurface2,
                         unfocusedContainerColor = GitSurface2
                     ),
-                    shape = RoundedCornerShape(8.dp)
+                    shape = RoundedCornerShape(10.dp)
                 )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Sort Dropdown
-                Box {
-                    IconButton(
-                        onClick = { showSortMenu = true },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort repos", tint = GitText2, modifier = Modifier.size(18.dp))
-                    }
-
-                    DropdownMenu(
-                        expanded = showSortMenu,
-                        onDismissRequest = { showSortMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Last Activity")
-                                    if (sortOption == RepoSortOption.LAST_ACTIVITY) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onSortChange(RepoSortOption.LAST_ACTIVITY)
-                                showSortMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Name (A → Z)")
-                                    if (sortOption == RepoSortOption.NAME_ASC) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onSortChange(RepoSortOption.NAME_ASC)
-                                showSortMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Name (Z → A)")
-                                    if (sortOption == RepoSortOption.NAME_DESC) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onSortChange(RepoSortOption.NAME_DESC)
-                                showSortMenu = false
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text("Most Stars ⭐")
-                                    if (sortOption == RepoSortOption.STARS_DESC) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            },
-                            onClick = {
-                                onSortChange(RepoSortOption.STARS_DESC)
-                                showSortMenu = false
-                            }
-                        )
-                    }
-                }
             }
 
-            // Filter Pills Bar
+            // Filter Chips Bar (SS 4 format: "All · 19", "Public · 18", "Private · 1", "Forks · 3")
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 val filters = listOf(
@@ -410,18 +442,18 @@ fun RepoSidebarDrawer(
                     val isSelected = filterType == filter
                     Surface(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
+                            .clip(RoundedCornerShape(8.dp))
                             .clickable { onFilterChange(filter) },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(8.dp),
                         color = if (isSelected) GitSurface2 else Color.Transparent,
                         border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else BorderStroke(1.dp, GitBorder)
                     ) {
                         Text(
-                            text = "$label ($count)",
+                            text = "$label · $count",
                             fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                             color = if (isSelected) GitText1 else GitText2,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         )
                     }
                 }
@@ -430,7 +462,7 @@ fun RepoSidebarDrawer(
             Spacer(modifier = Modifier.height(4.dp))
             HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
-            // Repositories List
+            // Repositories List (SS 4 layout)
             Box(modifier = Modifier.weight(1f)) {
                 if (isLoading) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -449,164 +481,101 @@ fun RepoSidebarDrawer(
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
                     ) {
                         items(repositories, key = { it.id }) { repo ->
                             val isSelected = selectedRepo?.id == repo.id
                             val isPinned = pinnedRepoIds.contains(repo.id)
                             val isWorking = workingRepoId == repo.id
 
-                            Column(
+                            Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .animateItem(
-                                        placementSpec = tween(
-                                            durationMillis = 350,
-                                            easing = FastOutSlowInEasing
-                                        ),
-                                        fadeInSpec = tween(
-                                            durationMillis = 250,
-                                            easing = FastOutSlowInEasing
-                                        ),
-                                        fadeOutSpec = tween(
-                                            durationMillis = 250,
-                                            easing = FastOutSlowInEasing
-                                        )
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .combinedClickable(
+                                        onClick = {
+                                            onSelectRepo(repo)
+                                            onCloseSidebar()
+                                        },
+                                        onLongClick = {
+                                            selectedRepoForActions = repo
+                                        }
                                     )
+                                    .testTag("sidebar_repo_item_${repo.name}"),
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) GitAccentSoft else Color.Transparent
                             ) {
-                                Surface(
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .combinedClickable(
-                                            onClick = {
-                                                onSelectRepo(repo)
-                                                onCloseSidebar()
-                                            },
-                                            onLongClick = {
-                                                selectedRepoForActions = repo
-                                            }
-                                        )
-                                        .testTag("sidebar_repo_item_${repo.name}"),
-                                    color = if (isSelected) GitAccentSoft else Color.Transparent
+                                        .padding(horizontal = 10.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
+                                    // Outlined File / Repo Icon (SS 4)
+                                    Icon(
+                                        imageVector = Icons.Outlined.Description,
+                                        contentDescription = null,
+                                        tint = if (isSelected) GitAccent else GitText3,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    // Repo Name
+                                    Text(
+                                        text = repo.name,
+                                        fontSize = 13.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) GitAccent else GitText1,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    // Pinned indicator if any
+                                    if (isPinned) {
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.PushPin,
+                                            contentDescription = "Pinned",
+                                            tint = GitYellow,
+                                            modifier = Modifier.size(12.dp)
+                                        )
+                                    }
+
+                                    // Stars (SS 4 format: ☆ count)
+                                    if (repo.stargazersCount > 0) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
-                                                imageVector = if (repo.private) Icons.Default.Lock else (if (repo.fork) Icons.Default.ForkRight else Icons.Default.Book),
+                                                imageVector = Icons.Outlined.StarOutline,
                                                 contentDescription = null,
-                                                tint = if (isSelected) GitAccent else (if (isPinned) GitYellow else GitText2),
-                                                modifier = Modifier.size(16.dp)
+                                                tint = if (isSelected) GitAccent else GitText3,
+                                                modifier = Modifier.size(13.dp)
                                             )
-
-                                            Spacer(modifier = Modifier.width(10.dp))
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Text(
-                                                        text = repo.name,
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        fontWeight = if (isSelected || isPinned) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isSelected) GitAccent else GitText1,
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-
-                                                    if (isPinned) {
-                                                        Spacer(modifier = Modifier.width(4.dp))
-                                                        Icon(
-                                                            imageVector = Icons.Default.PushPin,
-                                                            contentDescription = "Pinned",
-                                                            tint = GitYellow,
-                                                            modifier = Modifier.size(12.dp)
-                                                        )
-                                                    }
-                                                }
-
-                                                Row(
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                                ) {
-                                                    if (isWorking) {
-                                                        Surface(
-                                                            shape = RoundedCornerShape(4.dp),
-                                                            color = GitAccentSoft
-                                                        ) {
-                                                            Row(
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                Icon(
-                                                                    imageVector = Icons.Default.Bolt,
-                                                                    contentDescription = null,
-                                                                    tint = GitAccent,
-                                                                    modifier = Modifier.size(10.dp)
-                                                                )
-                                                                Text(
-                                                                    text = "Working Repo",
-                                                                    fontSize = 9.sp,
-                                                                    fontWeight = FontWeight.Bold,
-                                                                    color = GitAccent
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-
-                                                    if (!repo.language.isNullOrBlank()) {
-                                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                                            Box(
-                                                                modifier = Modifier
-                                                                    .size(6.dp)
-                                                                    .clip(CircleShape)
-                                                                    .background(getLanguageColor(repo.language))
-                                                            )
-                                                            Spacer(modifier = Modifier.width(4.dp))
-                                                            Text(
-                                                                text = repo.language,
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = GitText2,
-                                                                fontSize = 10.sp
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            if (repo.stargazersCount > 0) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Star,
-                                                        contentDescription = null,
-                                                        tint = GitYellow,
-                                                        modifier = Modifier.size(12.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(2.dp))
-                                                    Text(
-                                                        text = "${repo.stargazersCount}",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = GitText2,
-                                                        fontSize = 10.sp
-                                                    )
-                                                }
-                                            }
-
-                                            IconButton(
-                                                onClick = { selectedRepoForActions = repo },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.MoreVert,
-                                                    contentDescription = "Repo options",
-                                                    tint = GitText3,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text(
+                                                text = "${repo.stargazersCount}",
+                                                fontSize = 11.sp,
+                                                color = if (isSelected) GitAccent else GitText3
+                                            )
                                         }
                                     }
+
+                                    // 3 Dots Context Action
+                                    IconButton(
+                                        onClick = { selectedRepoForActions = repo },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Repo options",
+                                            tint = if (isSelected) GitAccent else GitText3,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
-                                HorizontalDivider(color = GitBorder, thickness = 1.dp)
                             }
                         }
                     }
@@ -625,7 +594,7 @@ fun RepoSidebarDrawer(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = if (repo.private) Icons.Default.Lock else Icons.Default.Book,
+                        imageVector = if (repo.private) Icons.Default.Book else Icons.Default.Book,
                         contentDescription = null,
                         tint = GitAccent,
                         modifier = Modifier.size(20.dp)
