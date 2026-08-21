@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -47,15 +48,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
 import com.example.ui.theme.Md3LightError
 import com.example.ui.theme.Md3LightErrorContainer
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,7 +73,7 @@ fun BatchActionsModal(
     ModalBottomSheet(
         onDismissRequest = { if (!isDeleting) onDismiss() },
         sheetState = sheetState,
-        containerColor = Md3LightSurface,
+        containerColor = GitSurface,
         modifier = Modifier.testTag("batch_actions_modal")
     ) {
         Column(
@@ -96,15 +97,15 @@ fun BatchActionsModal(
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Batch Delete Files",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText1
                     )
                 }
 
                 if (!isDeleting) {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2, modifier = Modifier.size(18.dp))
                     }
                 }
             }
@@ -144,7 +145,7 @@ fun BatchActionsModal(
                 text = "Selected Files (${selectedFiles.size})",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Md3LightTextPrimary
+                color = GitText1
             )
             Spacer(modifier = Modifier.height(4.dp))
             Surface(
@@ -152,8 +153,8 @@ fun BatchActionsModal(
                     .fillMaxWidth()
                     .heightIn(max = 160.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = Md3LightSurfaceVariant,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+                color = GitSurface2,
+                border = BorderStroke(1.dp, GitBorder)
             ) {
                 LazyColumn(modifier = Modifier.padding(8.dp)) {
                     items(selectedFiles) { path ->
@@ -176,7 +177,7 @@ fun BatchActionsModal(
                                 text = path,
                                 style = MaterialTheme.typography.bodySmall,
                                 fontFamily = FontFamily.Monospace,
-                                color = Md3LightTextPrimary,
+                                color = GitText1,
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -193,7 +194,7 @@ fun BatchActionsModal(
                 text = "Commit Message Prefix",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Md3LightTextPrimary
+                color = GitText1
             )
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
@@ -207,9 +208,9 @@ fun BatchActionsModal(
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Md3LightError,
-                    unfocusedBorderColor = Md3LightOutline,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Md3LightSurfaceVariant
+                    unfocusedBorderColor = GitBorder,
+                    focusedContainerColor = GitSurface,
+                    unfocusedContainerColor = GitSurface2
                 )
             )
 
@@ -227,7 +228,7 @@ fun BatchActionsModal(
                         Text(
                             text = "Deleting: $cur",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Md3LightTextSecondary,
+                            color = GitText2,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f)
@@ -236,7 +237,7 @@ fun BatchActionsModal(
                             text = "$done / $total",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
-                            color = Md3LightPrimary,
+                            color = GitAccent,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -244,7 +245,7 @@ fun BatchActionsModal(
                     LinearProgressIndicator(
                         progress = { pct },
                         color = Md3LightError,
-                        trackColor = Md3LightOutlineVariant,
+                        trackColor = GitBorder,
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(6.dp)
@@ -264,9 +265,11 @@ fun BatchActionsModal(
                     onClick = onDismiss,
                     enabled = !isDeleting,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1),
+                    border = BorderStroke(1.dp, GitBorder)
                 ) {
-                    Text("Cancel", color = Md3LightTextSecondary)
+                    Text("Cancel")
                 }
 
                 Button(
@@ -287,9 +290,9 @@ fun BatchActionsModal(
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Deleting Files...", color = Color.White)
                     } else {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Delete (${selectedFiles.size})", fontWeight = FontWeight.Bold)
+                        Text("Delete (${selectedFiles.size})", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }

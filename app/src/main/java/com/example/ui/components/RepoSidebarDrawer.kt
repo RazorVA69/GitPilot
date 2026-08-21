@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -25,9 +26,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -52,13 +50,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -68,6 +63,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,21 +79,21 @@ import coil.compose.AsyncImage
 import com.example.data.local.AccountEntity
 import com.example.data.model.GitHubRepository
 import com.example.ui.screens.getLanguageColor
-import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubYellow
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitAccentSoft
+import com.example.ui.theme.GitBg
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
+import com.example.ui.theme.GitYellow
 import com.example.ui.theme.Md3LightError
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightPrimaryContainer
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
 import com.example.ui.viewmodel.RepoFilterType
 import com.example.ui.viewmodel.RepoSortOption
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -139,7 +136,7 @@ fun RepoSidebarDrawer(
             .fillMaxHeight()
             .width(320.dp)
             .testTag("repo_left_sidebar_drawer"),
-        color = Md3LightSurface,
+        color = GitSurface,
         shadowElevation = 8.dp
     ) {
         Column(
@@ -152,7 +149,7 @@ fun RepoSidebarDrawer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding(),
-                color = Md3LightSurfaceVariant
+                color = GitSurface2
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -166,45 +163,52 @@ fun RepoSidebarDrawer(
                                     model = account.avatarUrl,
                                     contentDescription = "Avatar",
                                     modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
+                                        .size(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
                                 )
                             } else {
-                                Box(
-                                    modifier = Modifier
-                                        .size(40.dp)
-                                        .clip(CircleShape)
-                                        .background(Md3LightOutline),
-                                    contentAlignment = Alignment.Center
+                                Surface(
+                                    modifier = Modifier.size(38.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = GitAccent
                                 ) {
-                                    Icon(Icons.Default.Person, contentDescription = null, tint = Color.White)
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = account?.username?.take(1)?.uppercase() ?: "P",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp
+                                        )
+                                    }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
 
                             Column {
                                 Text(
                                     text = account?.name ?: (account?.username ?: "Public Mode"),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = Md3LightTextPrimary,
+                                    color = GitText1,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
                                     text = if (account != null) "@${account.username}" else "Not logged in",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = Md3LightTextSecondary
+                                    color = GitText2
                                 )
                             }
                         }
 
                         IconButton(
                             onClick = onCloseSidebar,
-                            modifier = Modifier.testTag("close_left_sidebar_btn")
+                            modifier = Modifier
+                                .size(32.dp)
+                                .testTag("close_left_sidebar_btn")
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close Sidebar", tint = Md3LightTextSecondary)
+                            Icon(Icons.Default.Close, contentDescription = "Close Sidebar", tint = GitText2, modifier = Modifier.size(18.dp))
                         }
                     }
 
@@ -215,37 +219,62 @@ fun RepoSidebarDrawer(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                onNavigateToAllRepos()
-                                onCloseSidebar()
-                            },
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    onNavigateToAllRepos()
+                                    onCloseSidebar()
+                                },
                             shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.weight(1f)
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorder)
                         ) {
-                            Icon(Icons.Default.Dashboard, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("All Repos", fontSize = 12.sp, maxLines = 1)
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                Icon(Icons.Default.Dashboard, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("All Repos", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GitText1, maxLines = 1)
+                            }
                         }
 
-                        IconButton(
-                            onClick = onOpenLogin,
-                            modifier = Modifier.size(38.dp)
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(onClick = onOpenLogin),
+                            shape = RoundedCornerShape(8.dp),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorder)
                         ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add Account", tint = Md3LightTextPrimary)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Add, contentDescription = "Add Account", tint = GitText1, modifier = Modifier.size(16.dp))
+                            }
                         }
 
-                        IconButton(
-                            onClick = onLogout,
-                            modifier = Modifier.size(38.dp)
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(onClick = onLogout),
+                            shape = RoundedCornerShape(8.dp),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorder)
                         ) {
-                            Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Md3LightError)
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Logout, contentDescription = "Logout", tint = Md3LightError, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
                 }
             }
 
-            HorizontalDivider(color = Md3LightOutlineVariant)
+            HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
             // Search Bar & Sort Button
             Row(
@@ -260,14 +289,16 @@ fun RepoSidebarDrawer(
                     modifier = Modifier
                         .weight(1f)
                         .testTag("sidebar_repo_search_input"),
-                    placeholder = { Text("Filter repos...", fontSize = 12.sp) },
+                    placeholder = { Text("Filter repos...", fontSize = 12.sp, color = GitText3) },
                     leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = Md3LightTextSecondary)
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2)
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Md3LightPrimary,
-                        unfocusedBorderColor = Md3LightOutlineVariant
+                        focusedBorderColor = GitAccent,
+                        unfocusedBorderColor = GitBorder,
+                        focusedContainerColor = GitSurface2,
+                        unfocusedContainerColor = GitSurface2
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )
@@ -278,9 +309,9 @@ fun RepoSidebarDrawer(
                 Box {
                     IconButton(
                         onClick = { showSortMenu = true },
-                        modifier = Modifier.size(38.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
-                        Icon(Icons.Default.Sort, contentDescription = "Sort repos", tint = Md3LightTextPrimary)
+                        Icon(Icons.Default.Sort, contentDescription = "Sort repos", tint = GitText2, modifier = Modifier.size(18.dp))
                     }
 
                     DropdownMenu(
@@ -293,7 +324,7 @@ fun RepoSidebarDrawer(
                                     Text("Last Activity")
                                     if (sortOption == RepoSortOption.LAST_ACTIVITY) {
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             },
@@ -308,7 +339,7 @@ fun RepoSidebarDrawer(
                                     Text("Name (A → Z)")
                                     if (sortOption == RepoSortOption.NAME_ASC) {
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             },
@@ -323,7 +354,7 @@ fun RepoSidebarDrawer(
                                     Text("Name (Z → A)")
                                     if (sortOption == RepoSortOption.NAME_DESC) {
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             },
@@ -338,7 +369,7 @@ fun RepoSidebarDrawer(
                                     Text("Most Stars ⭐")
                                     if (sortOption == RepoSortOption.STARS_DESC) {
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                     }
                                 }
                             },
@@ -351,7 +382,7 @@ fun RepoSidebarDrawer(
                 }
             }
 
-            // Filter Chips
+            // Filter Pills Bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -359,39 +390,42 @@ fun RepoSidebarDrawer(
                     .padding(horizontal = 14.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                RepoFilterType.values().forEach { filter ->
+                val filters = listOf(
+                    Triple(RepoFilterType.ALL, "All", allCount),
+                    Triple(RepoFilterType.PUBLIC, "Public", publicCount),
+                    Triple(RepoFilterType.PRIVATE, "Private", privateCount),
+                    Triple(RepoFilterType.FORKS, "Forks", forksCount)
+                )
+
+                filters.forEach { (filter, label, count) ->
                     val isSelected = filterType == filter
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onFilterChange(filter) },
-                        label = {
-                            Text(
-                                text = when (filter) {
-                                    RepoFilterType.ALL -> "All ($allCount)"
-                                    RepoFilterType.PUBLIC -> "Public ($publicCount)"
-                                    RepoFilterType.PRIVATE -> "Private ($privateCount)"
-                                    RepoFilterType.FORKS -> "Forks ($forksCount)"
-                                },
-                                fontSize = 11.sp
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Md3LightPrimaryContainer,
-                            selectedLabelColor = Md3LightPrimary
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onFilterChange(filter) },
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (isSelected) GitSurface2 else Color.Transparent,
+                        border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else BorderStroke(1.dp, GitBorder)
+                    ) {
+                        Text(
+                            text = "$label ($count)",
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) GitText1 else GitText2,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
-            HorizontalDivider(color = Md3LightOutlineVariant)
+            HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
             // Repositories List
             Box(modifier = Modifier.weight(1f)) {
                 if (isLoading) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = Md3LightPrimary, modifier = Modifier.size(28.dp))
+                        CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(28.dp))
                     }
                 } else if (repositories.isEmpty()) {
                     Box(
@@ -400,7 +434,7 @@ fun RepoSidebarDrawer(
                             .padding(24.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text("No repos found", style = MaterialTheme.typography.bodySmall, color = Md3LightTextSecondary)
+                        Text("No repos found", style = MaterialTheme.typography.bodySmall, color = GitText2)
                     }
                 } else {
                     LazyColumn(
@@ -444,7 +478,7 @@ fun RepoSidebarDrawer(
                                             }
                                         )
                                         .testTag("sidebar_repo_item_${repo.name}"),
-                                    color = if (isSelected) Md3LightPrimaryContainer.copy(alpha = 0.5f) else Color.Transparent
+                                    color = if (isSelected) GitAccentSoft else Color.Transparent
                                 ) {
                                     Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
                                         Row(
@@ -454,7 +488,7 @@ fun RepoSidebarDrawer(
                                             Icon(
                                                 imageVector = if (repo.private) Icons.Default.Lock else (if (repo.fork) Icons.Default.ForkRight else Icons.Default.Book),
                                                 contentDescription = null,
-                                                tint = if (isSelected) Md3LightPrimary else (if (isPinned) GitHubYellow else Md3LightTextSecondary),
+                                                tint = if (isSelected) GitAccent else (if (isPinned) GitYellow else GitText2),
                                                 modifier = Modifier.size(16.dp)
                                             )
 
@@ -466,7 +500,7 @@ fun RepoSidebarDrawer(
                                                         text = repo.name,
                                                         style = MaterialTheme.typography.bodySmall,
                                                         fontWeight = if (isSelected || isPinned) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (isSelected) Md3LightPrimary else Md3LightTextPrimary,
+                                                        color = if (isSelected) GitAccent else GitText1,
                                                         maxLines = 1,
                                                         overflow = TextOverflow.Ellipsis
                                                     )
@@ -476,7 +510,7 @@ fun RepoSidebarDrawer(
                                                         Icon(
                                                             imageVector = Icons.Default.PushPin,
                                                             contentDescription = "Pinned",
-                                                            tint = GitHubYellow,
+                                                            tint = GitYellow,
                                                             modifier = Modifier.size(12.dp)
                                                         )
                                                     }
@@ -489,7 +523,7 @@ fun RepoSidebarDrawer(
                                                     if (isWorking) {
                                                         Surface(
                                                             shape = RoundedCornerShape(4.dp),
-                                                            color = GitHubGreen.copy(alpha = 0.15f)
+                                                            color = GitAccentSoft
                                                         ) {
                                                             Row(
                                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
@@ -498,14 +532,14 @@ fun RepoSidebarDrawer(
                                                                 Icon(
                                                                     imageVector = Icons.Default.Bolt,
                                                                     contentDescription = null,
-                                                                    tint = GitHubGreen,
+                                                                    tint = GitAccent,
                                                                     modifier = Modifier.size(10.dp)
                                                                 )
                                                                 Text(
                                                                     text = "Working Repo",
                                                                     fontSize = 9.sp,
                                                                     fontWeight = FontWeight.Bold,
-                                                                    color = GitHubGreen
+                                                                    color = GitAccent
                                                                 )
                                                             }
                                                         }
@@ -523,7 +557,7 @@ fun RepoSidebarDrawer(
                                                             Text(
                                                                 text = repo.language,
                                                                 style = MaterialTheme.typography.labelSmall,
-                                                                color = Md3LightTextSecondary,
+                                                                color = GitText2,
                                                                 fontSize = 10.sp
                                                             )
                                                         }
@@ -536,14 +570,14 @@ fun RepoSidebarDrawer(
                                                     Icon(
                                                         imageVector = Icons.Default.Star,
                                                         contentDescription = null,
-                                                        tint = GitHubYellow,
+                                                        tint = GitYellow,
                                                         modifier = Modifier.size(12.dp)
                                                     )
                                                     Spacer(modifier = Modifier.width(2.dp))
                                                     Text(
                                                         text = "${repo.stargazersCount}",
                                                         style = MaterialTheme.typography.labelSmall,
-                                                        color = Md3LightTextSecondary,
+                                                        color = GitText2,
                                                         fontSize = 10.sp
                                                     )
                                                 }
@@ -556,14 +590,14 @@ fun RepoSidebarDrawer(
                                                 Icon(
                                                     imageVector = Icons.Default.MoreVert,
                                                     contentDescription = "Repo options",
-                                                    tint = Md3LightTextTertiary,
+                                                    tint = GitText3,
                                                     modifier = Modifier.size(16.dp)
                                                 )
                                             }
                                         }
                                     }
                                 }
-                                HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.4f), thickness = 0.5.dp)
+                                HorizontalDivider(color = GitBorder, thickness = 1.dp)
                             }
                         }
                     }
@@ -584,16 +618,16 @@ fun RepoSidebarDrawer(
                     Icon(
                         imageVector = if (repo.private) Icons.Default.Lock else Icons.Default.Book,
                         contentDescription = null,
-                        tint = Md3LightPrimary,
+                        tint = GitAccent,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(repo.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(repo.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = GitText1, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select quick action for this repository:", fontSize = 13.sp, color = Md3LightTextSecondary)
+                    Text("Select quick action for this repository:", fontSize = 13.sp, color = GitText2)
 
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -607,7 +641,8 @@ fun RepoSidebarDrawer(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = Md3LightSurfaceVariant
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorder)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -616,7 +651,7 @@ fun RepoSidebarDrawer(
                             Icon(
                                 imageVector = Icons.Default.PushPin,
                                 contentDescription = null,
-                                tint = if (isPinned) GitHubYellow else Md3LightTextPrimary,
+                                tint = if (isPinned) GitYellow else GitText1,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
@@ -624,12 +659,13 @@ fun RepoSidebarDrawer(
                                 Text(
                                     text = if (isPinned) "Unpin from Top" else "Pin to Top",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
+                                    fontSize = 13.sp,
+                                    color = GitText1
                                 )
                                 Text(
                                     text = if (isPinned) "Remove priority pin" else "Keep at the top of your sidebar & repo list",
                                     fontSize = 11.sp,
-                                    color = Md3LightTextSecondary
+                                    color = GitText2
                                 )
                             }
                         }
@@ -645,7 +681,8 @@ fun RepoSidebarDrawer(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = if (isWorking) GitHubGreen.copy(alpha = 0.12f) else Md3LightSurfaceVariant
+                        color = if (isWorking) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isWorking) GitAccent.copy(alpha = 0.4f) else GitBorder)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -654,7 +691,7 @@ fun RepoSidebarDrawer(
                             Icon(
                                 imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
-                                tint = if (isWorking) GitHubGreen else Md3LightTextPrimary,
+                                tint = if (isWorking) GitAccent else GitText1,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
@@ -663,12 +700,12 @@ fun RepoSidebarDrawer(
                                     text = if (isWorking) "Remove Working Repository" else "Set as Working Repository",
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
-                                    color = if (isWorking) GitHubGreen else Md3LightTextPrimary
+                                    color = if (isWorking) GitAccent else GitText1
                                 )
                                 Text(
                                     text = "Auto-opens automatically whenever you launch the app",
                                     fontSize = 11.sp,
-                                    color = Md3LightTextSecondary
+                                    color = GitText2
                                 )
                             }
                         }
@@ -677,7 +714,7 @@ fun RepoSidebarDrawer(
             },
             confirmButton = {
                 TextButton(onClick = { selectedRepoForActions = null }) {
-                    Text("Close")
+                    Text("Close", color = GitAccent)
                 }
             }
         )

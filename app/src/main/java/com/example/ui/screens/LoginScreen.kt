@@ -99,21 +99,7 @@ import coil.compose.AsyncImage
 import com.example.data.local.AccountEntity
 import com.example.data.model.DeviceCodeResponse
 import com.example.data.repository.GitHubRepository
-import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubYellow
-import com.example.ui.theme.Md3LightBackground
-import com.example.ui.theme.Md3LightError
-import com.example.ui.theme.Md3LightErrorContainer
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightPrimaryContainer
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.theme.*
 import kotlinx.coroutines.launch
 
 @Composable
@@ -158,21 +144,21 @@ fun LoginScreen(
                 .padding(horizontal = 24.dp, vertical = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // App Brand Header Icon
+            // App Brand Header Icon (Emerald Key Squircle)
             Surface(
-                modifier = Modifier.size(68.dp),
-                shape = RoundedCornerShape(20.dp),
-                color = Md3LightPrimaryContainer,
-                shadowElevation = 2.dp
+                modifier = Modifier.size(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                color = GitAccentSoft,
+                border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.2f))
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.VpnKey,
                         contentDescription = "GitHub Auth",
-                        tint = Md3LightPrimary,
-                        modifier = Modifier.size(36.dp)
+                        tint = GitAccent,
+                        modifier = Modifier.size(28.dp)
                     )
                 }
             }
@@ -180,21 +166,21 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Welcome to GitExplorer",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = Md3LightTextPrimary,
+                text = "Welcome back",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = GitText1,
                 textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Fast GitHub file navigation, directory uploads, multi-file editing, and direct branch commits.",
+                text = "Sign in to browse, edit, and commit across your repositories.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = Md3LightTextSecondary,
+                color = GitText2,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 12.dp)
+                modifier = Modifier.padding(horizontal = 16.dp)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -204,88 +190,57 @@ fun LoginScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("login_main_card"),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-                border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = GitSurface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                border = BorderStroke(1.dp, GitBorder)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    // Auth Tabs with smooth sliding indicator
-                    TabRow(
-                        selectedTabIndex = pagerState.currentPage,
-                        containerColor = Md3LightSurfaceVariant,
-                        contentColor = Md3LightPrimary,
-                        indicator = { tabPositions ->
-                            if (pagerState.currentPage < tabPositions.size) {
-                                TabRowDefaults.SecondaryIndicator(
-                                    modifier = Modifier
-                                        .tabIndicatorOffset(tabPositions[pagerState.currentPage])
-                                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
-                                    height = 3.dp,
-                                    color = Md3LightPrimary
-                                )
-                            }
-                        },
-                        divider = {},
-                        modifier = Modifier.clip(RoundedCornerShape(12.dp))
+                    // Segmented Control (HTML-style)
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        color = GitSurface2
                     ) {
-                        Tab(
-                            selected = pagerState.currentPage == 0,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(
-                                        page = 0,
-                                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
-                                    )
+                        Row(
+                            modifier = Modifier.padding(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            val tabs = listOf("GitHub", "Token", "Public")
+                            tabs.forEachIndexed { index, title ->
+                                val isSelected = pagerState.currentPage == index
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            coroutineScope.launch {
+                                                pagerState.animateScrollToPage(
+                                                    page = index,
+                                                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                                                )
+                                            }
+                                        },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) GitSurface else Color.Transparent,
+                                    border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else null,
+                                    shadowElevation = if (isSelected) 1.dp else 0.dp
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = title,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSelected) GitText1 else GitText2
+                                        )
+                                    }
                                 }
-                            },
-                            text = {
-                                Text(
-                                    "GitHub Login",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Medium
-                                )
                             }
-                        )
-                        Tab(
-                            selected = pagerState.currentPage == 1,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(
-                                        page = 1,
-                                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
-                                    )
-                                }
-                            },
-                            text = {
-                                Text(
-                                    "PAT Token",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        )
-                        Tab(
-                            selected = pagerState.currentPage == 2,
-                            onClick = {
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(
-                                        page = 2,
-                                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
-                                    )
-                                }
-                            },
-                            text = {
-                                Text(
-                                    "Public User",
-                                    fontSize = 12.sp,
-                                    fontWeight = if (pagerState.currentPage == 2) FontWeight.Bold else FontWeight.Medium
-                                )
-                            }
-                        )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(18.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
 
                     // Error Notification Banner
                     val activeError = authError ?: oauthError
@@ -295,7 +250,8 @@ fun LoginScreen(
                                 .fillMaxWidth()
                                 .padding(bottom = 16.dp),
                             shape = RoundedCornerShape(10.dp),
-                            color = Md3LightErrorContainer
+                            color = Md3LightErrorContainer,
+                            border = BorderStroke(1.dp, Md3LightError.copy(alpha = 0.2f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(12.dp),
@@ -324,41 +280,43 @@ fun LoginScreen(
                         verticalAlignment = Alignment.Top,
                         modifier = Modifier.fillMaxWidth()
                     ) { page ->
-
                         when (page) {
                             0 -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     if (deviceCodeState == null) {
                                         Text(
-                                            text = "Sign In With GitHub",
+                                            text = "OAuth Authorization",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = Md3LightTextPrimary
+                                            color = GitText1
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
                                             text = "Authenticate securely via GitHub's official authorization. Grants access to your repositories and organizations without manual token creation.",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = Md3LightTextSecondary
+                                            color = GitText2
                                         )
 
-                                        Spacer(modifier = Modifier.height(16.dp))
+                                        Spacer(modifier = Modifier.height(20.dp))
 
-                                        // Big Green GitHub Login Button
+                                        // Dark / High-Contrast GitHub Login Button
                                         Button(
                                             onClick = { onStartGitHubOAuth(customClientId) },
                                             enabled = !isStartingOAuth && !isAuthenticating,
-                                            colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
-                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = GitText1,
+                                                contentColor = Color.White
+                                            ),
+                                            shape = RoundedCornerShape(10.dp),
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(52.dp)
+                                                .height(48.dp)
                                                 .testTag("github_oauth_login_btn")
                                         ) {
                                             if (isStartingOAuth) {
                                                 CircularProgressIndicator(
                                                     color = Color.White,
-                                                    modifier = Modifier.size(20.dp),
+                                                    modifier = Modifier.size(18.dp),
                                                     strokeWidth = 2.dp
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
@@ -367,18 +325,18 @@ fun LoginScreen(
                                                 Icon(
                                                     imageVector = Icons.Default.Security,
                                                     contentDescription = null,
-                                                    modifier = Modifier.size(20.dp)
+                                                    modifier = Modifier.size(18.dp)
                                                 )
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
-                                                    text = "Sign In with GitHub",
-                                                    style = MaterialTheme.typography.titleMedium,
+                                                    text = "Sign in with GitHub",
+                                                    fontSize = 14.sp,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Spacer(modifier = Modifier.height(14.dp))
 
                                         // Advanced OAuth App Client ID Toggle
                                         Row(
@@ -390,13 +348,13 @@ fun LoginScreen(
                                                     imageVector = Icons.Default.Settings,
                                                     contentDescription = null,
                                                     modifier = Modifier.size(14.dp),
-                                                    tint = Md3LightTextTertiary
+                                                    tint = GitText3
                                                 )
                                                 Spacer(modifier = Modifier.width(4.dp))
                                                 Text(
-                                                    text = if (showClientIdConfig) "Hide OAuth Client ID" else "Use Custom OAuth Client ID",
-                                                    fontSize = 11.sp,
-                                                    color = Md3LightTextTertiary
+                                                    text = if (showClientIdConfig) "Hide custom client" else "Use a custom OAuth client",
+                                                    fontSize = 12.sp,
+                                                    color = GitText3
                                                 )
                                             }
                                         }
@@ -412,8 +370,8 @@ fun LoginScreen(
                                                     modifier = Modifier.fillMaxWidth(),
                                                     shape = RoundedCornerShape(10.dp),
                                                     colors = OutlinedTextFieldDefaults.colors(
-                                                        focusedBorderColor = Md3LightPrimary,
-                                                        unfocusedBorderColor = Md3LightOutline
+                                                        focusedBorderColor = GitAccent,
+                                                        unfocusedBorderColor = GitBorderStrong
                                                     )
                                                 )
                                             }
@@ -423,24 +381,24 @@ fun LoginScreen(
                                         Surface(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(14.dp),
-                                            color = Md3LightSurfaceVariant,
-                                            border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                                            color = GitSurface2,
+                                            border = BorderStroke(1.dp, GitBorder)
                                         ) {
                                             Column(
                                                 modifier = Modifier.padding(16.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
                                             ) {
                                                 Text(
-                                                    text = "Authorize On GitHub",
+                                                    text = "Authorize on GitHub",
                                                     style = MaterialTheme.typography.titleMedium,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = Md3LightTextPrimary
+                                                    color = GitText1
                                                 )
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
                                                     text = "Enter this one-time code on the GitHub authorization page:",
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    color = Md3LightTextSecondary,
+                                                    color = GitText2,
                                                     textAlign = TextAlign.Center
                                                 )
 
@@ -448,11 +406,11 @@ fun LoginScreen(
 
                                                 // Display Code Box with Copy
                                                 Surface(
-                                                    shape = RoundedCornerShape(12.dp),
+                                                    shape = RoundedCornerShape(10.dp),
                                                     color = Color.White,
-                                                    border = BorderStroke(1.5.dp, Md3LightPrimary),
+                                                    border = BorderStroke(1.5.dp, GitAccent),
                                                     modifier = Modifier
-                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .clip(RoundedCornerShape(10.dp))
                                                         .clickable {
                                                             clipboardManager.setText(AnnotatedString(deviceCodeState.userCode))
                                                         }
@@ -466,14 +424,14 @@ fun LoginScreen(
                                                             style = MaterialTheme.typography.headlineMedium,
                                                             fontFamily = FontFamily.Monospace,
                                                             fontWeight = FontWeight.ExtraBold,
-                                                            color = Md3LightPrimary,
+                                                            color = GitAccent,
                                                             letterSpacing = 3.sp
                                                         )
                                                         Spacer(modifier = Modifier.width(12.dp))
                                                         Icon(
                                                             imageVector = Icons.Default.ContentCopy,
                                                             contentDescription = "Copy code",
-                                                            tint = Md3LightPrimary,
+                                                            tint = GitAccent,
                                                             modifier = Modifier.size(20.dp)
                                                         )
                                                     }
@@ -488,7 +446,7 @@ fun LoginScreen(
                                                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deviceCodeState.verificationUri))
                                                         context.startActivity(intent)
                                                     },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                                                    colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
                                                     shape = RoundedCornerShape(10.dp),
                                                     modifier = Modifier.fillMaxWidth()
                                                 ) {
@@ -505,7 +463,7 @@ fun LoginScreen(
                                                         horizontalArrangement = Arrangement.Center
                                                     ) {
                                                         CircularProgressIndicator(
-                                                            color = Md3LightPrimary,
+                                                            color = GitAccent,
                                                             modifier = Modifier.size(16.dp),
                                                             strokeWidth = 2.dp
                                                         )
@@ -513,7 +471,7 @@ fun LoginScreen(
                                                         Text(
                                                             text = "Waiting for authorization in browser...",
                                                             style = MaterialTheme.typography.labelSmall,
-                                                            color = Md3LightTextSecondary
+                                                            color = GitText2
                                                         )
                                                     }
                                                 }
@@ -521,7 +479,7 @@ fun LoginScreen(
                                                 Spacer(modifier = Modifier.height(6.dp))
 
                                                 TextButton(onClick = onCancelOAuth) {
-                                                    Text("Cancel", color = Md3LightTextSecondary, fontSize = 12.sp)
+                                                    Text("Cancel", color = GitText2, fontSize = 12.sp)
                                                 }
                                             }
                                         }
@@ -532,32 +490,42 @@ fun LoginScreen(
                             1 -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = "Personal Access Token (PAT)",
+                                        text = "Personal Access Token",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Md3LightTextPrimary
+                                        color = GitText1
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Paste a GitHub Personal Access Token (Classic or Fine-Grained) with 'repo' scope.",
+                                        text = "Paste a personal access token (classic or fine-grained) with 'repo' scope.",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Md3LightTextSecondary
+                                        color = GitText2
                                     )
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
 
                                     // Quick 1-Click Generate Button on GitHub
-                                    OutlinedButton(
-                                        onClick = {
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(quickTokensUrl))
-                                            context.startActivity(intent)
-                                        },
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.fillMaxWidth()
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(quickTokensUrl))
+                                                context.startActivity(intent)
+                                            },
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = GitSurface2,
+                                        border = BorderStroke(1.dp, GitBorderStrong)
                                     ) {
-                                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp), tint = Md3LightPrimary)
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Generate PAT on GitHub with 1-Click", fontSize = 12.sp, color = Md3LightPrimary, fontWeight = FontWeight.SemiBold)
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center
+                                        ) {
+                                            Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp), tint = GitText1)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Generate on GitHub ↗", fontSize = 12.sp, color = GitText1, fontWeight = FontWeight.SemiBold)
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.height(14.dp))
@@ -568,16 +536,16 @@ fun LoginScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("login_pat_token_input"),
-                                        placeholder = { Text("ghp_... or github_pat_...", color = Md3LightTextTertiary, fontSize = 13.sp) },
+                                        placeholder = { Text("ghp_… or github_pat_…", color = GitText3, fontSize = 13.sp) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.Lock, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Default.Lock, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                                         },
                                         trailingIcon = {
                                             IconButton(onClick = { isTokenVisible = !isTokenVisible }) {
                                                 Icon(
                                                     imageVector = if (isTokenVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
                                                     contentDescription = "Toggle Visibility",
-                                                    tint = Md3LightTextSecondary,
+                                                    tint = GitText3,
                                                     modifier = Modifier.size(18.dp)
                                                 )
                                             }
@@ -586,12 +554,12 @@ fun LoginScreen(
                                         visualTransformation = if (isTokenVisible) VisualTransformation.None else PasswordVisualTransformation(),
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
                                         keyboardActions = KeyboardActions(onDone = { onLoginWithToken(tokenInput) }),
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Md3LightPrimary,
-                                            unfocusedBorderColor = Md3LightOutline,
+                                            focusedBorderColor = GitAccent,
+                                            unfocusedBorderColor = GitBorderStrong,
                                             focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = Md3LightSurfaceVariant
+                                            unfocusedContainerColor = GitSurface2
                                         )
                                     )
 
@@ -600,25 +568,23 @@ fun LoginScreen(
                                     Button(
                                         onClick = { onLoginWithToken(tokenInput) },
                                         enabled = !isAuthenticating && tokenInput.isNotBlank(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
-                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
+                                        shape = RoundedCornerShape(10.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(50.dp)
+                                            .height(48.dp)
                                             .testTag("login_pat_submit_btn")
                                     ) {
                                         if (isAuthenticating) {
                                             CircularProgressIndicator(
                                                 color = Color.White,
-                                                modifier = Modifier.size(20.dp),
+                                                modifier = Modifier.size(18.dp),
                                                 strokeWidth = 2.dp
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Validating & Loading...", color = Color.White, fontWeight = FontWeight.Bold)
+                                            Text("Validating...", color = Color.White, fontWeight = FontWeight.Bold)
                                         } else {
-                                            Text("Log In & Load Repositories", fontWeight = FontWeight.Bold)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(18.dp))
+                                            Text("Load repositories →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                         }
                                     }
                                 }
@@ -627,16 +593,16 @@ fun LoginScreen(
                             2 -> {
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = "Explore Any GitHub User",
+                                        text = "Public Explorer",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Md3LightTextPrimary
+                                        color = GitText1
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "View and navigate public repositories and files without a token (Read-only mode).",
+                                        text = "Explore any public GitHub user's repositories without logging in. Read-only mode.",
                                         style = MaterialTheme.typography.bodySmall,
-                                        color = Md3LightTextSecondary
+                                        color = GitText2
                                     )
 
                                     Spacer(modifier = Modifier.height(12.dp))
@@ -649,19 +615,26 @@ fun LoginScreen(
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         listOf("torvalds", "google", "android", "kotlin", "facebook").forEach { name ->
-                                            FilterChip(
-                                                selected = publicUsernameInput == name,
-                                                onClick = { publicUsernameInput = name },
-                                                label = { Text("@$name", fontSize = 11.sp) },
-                                                colors = FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = Md3LightPrimaryContainer,
-                                                    selectedLabelColor = Md3LightPrimary
+                                            Surface(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(16.dp))
+                                                    .clickable { publicUsernameInput = name },
+                                                shape = RoundedCornerShape(16.dp),
+                                                color = if (publicUsernameInput == name) GitAccentSoft else GitSurface2,
+                                                border = if (publicUsernameInput == name) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder)
+                                            ) {
+                                                Text(
+                                                    text = "@$name",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (publicUsernameInput == name) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (publicUsernameInput == name) GitAccentDeep else GitText2,
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
                                                 )
-                                            )
+                                            }
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
 
                                     OutlinedTextField(
                                         value = publicUsernameInput,
@@ -669,17 +642,17 @@ fun LoginScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("login_public_user_input"),
-                                        placeholder = { Text("GitHub username (e.g. torvalds)", color = Md3LightTextTertiary, fontSize = 13.sp) },
+                                        placeholder = { Text("e.g. BlazeFTL", color = GitText3, fontSize = 13.sp) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.Person, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(18.dp))
+                                            Icon(Icons.Default.Person, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                                         },
                                         singleLine = true,
-                                        shape = RoundedCornerShape(12.dp),
+                                        shape = RoundedCornerShape(10.dp),
                                         colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = Md3LightPrimary,
-                                            unfocusedBorderColor = Md3LightOutline,
+                                            focusedBorderColor = GitAccent,
+                                            unfocusedBorderColor = GitBorderStrong,
                                             focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = Md3LightSurfaceVariant
+                                            unfocusedContainerColor = GitSurface2
                                         )
                                     )
 
@@ -687,26 +660,24 @@ fun LoginScreen(
 
                                     Button(
                                         onClick = { onExplorePublic(publicUsernameInput) },
-                                        enabled = !isAuthenticating,
-                                        colors = ButtonDefaults.buttonColors(containerColor = Md3LightPrimary),
-                                        shape = RoundedCornerShape(12.dp),
+                                        enabled = !isAuthenticating && publicUsernameInput.isNotBlank(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
+                                        shape = RoundedCornerShape(10.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .height(50.dp)
+                                            .height(48.dp)
                                             .testTag("login_public_submit_btn")
                                     ) {
                                         if (isAuthenticating) {
                                             CircularProgressIndicator(
                                                 color = Color.White,
-                                                modifier = Modifier.size(20.dp),
+                                                modifier = Modifier.size(18.dp),
                                                 strokeWidth = 2.dp
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Loading Repositories...", color = Color.White)
+                                            Text("Loading...", color = Color.White)
                                         } else {
-                                            Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(18.dp))
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Explore Repositories", fontWeight = FontWeight.Bold)
+                                            Text("Browse repositories →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                         }
                                     }
                                 }
@@ -722,20 +693,20 @@ fun LoginScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = Md3LightSurface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-                    border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = GitSurface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                    border = BorderStroke(1.dp, GitBorder)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "Saved Accounts",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Md3LightTextPrimary
+                            color = GitText1
                         )
 
-                        Spacer(modifier = Modifier.height(8.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
 
                         for (acc in savedAccounts) {
                             Row(
@@ -757,32 +728,40 @@ fun LoginScreen(
                                             contentDescription = "Avatar",
                                             modifier = Modifier
                                                 .size(36.dp)
-                                                .clip(CircleShape)
+                                                .clip(RoundedCornerShape(8.dp))
                                         )
                                     } else {
-                                        Icon(
-                                            imageVector = Icons.Default.AccountCircle,
-                                            contentDescription = null,
-                                            tint = Md3LightPrimary,
-                                            modifier = Modifier.size(36.dp)
-                                        )
+                                        Surface(
+                                            modifier = Modifier.size(36.dp),
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = GitAccent
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = acc.username.take(1).uppercase(),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 15.sp
+                                                )
+                                            }
+                                        }
                                     }
 
-                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Spacer(modifier = Modifier.width(12.dp))
 
                                     Column {
                                         Text(
                                             text = (acc.name?.takeIf { it.isNotBlank() }) ?: acc.username,
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = Md3LightTextPrimary,
+                                            color = GitText1,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
                                             text = "@${acc.username}",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Md3LightTextSecondary
+                                            color = GitText2
                                         )
                                     }
                                 }
@@ -799,7 +778,7 @@ fun LoginScreen(
                                     )
                                 }
                             }
-                            HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                            HorizontalDivider(color = GitBorder, thickness = 1.dp)
                         }
                     }
                 }

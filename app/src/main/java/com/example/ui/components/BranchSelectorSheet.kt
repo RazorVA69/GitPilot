@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -46,16 +47,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.GitHubBranch
-import com.example.ui.theme.GitHubYellow
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightPrimaryContainer
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitAccentSoft
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
+import com.example.ui.theme.GitYellow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -77,7 +77,7 @@ fun BranchSelectorSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Md3LightSurface,
+        containerColor = GitSurface,
         modifier = Modifier.testTag("branch_selector_sheet")
     ) {
         Column(
@@ -95,20 +95,20 @@ fun BranchSelectorSheet(
                     Icon(
                         imageVector = Icons.Default.ForkRight,
                         contentDescription = null,
-                        tint = Md3LightPrimary,
-                        modifier = Modifier.size(24.dp)
+                        tint = GitAccent,
+                        modifier = Modifier.size(22.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Switch Branch / Tag",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText1
                     )
                 }
 
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -121,17 +121,17 @@ fun BranchSelectorSheet(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("branch_search_input"),
-                placeholder = { Text("Filter branches...", color = Md3LightTextTertiary, fontSize = 12.sp) },
+                placeholder = { Text("Filter branches...", color = GitText3, fontSize = 12.sp) },
                 leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null, tint = Md3LightTextSecondary, modifier = Modifier.size(18.dp))
+                    Icon(Icons.Default.Search, contentDescription = null, tint = GitText2, modifier = Modifier.size(16.dp))
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Md3LightPrimary,
-                    unfocusedBorderColor = Md3LightOutline,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Md3LightSurfaceVariant
+                    focusedBorderColor = GitAccent,
+                    unfocusedBorderColor = GitBorder,
+                    focusedContainerColor = GitSurface2,
+                    unfocusedContainerColor = GitSurface2
                 )
             )
 
@@ -144,7 +144,7 @@ fun BranchSelectorSheet(
                         .padding(24.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(color = Md3LightPrimary, modifier = Modifier.size(28.dp))
+                    CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(28.dp))
                 }
             } else {
                 Surface(
@@ -152,8 +152,8 @@ fun BranchSelectorSheet(
                         .fillMaxWidth()
                         .heightIn(max = 300.dp),
                     shape = RoundedCornerShape(10.dp),
-                    color = Md3LightSurfaceVariant,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+                    color = GitSurface,
+                    border = BorderStroke(1.dp, GitBorder)
                 ) {
                     LazyColumn {
                         items(filteredBranches, key = { it.name }) { branch ->
@@ -170,7 +170,7 @@ fun BranchSelectorSheet(
                                     Icon(
                                         imageVector = Icons.Default.ForkRight,
                                         contentDescription = null,
-                                        tint = if (isSelected) Md3LightPrimary else Md3LightTextSecondary,
+                                        tint = if (isSelected) GitAccent else GitText2,
                                         modifier = Modifier.size(18.dp)
                                     )
                                     Spacer(modifier = Modifier.width(10.dp))
@@ -179,14 +179,14 @@ fun BranchSelectorSheet(
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) Md3LightPrimary else Md3LightTextPrimary
+                                        color = if (isSelected) GitAccent else GitText1
                                     )
                                     if (branch.`protected`) {
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Icon(
                                             imageVector = Icons.Default.Lock,
                                             contentDescription = "Protected",
-                                            tint = GitHubYellow,
+                                            tint = GitYellow,
                                             modifier = Modifier.size(14.dp)
                                         )
                                     }
@@ -196,12 +196,12 @@ fun BranchSelectorSheet(
                                     Icon(
                                         imageVector = Icons.Default.Check,
                                         contentDescription = "Selected",
-                                        tint = Md3LightPrimary,
+                                        tint = GitAccent,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
-                            HorizontalDivider(color = Md3LightOutlineVariant.copy(alpha = 0.5f), thickness = 0.5.dp)
+                            HorizontalDivider(color = GitBorder, thickness = 1.dp)
                         }
                     }
                 }

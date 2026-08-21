@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,15 +43,13 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -69,7 +68,7 @@ fun CommitDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Md3LightSurface,
+        containerColor = GitSurface,
         modifier = Modifier.testTag("commit_bottom_sheet")
     ) {
         Column(
@@ -87,20 +86,20 @@ fun CommitDialog(
                     Icon(
                         imageVector = Icons.Default.Commit,
                         contentDescription = null,
-                        tint = GitHubGreen,
+                        tint = GitAccent,
                         modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "Commit Changes",
-                        style = MaterialTheme.typography.titleLarge,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText1
                     )
                 }
 
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2, modifier = Modifier.size(18.dp))
                 }
             }
 
@@ -110,20 +109,20 @@ fun CommitDialog(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = Md3LightSurfaceVariant,
-                border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+                color = GitSurface2,
+                border = BorderStroke(1.dp, GitBorder)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
                         text = "Target File",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Md3LightTextSecondary
+                        color = GitText2
                     )
                     Text(
                         text = filePath,
                         style = MaterialTheme.typography.bodyMedium,
                         fontFamily = FontFamily.Monospace,
-                        color = Md3LightPrimary,
+                        color = GitAccent,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -137,7 +136,7 @@ fun CommitDialog(
                 text = "Commit Message",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Md3LightTextPrimary
+                color = GitText1
             )
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
@@ -146,14 +145,14 @@ fun CommitDialog(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("commit_message_input"),
-                placeholder = { Text("Describe changes...", color = Md3LightTextTertiary) },
+                placeholder = { Text("Describe changes...", color = GitText3, fontSize = 13.sp) },
                 maxLines = 3,
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Md3LightPrimary,
-                    unfocusedBorderColor = Md3LightOutline,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Md3LightSurfaceVariant
+                    focusedBorderColor = GitAccent,
+                    unfocusedBorderColor = GitBorder,
+                    focusedContainerColor = GitSurface,
+                    unfocusedContainerColor = GitSurface2
                 )
             )
 
@@ -164,52 +163,50 @@ fun CommitDialog(
                 text = "Target Branch",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = Md3LightTextPrimary
+                color = GitText1
             )
             Spacer(modifier = Modifier.height(4.dp))
             OutlinedTextField(
                 value = targetBranch,
                 onValueChange = { targetBranch = it },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.ForkRight,
-                        contentDescription = null,
-                        tint = Md3LightPrimary,
-                        modifier = Modifier.size(18.dp)
-                    )
-                },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .testTag("commit_branch_input"),
+                    .testTag("target_branch_input"),
+                leadingIcon = {
+                    Icon(Icons.Default.ForkRight, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
+                },
                 singleLine = true,
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = Md3LightPrimary,
-                    unfocusedBorderColor = Md3LightOutline,
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Md3LightSurfaceVariant
+                    focusedBorderColor = GitAccent,
+                    unfocusedBorderColor = GitBorder,
+                    focusedContainerColor = GitSurface,
+                    unfocusedContainerColor = GitSurface2
                 )
             )
 
-            Spacer(modifier = Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Action Buttons
+            // Actions
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 OutlinedButton(
                     onClick = onDismiss,
+                    enabled = !isCommitting,
                     modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1),
+                    border = BorderStroke(1.dp, GitBorder)
                 ) {
-                    Text("Cancel", color = Md3LightTextSecondary)
+                    Text("Cancel")
                 }
 
                 Button(
                     onClick = { onConfirmCommit(commitMessage, targetBranch) },
-                    enabled = !isCommitting && commitMessage.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                    enabled = !isCommitting && commitMessage.isNotBlank() && targetBranch.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1.5f)
@@ -222,11 +219,11 @@ fun CommitDialog(
                             strokeWidth = 2.dp
                         )
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Committing...", color = Color.White)
+                        Text("Pushing...", color = Color.White)
                     } else {
-                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Commit Directly", fontWeight = FontWeight.Bold)
+                        Text("Commit & Push", fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
