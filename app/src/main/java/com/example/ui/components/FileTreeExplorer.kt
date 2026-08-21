@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -159,6 +160,7 @@ fun FileTreeExplorer(
     onFileTreeSortChange: (FileTreeSortOption) -> Unit = {},
     onToggleFileTreeSortReverse: () -> Unit = {},
     onToggleLeftDrawer: () -> Unit,
+    onOpenTerminal: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -504,6 +506,28 @@ fun FileTreeExplorer(
                                 onToggleFileTreeSortReverse()
                                 showOverflowMenu = false
                             }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("GitHub Terminal", fontWeight = FontWeight.Bold, color = GitHubBlue)
+                                }
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Terminal, contentDescription = "Terminal", tint = GitHubBlue)
+                            },
+                            onClick = {
+                                onOpenTerminal()
+                                showOverflowMenu = false
+                            },
+                            modifier = Modifier.testTag("menu_item_github_terminal")
                         )
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))

@@ -46,6 +46,7 @@ import com.example.ui.components.CodeEditorView
 import com.example.ui.components.CommitDialog
 import com.example.ui.components.CreateOrUploadModal
 import com.example.ui.components.FileTreeExplorer
+import com.example.ui.components.GitHubTerminalModal
 import com.example.ui.components.RepoSidebarDrawer
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RepoListScreen
@@ -267,7 +268,8 @@ fun GitExplorerApp(
                             onTogglePinFolder = viewModel::togglePinFolder,
                             onFileTreeSortChange = viewModel::setFileTreeSortOption,
                             onToggleFileTreeSortReverse = viewModel::toggleFileTreeSortReverse,
-                            onToggleLeftDrawer = { viewModel.setLeftDrawerOpen(!uiState.isLeftDrawerOpen) }
+                            onToggleLeftDrawer = { viewModel.setLeftDrawerOpen(!uiState.isLeftDrawerOpen) },
+                            onOpenTerminal = { viewModel.openTerminal() }
                         )
                     }
                 }
@@ -375,6 +377,19 @@ fun GitExplorerApp(
             onConfirmDelete = { msg ->
                 viewModel.deleteSelectedFiles(msg)
             }
+        )
+    }
+
+    if (uiState.showTerminal) {
+        GitHubTerminalModal(
+            repo = uiState.selectedRepo,
+            selectedBranch = uiState.selectedBranch,
+            currentPath = uiState.terminalWorkingDir,
+            terminalLines = uiState.terminalLines,
+            isExecuting = uiState.isTerminalExecuting,
+            onDismiss = viewModel::closeTerminal,
+            onExecuteCommand = viewModel::executeTerminalCommand,
+            onClearTerminal = viewModel::clearTerminal
         )
     }
 }

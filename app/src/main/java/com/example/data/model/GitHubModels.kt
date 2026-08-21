@@ -127,6 +127,66 @@ data class CommitDetail(
     @Json(name = "html_url") val htmlUrl: String? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class GitHubCommitItem(
+    val sha: String = "",
+    @Json(name = "node_id") val nodeId: String? = null,
+    val commit: CommitInfo = CommitInfo(),
+    @Json(name = "html_url") val htmlUrl: String? = null,
+    val author: RepoOwner? = null,
+    val committer: RepoOwner? = null,
+    val parents: List<BranchCommit>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CommitInfo(
+    val message: String = "",
+    val author: GitAuthorInfo? = null,
+    val committer: GitAuthorInfo? = null,
+    @Json(name = "comment_count") val commentCount: Int = 0
+)
+
+@JsonClass(generateAdapter = true)
+data class GitAuthorInfo(
+    val name: String = "",
+    val email: String = "",
+    val date: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateRefPayload(
+    val ref: String,
+    val sha: String
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubTagItem(
+    val name: String = "",
+    val commit: BranchCommit? = null,
+    @Json(name = "zipball_url") val zipballUrl: String? = null,
+    @Json(name = "tarball_url") val tarballUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CompareResponse(
+    val status: String? = null,
+    @Json(name = "ahead_by") val aheadBy: Int = 0,
+    @Json(name = "behind_by") val behindBy: Int = 0,
+    @Json(name = "total_commits") val totalCommits: Int = 0,
+    val commits: List<GitHubCommitItem> = emptyList(),
+    val files: List<CompareFile>? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CompareFile(
+    val filename: String = "",
+    val status: String = "",
+    val additions: Int = 0,
+    val deletions: Int = 0,
+    val changes: Int = 0,
+    val patch: String? = null
+)
+
 // In-Memory Hierarchical File Node for Ultra-Fast Explorer Navigation
 data class ExplorerNode(
     val path: String,

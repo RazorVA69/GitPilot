@@ -1,19 +1,25 @@
 package com.example.data.api
 
 import com.example.data.model.CommitResultResponse
+import com.example.data.model.CompareResponse
 import com.example.data.model.CreateOrUpdateFilePayload
+import com.example.data.model.CreateRefPayload
 import com.example.data.model.DeleteFilePayload
 import com.example.data.model.FileContentResponse
 import com.example.data.model.GitHubBranch
+import com.example.data.model.GitHubCommitItem
 import com.example.data.model.GitHubRepository
+import com.example.data.model.GitHubTagItem
 import com.example.data.model.GitHubUser
 import com.example.data.model.GitTreeResponse
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
 import retrofit2.http.Header
+import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -93,4 +99,54 @@ interface GitHubApiService {
         @Path(value = "path", encoded = true) path: String,
         @Body payload: DeleteFilePayload
     ): Response<CommitResultResponse>
+
+    @GET("repos/{owner}/{repo}/commits")
+    suspend fun getCommits(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("sha") sha: String? = null,
+        @Query("path") path: String? = null,
+        @Query("per_page") perPage: Int = 30
+    ): Response<List<GitHubCommitItem>>
+
+    @GET("repos/{owner}/{repo}/commits/{ref}")
+    suspend fun getCommitDetail(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("ref") ref: String
+    ): Response<GitHubCommitItem>
+
+    @POST("repos/{owner}/{repo}/git/refs")
+    suspend fun createRef(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body payload: CreateRefPayload
+    ): Response<Any>
+
+    @DELETE("repos/{owner}/{repo}/git/refs/heads/{branch}")
+    suspend fun deleteBranchRef(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("branch") branch: String
+    ): Response<ResponseBody>
+
+    @GET("repos/{owner}/{repo}/tags")
+    suspend fun getTags(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 50
+    ): Response<List<GitHubTagItem>>
+
+    @GET("repos/{owner}/{repo}/compare/{basehead}")
+    suspend fun compareBranches(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("basehead") basehead: String
+    ): Response<CompareResponse>
 }

@@ -3,10 +3,11 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,8 +23,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.ui.input.pointer.pointerInput
-import kotlinx.coroutines.launch
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -67,6 +66,8 @@ import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
+import androidx.compose.material3.TabRowDefaults
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -113,6 +114,7 @@ import com.example.ui.theme.Md3LightSurfaceVariant
 import com.example.ui.theme.Md3LightTextPrimary
 import com.example.ui.theme.Md3LightTextSecondary
 import com.example.ui.theme.Md3LightTextTertiary
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -144,34 +146,10 @@ fun LoginScreen(
 
     val quickTokensUrl = "https://github.com/settings/tokens/new?scopes=repo,read:org,user,workflow&description=GitExplorer"
 
-    var totalDrag by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Md3LightBackground)
-            .pointerInput(Unit) {
-                detectHorizontalDragGestures(
-                    onDragStart = { totalDrag = 0f },
-                    onDragEnd = {
-                        if (totalDrag < -60f) {
-                            coroutineScope.launch {
-                                val next = (pagerState.currentPage + 1).coerceAtMost(2)
-                                pagerState.animateScrollToPage(next)
-                            }
-                        } else if (totalDrag > 60f) {
-                            coroutineScope.launch {
-                                val prev = (pagerState.currentPage - 1).coerceAtLeast(0)
-                                pagerState.animateScrollToPage(prev)
-                            }
-                        }
-                        totalDrag = 0f
-                    },
-                    onHorizontalDrag = { _, dragAmount ->
-                        totalDrag += dragAmount
-                    }
-                )
-            }
     ) {
         Column(
             modifier = Modifier
@@ -232,39 +210,78 @@ fun LoginScreen(
                 border = BorderStroke(1.dp, Md3LightOutlineVariant)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    // Auth Tabs
+                    // Auth Tabs with smooth sliding indicator
                     TabRow(
                         selectedTabIndex = pagerState.currentPage,
                         containerColor = Md3LightSurfaceVariant,
                         contentColor = Md3LightPrimary,
+                        indicator = { tabPositions ->
+                            if (pagerState.currentPage < tabPositions.size) {
+                                TabRowDefaults.SecondaryIndicator(
+                                    modifier = Modifier
+                                        .tabIndicatorOffset(tabPositions[pagerState.currentPage])
+                                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp)),
+                                    height = 3.dp,
+                                    color = Md3LightPrimary
+                                )
+                            }
+                        },
+                        divider = {},
                         modifier = Modifier.clip(RoundedCornerShape(12.dp))
                     ) {
                         Tab(
                             selected = pagerState.currentPage == 0,
                             onClick = {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
+                                    pagerState.animateScrollToPage(
+                                        page = 0,
+                                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                    )
                                 }
                             },
-                            text = { Text("GitHub Login", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            text = {
+                                Text(
+                                    "GitHub Login",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (pagerState.currentPage == 0) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
                         )
                         Tab(
                             selected = pagerState.currentPage == 1,
                             onClick = {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(1)
+                                    pagerState.animateScrollToPage(
+                                        page = 1,
+                                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                    )
                                 }
                             },
-                            text = { Text("PAT Token", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            text = {
+                                Text(
+                                    "PAT Token",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (pagerState.currentPage == 1) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
                         )
                         Tab(
                             selected = pagerState.currentPage == 2,
                             onClick = {
                                 coroutineScope.launch {
-                                    pagerState.animateScrollToPage(2)
+                                    pagerState.animateScrollToPage(
+                                        page = 2,
+                                        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                    )
                                 }
                             },
-                            text = { Text("Public User", fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+                            text = {
+                                Text(
+                                    "Public User",
+                                    fontSize = 12.sp,
+                                    fontWeight = if (pagerState.currentPage == 2) FontWeight.Bold else FontWeight.Medium
+                                )
+                            }
                         )
                     }
 
@@ -303,6 +320,8 @@ fun LoginScreen(
 
                     HorizontalPager(
                         state = pagerState,
+                        beyondViewportPageCount = 1,
+                        verticalAlignment = Alignment.Top,
                         modifier = Modifier.fillMaxWidth()
                     ) { page ->
 

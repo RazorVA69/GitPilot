@@ -586,6 +586,134 @@ class GitHubRepository(
         )
     }
 
+    suspend fun fetchCommits(
+        token: String?,
+        owner: String,
+        repo: String,
+        sha: String? = null,
+        path: String? = null,
+        perPage: Int = 30
+    ): Result<List<com.example.data.model.GitHubCommitItem>> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getCommits(authHeader, owner, repo, sha, path, perPage)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch commits: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun fetchCommitDetail(
+        token: String?,
+        owner: String,
+        repo: String,
+        ref: String
+    ): Result<com.example.data.model.GitHubCommitItem> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getCommitDetail(authHeader, owner, repo, ref)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch commit detail: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun createBranch(
+        token: String,
+        owner: String,
+        repo: String,
+        newBranchName: String,
+        baseSha: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Authentication token required to create branches"))
+            val formattedRef = if (newBranchName.startsWith("refs/heads/")) newBranchName else "refs/heads/$newBranchName"
+            val payload = com.example.data.model.CreateRefPayload(ref = formattedRef, sha = baseSha)
+            val response = apiService.createRef(authHeader, owner, repo, payload)
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Branch creation failed: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun deleteBranch(
+        token: String,
+        owner: String,
+        repo: String,
+        branchName: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Authentication token required to delete branches"))
+            val cleanBranch = branchName.removePrefix("refs/heads/")
+            val response = apiService.deleteBranchRef(authHeader, owner, repo, cleanBranch)
+            if (response.isSuccessful) {
+                Result.success(true)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Branch deletion failed: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun fetchTags(
+        token: String?,
+        owner: String,
+        repo: String
+    ): Result<List<com.example.data.model.GitHubTagItem>> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getTags(authHeader, owner, repo)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch tags: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun compareBranches(
+        token: String?,
+        owner: String,
+        repo: String,
+        base: String,
+        head: String
+    ): Result<com.example.data.model.CompareResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.compareBranches(authHeader, owner, repo, "$base...$head")
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Compare failed: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
     private fun decodeFileContent(rawContent: String?, encoding: String?): String {
         if (rawContent == null) return ""
         return if (encoding.equals("base64", ignoreCase = true)) {
