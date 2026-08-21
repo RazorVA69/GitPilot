@@ -30,12 +30,22 @@ object FileIcons {
         if (isDirectory) {
             return FileTypeMeta(
                 icon = Icons.Default.Folder,
-                color = GitHubYellow,
+                color = GitHubBlue,
                 label = "DIR"
             )
         }
 
         val ext = if (fileName.contains('.')) fileName.substringAfterLast('.').lowercase() else fileName.lowercase()
+        val lowerName = fileName.lowercase()
+
+        if (lowerName.startsWith(".env") || lowerName == ".gitignore" || lowerName == ".gitattributes" || lowerName == ".editorconfig") {
+            return FileTypeMeta(Icons.Default.Description, Color(0xFF8C95A0), "Config")
+        }
+
+        if (lowerName.endsWith(".properties") || lowerName.endsWith(".pro")) {
+            return FileTypeMeta(Icons.Default.Settings, GitHubBlue, "Config")
+        }
+
         return when (ext) {
             "kt", "kts" -> FileTypeMeta(Icons.Default.Code, GitHubPurple, "Kotlin")
             "java" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "Java")
@@ -47,13 +57,13 @@ object FileIcons {
             "cpp", "c", "h", "hpp" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "C/C++")
             "html", "htm" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "HTML")
             "css", "scss", "sass", "less" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "CSS")
-            "json" -> FileTypeMeta(Icons.Default.Code, GitHubTeal, "JSON")
+            "json" -> FileTypeMeta(Icons.Default.Code, Color(0xFF0F9D74), "JSON")
             "xml", "yaml", "yml", "toml" -> FileTypeMeta(Icons.Default.Settings, GitHubOrange, "Config")
             "md", "markdown", "txt", "rst" -> FileTypeMeta(Icons.Default.Description, GitHubBlue, "Doc")
-            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" -> FileTypeMeta(Icons.Default.Image, GitHubTeal, "Image")
+            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" -> FileTypeMeta(Icons.Default.Image, Color(0xFF0F9D74), "Image")
             "sh", "bash", "zsh", "bat", "cmd" -> FileTypeMeta(Icons.Default.Terminal, GitHubGreen, "Script")
-            "gradle", "properties", "pro" -> FileTypeMeta(Icons.Default.Settings, GitHubBlue, "Build")
-            else -> FileTypeMeta(Icons.Default.Description, Color.Gray, "File")
+            "gradle" -> FileTypeMeta(Icons.Default.Code, GitHubPurple, "Gradle")
+            else -> FileTypeMeta(Icons.Default.Description, Color(0xFF8C95A0), "File")
         }
     }
 
