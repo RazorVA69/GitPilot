@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,9 +18,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +33,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.ArrowForward
@@ -62,12 +69,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
-import androidx.compose.material3.TabRowDefaults
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -81,6 +83,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -89,8 +92,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -99,8 +100,10 @@ import coil.compose.AsyncImage
 import com.example.data.local.AccountEntity
 import com.example.data.model.DeviceCodeResponse
 import com.example.data.repository.GitHubRepository
+import com.example.ui.components.GitHubMarkIcon
 import com.example.ui.theme.*
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 fun LoginScreen(
@@ -132,33 +135,65 @@ fun LoginScreen(
 
     val quickTokensUrl = "https://github.com/settings/tokens/new?scopes=repo,read:org,user,workflow&description=GitExplorer"
 
+    var totalDragOffset by remember { mutableStateOf(0f) }
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Md3LightBackground)
+            .background(GitBg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
+            // Enable swiping anywhere on the screen to switch login tabs smoothly
+            .pointerInput(pagerState.currentPage) {
+                detectHorizontalDragGestures(
+                    onDragStart = { totalDragOffset = 0f },
+                    onHorizontalDrag = { _, dragAmount ->
+                        totalDragOffset += dragAmount
+                    },
+                    onDragEnd = {
+                        if (totalDragOffset < -80f && pagerState.currentPage < 2) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(
+                                    page = pagerState.currentPage + 1,
+                                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                                )
+                            }
+                        } else if (totalDragOffset > 80f && pagerState.currentPage > 0) {
+                            coroutineScope.launch {
+                                pagerState.animateScrollToPage(
+                                    page = pagerState.currentPage - 1,
+                                    animationSpec = tween(durationMillis = 240, easing = FastOutSlowInEasing)
+                                )
+                            }
+                        }
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
+                .widthIn(max = 480.dp)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 36.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .padding(horizontal = 24.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
-
-            // App Brand Header Icon (Emerald Key Squircle)
+            // App Brand Header Icon (Mint Key Squircle)
             Surface(
-                modifier = Modifier.size(56.dp),
+                modifier = Modifier.size(54.dp),
                 shape = RoundedCornerShape(16.dp),
                 color = GitAccentSoft,
-                border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.2f))
+                border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.25f))
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.VpnKey,
                         contentDescription = "GitHub Auth",
                         tint = GitAccent,
-                        modifier = Modifier.size(28.dp)
+                        modifier = Modifier.size(26.dp)
                     )
                 }
             }
@@ -166,7 +201,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Welcome back",
+                text = "Welcome to GitExplorer",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = GitText1,
@@ -176,44 +211,45 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(6.dp))
 
             Text(
-                text = "Sign in to browse, edit, and commit across your repositories.",
+                text = "Fast GitHub navigation, directory uploads, multi-file editing, and direct branch commits.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = GitText2,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(horizontal = 16.dp)
+                modifier = Modifier.padding(horizontal = 12.dp),
+                lineHeight = 20.sp
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Main Auth Card
+            // Main Auth Card (SS 2-4 Style)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("login_main_card"),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = GitSurface),
-                elevation = CardDefaults.cardElevation(defaultElevation = 0.5.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                 border = BorderStroke(1.dp, GitBorder)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
-                    // Segmented Control (HTML-style)
+                    // Segmented Control Tabs (SS 2-4)
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = GitSurface2
                     ) {
                         Row(
                             modifier = Modifier.padding(4.dp),
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            val tabs = listOf("GitHub", "Token", "Public")
+                            val tabs = listOf("GitHub Login", "PAT Token", "Public User")
                             tabs.forEachIndexed { index, title ->
                                 val isSelected = pagerState.currentPage == index
                                 Surface(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .height(36.dp)
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(9.dp))
                                         .clickable {
                                             coroutineScope.launch {
                                                 pagerState.animateScrollToPage(
@@ -222,17 +258,19 @@ fun LoginScreen(
                                                 )
                                             }
                                         },
-                                    shape = RoundedCornerShape(8.dp),
+                                    shape = RoundedCornerShape(9.dp),
                                     color = if (isSelected) GitSurface else Color.Transparent,
                                     border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else null,
-                                    shadowElevation = if (isSelected) 1.dp else 0.dp
+                                    shadowElevation = if (isSelected) 1.5.dp else 0.dp
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
                                             text = title,
-                                            fontSize = 13.sp,
+                                            fontSize = 12.5.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) GitText1 else GitText2
+                                            color = if (isSelected) GitText1 else GitText2,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -282,35 +320,37 @@ fun LoginScreen(
                     ) { page ->
                         when (page) {
                             0 -> {
+                                // TAB 1: GitHub Login (OAuth) - SS 2
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     if (deviceCodeState == null) {
                                         Text(
-                                            text = "OAuth Authorization",
+                                            text = "Sign in with GitHub",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = GitText1
                                         )
                                         Spacer(modifier = Modifier.height(4.dp))
                                         Text(
-                                            text = "Authenticate securely via GitHub's official authorization. Grants access to your repositories and organizations without manual token creation.",
+                                            text = "Authenticate through GitHub's official flow. Grants access to your repos and orgs — no manual token needed.",
                                             style = MaterialTheme.typography.bodySmall,
-                                            color = GitText2
+                                            color = GitText2,
+                                            lineHeight = 18.sp
                                         )
 
                                         Spacer(modifier = Modifier.height(20.dp))
 
-                                        // Dark / High-Contrast GitHub Login Button
+                                        // Green Accent GitHub Button with Left GitHub Logo Icon (SS 2)
                                         Button(
                                             onClick = { onStartGitHubOAuth(customClientId) },
                                             enabled = !isStartingOAuth && !isAuthenticating,
                                             colors = ButtonDefaults.buttonColors(
-                                                containerColor = GitText1,
+                                                containerColor = GitAccent,
                                                 contentColor = Color.White
                                             ),
-                                            shape = RoundedCornerShape(10.dp),
+                                            shape = RoundedCornerShape(12.dp),
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .height(48.dp)
+                                                .height(50.dp)
                                                 .testTag("github_oauth_login_btn")
                                         ) {
                                             if (isStartingOAuth) {
@@ -319,19 +359,20 @@ fun LoginScreen(
                                                     modifier = Modifier.size(18.dp),
                                                     strokeWidth = 2.dp
                                                 )
-                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Spacer(modifier = Modifier.width(10.dp))
                                                 Text("Connecting to GitHub...", color = Color.White, fontWeight = FontWeight.Bold)
                                             } else {
-                                                Icon(
-                                                    imageVector = Icons.Default.Security,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(18.dp)
+                                                // GitHub Icon on left side
+                                                GitHubMarkIcon(
+                                                    modifier = Modifier.size(20.dp),
+                                                    tint = Color.White
                                                 )
-                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Spacer(modifier = Modifier.width(10.dp))
                                                 Text(
                                                     text = "Sign in with GitHub",
-                                                    fontSize = 14.sp,
-                                                    fontWeight = FontWeight.Bold
+                                                    fontSize = 15.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
                                                 )
                                             }
                                         }
@@ -348,13 +389,14 @@ fun LoginScreen(
                                                     imageVector = Icons.Default.Settings,
                                                     contentDescription = null,
                                                     modifier = Modifier.size(14.dp),
-                                                    tint = GitText3
+                                                    tint = GitText2
                                                 )
-                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = if (showClientIdConfig) "Hide custom client" else "Use a custom OAuth client",
+                                                    text = if (showClientIdConfig) "Hide custom client ID" else "Use custom OAuth client ID",
                                                     fontSize = 12.sp,
-                                                    color = GitText3
+                                                    color = GitText2,
+                                                    fontWeight = FontWeight.Medium
                                                 )
                                             }
                                         }
@@ -364,7 +406,7 @@ fun LoginScreen(
                                                 OutlinedTextField(
                                                     value = customClientId,
                                                     onValueChange = { customClientId = it },
-                                                    label = { Text("OAuth App Client ID", fontSize = 11.sp) },
+                                                    label = { Text("OAuth Client ID", fontSize = 11.sp) },
                                                     placeholder = { Text("e.g. Iv1.8b22e1189912782b") },
                                                     singleLine = true,
                                                     modifier = Modifier.fillMaxWidth(),
@@ -396,7 +438,7 @@ fun LoginScreen(
                                                 )
                                                 Spacer(modifier = Modifier.height(4.dp))
                                                 Text(
-                                                    text = "Enter this one-time code on the GitHub authorization page:",
+                                                    text = "Enter this one-time code on GitHub's authorization page:",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = GitText2,
                                                     textAlign = TextAlign.Center
@@ -447,8 +489,8 @@ fun LoginScreen(
                                                         context.startActivity(intent)
                                                     },
                                                     colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
-                                                    shape = RoundedCornerShape(10.dp),
-                                                    modifier = Modifier.fillMaxWidth()
+                                                    shape = RoundedCornerShape(12.dp),
+                                                    modifier = Modifier.fillMaxWidth().height(48.dp)
                                                 ) {
                                                     Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp))
                                                     Spacer(modifier = Modifier.width(8.dp))
@@ -488,6 +530,7 @@ fun LoginScreen(
                             }
 
                             1 -> {
+                                // TAB 2: PAT Token (SS 4)
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
                                         text = "Personal Access Token",
@@ -497,35 +540,41 @@ fun LoginScreen(
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Paste a personal access token (classic or fine-grained) with 'repo' scope.",
+                                        text = "Paste a token (classic or fine-grained) with repo scope.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = GitText2
                                     )
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
-                                    // Quick 1-Click Generate Button on GitHub
-                                    Surface(
+                                    // Generate Token on GitHub Outlined Button (SS 4)
+                                    OutlinedButton(
+                                        onClick = {
+                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(quickTokensUrl))
+                                            context.startActivity(intent)
+                                        },
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable {
-                                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(quickTokensUrl))
-                                                context.startActivity(intent)
-                                            },
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = GitSurface2,
-                                        border = BorderStroke(1.dp, GitBorderStrong)
+                                            .height(44.dp),
+                                        shape = RoundedCornerShape(10.dp),
+                                        border = BorderStroke(1.dp, GitBorderStrong),
+                                        colors = ButtonDefaults.outlinedButtonColors(
+                                            contentColor = GitText1
+                                        )
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.Center
-                                        ) {
-                                            Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp), tint = GitText1)
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Generate on GitHub ↗", fontSize = 12.sp, color = GitText1, fontWeight = FontWeight.SemiBold)
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.OpenInNew,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(15.dp),
+                                            tint = GitText1
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Generate token on GitHub",
+                                            fontSize = 13.sp,
+                                            color = GitText1,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
                                     }
 
                                     Spacer(modifier = Modifier.height(14.dp))
@@ -536,7 +585,7 @@ fun LoginScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("login_pat_token_input"),
-                                        placeholder = { Text("ghp_… or github_pat_…", color = GitText3, fontSize = 13.sp) },
+                                        placeholder = { Text("ghp_  or  github_pat_...", color = GitText3, fontSize = 13.sp) },
                                         leadingIcon = {
                                             Icon(Icons.Default.Lock, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                                         },
@@ -565,11 +614,15 @@ fun LoginScreen(
 
                                     Spacer(modifier = Modifier.height(16.dp))
 
+                                    // Green Accent Action Button (SS 4)
                                     Button(
                                         onClick = { onLoginWithToken(tokenInput) },
                                         enabled = !isAuthenticating && tokenInput.isNotBlank(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
-                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = GitAccent,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(48.dp)
@@ -584,28 +637,33 @@ fun LoginScreen(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text("Validating...", color = Color.White, fontWeight = FontWeight.Bold)
                                         } else {
-                                            Text("Load repositories →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text("Load repositories", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            }
                                         }
                                     }
                                 }
                             }
 
                             2 -> {
+                                // TAB 3: Public User (SS 3)
                                 Column(modifier = Modifier.fillMaxWidth()) {
                                     Text(
-                                        text = "Public Explorer",
+                                        text = "Browse a public profile",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = GitText1
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "Explore any public GitHub user's repositories without logging in. Read-only mode.",
+                                        text = "No token needed — read-only access to any public GitHub user or org.",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = GitText2
                                     )
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
                                     // Quick presets chips
                                     Row(
@@ -614,7 +672,7 @@ fun LoginScreen(
                                             .horizontalScroll(rememberScrollState()),
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        listOf("torvalds", "google", "android", "kotlin", "facebook").forEach { name ->
+                                        listOf("torvalds", "google", "android", "kotlin", "BlazeFTL").forEach { name ->
                                             Surface(
                                                 modifier = Modifier
                                                     .clip(RoundedCornerShape(16.dp))
@@ -634,7 +692,7 @@ fun LoginScreen(
                                         }
                                     }
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
                                     OutlinedTextField(
                                         value = publicUsernameInput,
@@ -642,7 +700,7 @@ fun LoginScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .testTag("login_public_user_input"),
-                                        placeholder = { Text("e.g. BlazeFTL", color = GitText3, fontSize = 13.sp) },
+                                        placeholder = { Text("BlazeFTL", color = GitText3, fontSize = 13.sp) },
                                         leadingIcon = {
                                             Icon(Icons.Default.Person, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                                         },
@@ -658,11 +716,15 @@ fun LoginScreen(
 
                                     Spacer(modifier = Modifier.height(16.dp))
 
+                                    // Green Accent Action Button (SS 3)
                                     Button(
                                         onClick = { onExplorePublic(publicUsernameInput) },
                                         enabled = !isAuthenticating && publicUsernameInput.isNotBlank(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
-                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = GitAccent,
+                                            contentColor = Color.White
+                                        ),
+                                        shape = RoundedCornerShape(12.dp),
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .height(48.dp)
@@ -677,7 +739,7 @@ fun LoginScreen(
                                             Spacer(modifier = Modifier.width(8.dp))
                                             Text("Loading...", color = Color.White)
                                         } else {
-                                            Text("Browse repositories →", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                            Text("Browse repositories", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                         }
                                     }
                                 }
@@ -689,7 +751,7 @@ fun LoginScreen(
 
             // Saved Accounts Switcher List
             if (savedAccounts.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -784,7 +846,8 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
+

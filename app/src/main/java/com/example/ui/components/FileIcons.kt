@@ -104,10 +104,13 @@ object FileIcons {
 
 @Composable
 fun FileIconForExtension(
-    extension: String,
-    modifier: Modifier = Modifier
+    extension: String = "",
+    fileName: String = extension,
+    modifier: Modifier = Modifier,
+    isDirectory: Boolean = false
 ) {
-    val meta = FileIcons.getMeta(if (extension.contains('.')) extension else ".$extension", isDirectory = false)
+    val name = if (fileName.isNotBlank()) fileName else extension
+    val meta = FileIcons.getMeta(name, isDirectory)
     Icon(
         imageVector = meta.icon,
         contentDescription = meta.label,
@@ -115,3 +118,46 @@ fun FileIconForExtension(
         modifier = modifier
     )
 }
+
+@Composable
+fun GitHubMarkIcon(
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White
+) {
+    androidx.compose.foundation.Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val path = androidx.compose.ui.graphics.Path().apply {
+            // Draw GitHub Mark Octocat silhouette
+            moveTo(w * 0.5f, 0f)
+            cubicTo(w * 0.224f, 0f, 0f, h * 0.224f, 0f, h * 0.5f)
+            cubicTo(0f, h * 0.721f, w * 0.143f, h * 0.908f, w * 0.342f, h * 0.974f)
+            cubicTo(w * 0.367f, h * 0.979f, w * 0.376f, h * 0.963f, w * 0.376f, h * 0.95f)
+            cubicTo(w * 0.376f, h * 0.938f, w * 0.375f, h * 0.898f, w * 0.375f, h * 0.849f)
+            cubicTo(w * 0.236f, h * 0.879f, w * 0.207f, h * 0.782f, w * 0.207f, h * 0.782f)
+            cubicTo(w * 0.184f, h * 0.724f, w * 0.152f, h * 0.709f, w * 0.152f, h * 0.709f)
+            cubicTo(w * 0.107f, h * 0.678f, w * 0.155f, h * 0.679f, w * 0.155f, h * 0.679f)
+            cubicTo(w * 0.205f, h * 0.682f, w * 0.231f, h * 0.73f, w * 0.231f, h * 0.73f)
+            cubicTo(w * 0.275f, h * 0.805f, w * 0.346f, h * 0.783f, w * 0.374f, h * 0.77f)
+            cubicTo(w * 0.378f, h * 0.738f, w * 0.391f, h * 0.716f, w * 0.405f, h * 0.704f)
+            cubicTo(w * 0.294f, h * 0.691f, w * 0.178f, h * 0.648f, w * 0.178f, h * 0.457f)
+            cubicTo(w * 0.178f, h * 0.403f, w * 0.197f, h * 0.358f, w * 0.229f, h * 0.323f)
+            cubicTo(w * 0.224f, h * 0.31f, w * 0.207f, h * 0.26f, w * 0.234f, h * 0.192f)
+            cubicTo(w * 0.234f, h * 0.192f, w * 0.276f, h * 0.178f, w * 0.371f, h * 0.242f)
+            cubicTo(w * 0.411f, h * 0.231f, w * 0.454f, h * 0.225f, w * 0.497f, h * 0.225f)
+            cubicTo(w * 0.54f, h * 0.225f, w * 0.583f, h * 0.231f, w * 0.623f, h * 0.242f)
+            cubicTo(w * 0.718f, h * 0.178f, w * 0.76f, h * 0.192f, w * 0.76f, h * 0.192f)
+            cubicTo(w * 0.787f, h * 0.26f, w * 0.77f, h * 0.31f, w * 0.765f, h * 0.323f)
+            cubicTo(w * 0.797f, h * 0.358f, w * 0.816f, h * 0.403f, w * 0.816f, h * 0.457f)
+            cubicTo(w * 0.816f, h * 0.649f, w * 0.7f, h * 0.691f, w * 0.589f, h * 0.703f)
+            cubicTo(w * 0.607f, h * 0.719f, w * 0.623f, h * 0.749f, w * 0.623f, h * 0.796f)
+            cubicTo(w * 0.623f, h * 0.864f, w * 0.622f, h * 0.919f, w * 0.622f, h * 0.936f)
+            cubicTo(w * 0.622f, h * 0.95f, w * 0.631f, h * 0.966f, w * 0.657f, h * 0.961f)
+            cubicTo(w * 0.856f, h * 0.895f, w * 0.999f, h * 0.708f, w * 0.999f, h * 0.487f)
+            cubicTo(w * 0.999f, h * 0.218f, w * 0.775f, 0f, w * 0.5f, 0f)
+            close()
+        }
+        drawPath(path, color = tint)
+    }
+}
+

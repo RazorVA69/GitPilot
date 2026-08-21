@@ -20,6 +20,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -38,6 +39,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.components.BatchActionsModal
@@ -163,6 +165,23 @@ fun GitExplorerApp(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .pointerInput(uiState.isLeftDrawerOpen, uiState.currentScreen) {
+                    if (uiState.currentScreen != AppScreen.LOGIN) {
+                        detectHorizontalDragGestures { change, dragAmount ->
+                            if (!uiState.isLeftDrawerOpen) {
+                                // Swipe from left edge (within 120dp/px) towards right opens drawer
+                                if (change.position.x < 240f && dragAmount > 15f) {
+                                    viewModel.setLeftDrawerOpen(true)
+                                }
+                            } else {
+                                // Swiping left closes drawer
+                                if (dragAmount < -15f) {
+                                    viewModel.setLeftDrawerOpen(false)
+                                }
+                            }
+                        }
+                    }
+                }
         ) {
             // Main Screen Routing
             when (uiState.currentScreen) {
