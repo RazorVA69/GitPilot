@@ -97,20 +97,9 @@ import com.example.data.model.ExplorerNode
 import com.example.data.model.GitHubRepository
 import com.example.data.model.GitTreeItem
 import com.example.data.repository.GitHubRepository as RepoRepo
-import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubYellow
-import com.example.ui.theme.Md3LightBackground
-import com.example.ui.theme.Md3LightError
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightPrimaryContainer
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
+import com.example.ui.theme.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.outlined.Folder
 import com.example.ui.viewmodel.ClipboardState
 import com.example.ui.viewmodel.FileTreeSortOption
 import com.example.ui.viewmodel.SyncStatus
@@ -198,7 +187,7 @@ fun FileTreeExplorer(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Md3LightBackground)
+            .background(GitSurface)
     ) {
         // Main Top Bar
         TopAppBar(
@@ -209,7 +198,8 @@ fun FileTreeExplorer(
                             text = repo?.name ?: "File Explorer",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Md3LightTextPrimary,
+                            color = GitText1,
+                            fontSize = 17.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -226,25 +216,32 @@ fun FileTreeExplorer(
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
-                            color = Md3LightPrimaryContainer
+                            color = GitSurface2,
+                            border = BorderStroke(1.dp, GitBorder)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(5.dp)
+                                        .background(GitText3, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = selectedBranch,
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace,
-                                    color = Md3LightPrimary,
+                                    color = GitText2,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Medium
                                 )
                                 Spacer(modifier = Modifier.width(2.dp))
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Branch",
-                                    tint = Md3LightPrimary,
+                                    tint = GitText2,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
@@ -255,12 +252,8 @@ fun FileTreeExplorer(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onRefresh),
-                            color = when (syncStatus) {
-                                SyncStatus.SYNCING -> Md3LightSurfaceVariant
-                                SyncStatus.SYNCED -> Color(0xFFE8F5E9)
-                                SyncStatus.ERROR -> Color(0xFFFFEBEE)
-                                SyncStatus.IDLE -> Color(0xFFE8F5E9)
-                            }
+                            color = if (syncStatus == SyncStatus.ERROR) Color(0xFFFFEBEE) else GitAccentSoft,
+                            border = BorderStroke(1.dp, if (syncStatus == SyncStatus.ERROR) Md3LightError.copy(alpha = 0.3f) else GitAccent.copy(alpha = 0.3f))
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -270,7 +263,7 @@ fun FileTreeExplorer(
                                     Icon(
                                         imageVector = Icons.Default.Sync,
                                         contentDescription = "Syncing",
-                                        tint = GitHubBlue,
+                                        tint = GitAccent,
                                         modifier = Modifier
                                             .size(11.dp)
                                             .rotate(syncRotation)
@@ -280,14 +273,14 @@ fun FileTreeExplorer(
                                         text = "Syncing",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = GitHubBlue
+                                        color = GitAccent
                                     )
                                 } else {
                                     Box(
                                         modifier = Modifier
                                             .size(6.dp)
                                             .background(
-                                                color = if (syncStatus == SyncStatus.ERROR) Md3LightError else Color(0xFF2E7D32),
+                                                color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent,
                                                 shape = CircleShape
                                             )
                                     )
@@ -295,8 +288,8 @@ fun FileTreeExplorer(
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
                                         fontSize = 10.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        color = if (syncStatus == SyncStatus.ERROR) Md3LightError else Color(0xFF2E7D32)
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent
                                     )
                                 }
                             }
@@ -312,7 +305,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Menu,
                         contentDescription = "Repositories Menu",
-                        tint = Md3LightTextPrimary
+                        tint = GitText1
                     )
                 }
             },
@@ -325,7 +318,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search Files",
-                        tint = if (isSearchExpanded) GitHubBlue else Md3LightTextPrimary
+                        tint = if (isSearchExpanded) GitAccent else GitText1
                     )
                 }
 
@@ -337,14 +330,14 @@ fun FileTreeExplorer(
                     if (isBatchMode) {
                         Surface(
                             shape = CircleShape,
-                            color = GitHubGreen.copy(alpha = 0.15f),
+                            color = GitAccentSoft,
                             modifier = Modifier.size(32.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Checklist,
                                     contentDescription = "Exit Multi-Select",
-                                    tint = GitHubGreen,
+                                    tint = GitAccent,
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
@@ -353,7 +346,7 @@ fun FileTreeExplorer(
                         Icon(
                             imageVector = Icons.Default.Checklist,
                             contentDescription = "Multi-Select Mode",
-                            tint = Md3LightTextPrimary
+                            tint = GitText1
                         )
                     }
                 }
@@ -366,7 +359,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Sync,
                         contentDescription = "Sync Repository",
-                        tint = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitHubBlue else Md3LightTextPrimary,
+                        tint = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitText1,
                         modifier = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) Modifier.rotate(syncRotation) else Modifier
                     )
                 }
@@ -379,7 +372,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = "Add or Upload",
-                        tint = GitHubGreen
+                        tint = GitAccent
                     )
                 }
 
@@ -392,7 +385,7 @@ fun FileTreeExplorer(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "More Options",
-                            tint = Md3LightTextSecondary
+                            tint = GitText1
                         )
                     }
 
@@ -404,7 +397,7 @@ fun FileTreeExplorer(
                             text = "SORT BY",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
-                            color = Md3LightTextTertiary,
+                            color = GitText3,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
                         )
 
@@ -417,7 +410,7 @@ fun FileTreeExplorer(
                                 ) {
                                     Text("Folders First")
                                     if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
@@ -436,7 +429,7 @@ fun FileTreeExplorer(
                                 ) {
                                     Text("Files First")
                                     if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
@@ -455,7 +448,7 @@ fun FileTreeExplorer(
                                 ) {
                                     Text("Name (A → Z)")
                                     if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
@@ -474,7 +467,7 @@ fun FileTreeExplorer(
                                 ) {
                                     Text("Name (Z → A)")
                                     if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
@@ -495,12 +488,12 @@ fun FileTreeExplorer(
                                 ) {
                                     Text("Reverse Sort Order")
                                     if (isFileTreeSortReversed) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
                             leadingIcon = {
-                                Icon(Icons.Default.SwapVert, contentDescription = null, tint = if (isFileTreeSortReversed) GitHubBlue else Md3LightTextSecondary)
+                                Icon(Icons.Default.SwapVert, contentDescription = null, tint = if (isFileTreeSortReversed) GitAccent else GitText2)
                             },
                             onClick = {
                                 onToggleFileTreeSortReverse()
@@ -517,11 +510,11 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("GitHub Terminal", fontWeight = FontWeight.Bold, color = GitHubBlue)
+                                    Text("GitHub Terminal", fontWeight = FontWeight.Bold, color = GitAccent)
                                 }
                             },
                             leadingIcon = {
-                                Icon(Icons.Default.Terminal, contentDescription = "Terminal", tint = GitHubBlue)
+                                Icon(Icons.Default.Terminal, contentDescription = "Terminal", tint = GitAccent)
                             },
                             onClick = {
                                 onOpenTerminal()
@@ -535,7 +528,7 @@ fun FileTreeExplorer(
                         DropdownMenuItem(
                             text = { Text("Back to Repositories") },
                             leadingIcon = {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = Md3LightTextSecondary)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = GitText2)
                             },
                             onClick = {
                                 onNavigateToReposList()
@@ -546,18 +539,18 @@ fun FileTreeExplorer(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Md3LightSurface,
-                titleContentColor = Md3LightTextPrimary
+                containerColor = GitSurface,
+                titleContentColor = GitText1
             )
         )
 
-        HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+        HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
         // Search Bar (if expanded)
         AnimatedVisibility(visible = isSearchExpanded) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Md3LightSurfaceVariant
+                color = GitSurface2
             ) {
                 Row(
                     modifier = Modifier
@@ -571,24 +564,24 @@ fun FileTreeExplorer(
                         modifier = Modifier
                             .weight(1f)
                             .testTag("tree_search_input"),
-                        placeholder = { Text("Search files by name or path...", fontSize = 13.sp) },
+                        placeholder = { Text("Search files by name or path...", fontSize = 13.sp, color = GitText3) },
                         singleLine = true,
                         leadingIcon = {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = Md3LightTextSecondary, modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Search, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                         },
                         trailingIcon = {
                             if (searchQuery.isNotEmpty()) {
                                 IconButton(onClick = { onSearchChange("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp), tint = GitText2)
                                 }
                             }
                         },
                         shape = RoundedCornerShape(10.dp),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White,
-                            focusedBorderColor = Md3LightPrimary,
-                            unfocusedBorderColor = Md3LightOutline
+                            focusedContainerColor = GitSurface,
+                            unfocusedContainerColor = GitSurface,
+                            focusedBorderColor = GitAccent,
+                            unfocusedBorderColor = GitBorder
                         )
                     )
                 }
@@ -616,7 +609,7 @@ fun FileTreeExplorer(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pinned",
-                        tint = GitHubBlue,
+                        tint = GitAccent,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -624,7 +617,7 @@ fun FileTreeExplorer(
                         text = "Quick Folders:",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextSecondary
+                        color = GitText2
                     )
                 }
 
@@ -637,10 +630,10 @@ fun FileTreeExplorer(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { onNavigateToDir(folderPath) },
-                        color = if (isCurrent) Md3LightPrimaryContainer else Md3LightSurfaceVariant,
+                        color = if (isCurrent) GitAccentSoft else GitSurface2,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (isCurrent) Md3LightPrimary.copy(alpha = 0.5f) else Md3LightOutlineVariant
+                            if (isCurrent) GitAccent else GitBorder
                         ),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -649,17 +642,17 @@ fun FileTreeExplorer(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Folder,
+                                imageVector = Icons.Outlined.Folder,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = GitHubBlue
+                                tint = GitAccent
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = displayName,
                                 fontSize = 11.sp,
                                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCurrent) Md3LightPrimary else Md3LightTextPrimary
+                                color = if (isCurrent) GitAccent else GitText1
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
@@ -669,7 +662,7 @@ fun FileTreeExplorer(
                                     .size(13.dp)
                                     .clip(CircleShape)
                                     .clickable { onTogglePinFolder(folderPath) },
-                                tint = Md3LightTextTertiary
+                                tint = GitText3
                             )
                         }
                     }
@@ -682,8 +675,8 @@ fun FileTreeExplorer(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { onTogglePinFolder(currentPath) },
-                        color = GitHubGreen.copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f)),
+                        color = GitAccentSoft,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitAccent.copy(alpha = 0.4f)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Row(
@@ -693,7 +686,7 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
-                                tint = GitHubGreen,
+                                tint = GitAccent,
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -701,13 +694,13 @@ fun FileTreeExplorer(
                                 text = "Pin \"$currentFolderName\"",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GitHubGreen
+                                color = GitAccent
                             )
                         }
                     }
                 }
             }
-            HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+            HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
         }
 
         // Batch Mode Action Bar
@@ -729,9 +722,9 @@ fun FileTreeExplorer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 6.dp),
-                    color = Md3LightPrimaryContainer,
+                    color = GitAccentSoft,
                     shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightPrimary.copy(alpha = 0.4f))
+                    border = androidx.compose.foundation.BorderStroke(1.dp, GitAccent.copy(alpha = 0.4f))
                 ) {
                     Row(
                         modifier = Modifier
@@ -747,7 +740,7 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = if (clip.isCut) Icons.Default.ContentCut else Icons.Default.ContentCopy,
                                 contentDescription = null,
-                                tint = Md3LightPrimary,
+                                tint = GitAccent,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
@@ -756,12 +749,12 @@ fun FileTreeExplorer(
                                     text = "${if (clip.isCut) "Cut" else "Copied"} ${clip.items.size} item(s)",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = Md3LightPrimary
+                                    color = GitAccent
                                 )
                                 Text(
                                     text = "Target: ${if (currentPath.isBlank()) "Root (/)" else "/$currentPath"}",
                                     fontSize = 10.sp,
-                                    color = Md3LightTextSecondary,
+                                    color = GitText2,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
@@ -773,13 +766,13 @@ fun FileTreeExplorer(
                                 onClick = onClearClipboard,
                                 contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
                             ) {
-                                Text("Cancel", fontSize = 11.sp, color = Md3LightTextSecondary)
+                                Text("Cancel", fontSize = 11.sp, color = GitText2)
                             }
                             Spacer(modifier = Modifier.width(4.dp))
                             Button(
                                 onClick = { onPasteClipboard(currentPath) },
                                 enabled = !isPasting,
-                                colors = ButtonDefaults.buttonColors(containerColor = Md3LightPrimary),
+                                colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
                                 shape = RoundedCornerShape(8.dp),
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                             ) {
@@ -812,14 +805,14 @@ fun FileTreeExplorer(
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(
-                            color = Md3LightPrimary,
+                            color = GitAccent,
                             modifier = Modifier.size(36.dp)
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "Loading repository files...",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Md3LightTextSecondary
+                            color = GitText2
                         )
                     }
                 }
@@ -862,19 +855,19 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = Icons.Default.FolderOpen,
                                 contentDescription = "Empty Directory",
-                                tint = Md3LightTextTertiary,
+                                tint = GitText3,
                                 modifier = Modifier.size(48.dp)
                             )
                             Spacer(modifier = Modifier.height(12.dp))
                             Text(
                                 text = if (rawTreeItems.isEmpty()) "This repository is empty" else "Directory is empty",
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Md3LightTextSecondary
+                                color = GitText2
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                             Button(
                                 onClick = onOpenNewFileDialog,
-                                colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                                colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -967,14 +960,14 @@ fun FileTreeExplorer(
             onDismissRequest = { folderForActionDialog = null },
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Folder, contentDescription = null, tint = GitHubYellow, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Outlined.Folder, contentDescription = null, tint = GitAccent, modifier = Modifier.size(20.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(folderNode.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(folderNode.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = GitText1)
                 }
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Quick action for this folder:", fontSize = 13.sp, color = Md3LightTextSecondary)
+                    Text("Quick action for this folder:", fontSize = 13.sp, color = GitText2)
 
                     Spacer(modifier = Modifier.height(4.dp))
 
@@ -986,7 +979,8 @@ fun FileTreeExplorer(
                                 onTogglePinFolder(folderNode.path)
                                 folderForActionDialog = null
                             },
-                        color = Md3LightSurfaceVariant
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorder)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -995,7 +989,7 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = Icons.Default.PushPin,
                                 contentDescription = null,
-                                tint = if (isPinned) GitHubYellow else Md3LightTextPrimary,
+                                tint = if (isPinned) GitAccent else GitText1,
                                 modifier = Modifier.size(20.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
@@ -1003,12 +997,13 @@ fun FileTreeExplorer(
                                 Text(
                                     text = if (isPinned) "Unpin Folder" else "Pin Folder to Quick Access",
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
+                                    fontSize = 13.sp,
+                                    color = GitText1
                                 )
                                 Text(
                                     text = "Access this folder with one tap from the explorer header",
                                     fontSize = 11.sp,
-                                    color = Md3LightTextSecondary
+                                    color = GitText2
                                 )
                             }
                         }
@@ -1017,7 +1012,7 @@ fun FileTreeExplorer(
             },
             confirmButton = {
                 TextButton(onClick = { folderForActionDialog = null }) {
-                    Text("Close")
+                    Text("Close", color = GitText2)
                 }
             }
         )
@@ -1047,17 +1042,17 @@ private fun BreadcrumbBar(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Md3LightSurface,
-        shadowElevation = 0.5.dp
+        color = GitSurface,
+        shadowElevation = 0.dp
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(horizontal = 16.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Root Icon & Button
+            // Root Indicator / Button
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
@@ -1065,18 +1060,17 @@ private fun BreadcrumbBar(
                     .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = "Root",
-                    tint = GitHubBlue,
-                    modifier = Modifier.size(16.dp)
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .background(GitAccent, CircleShape)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = repoName,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (segments.isEmpty()) Md3LightTextPrimary else Md3LightPrimary
+                    color = if (segments.isEmpty()) GitText1 else GitAccent
                 )
             }
 
@@ -1091,7 +1085,7 @@ private fun BreadcrumbBar(
                 Icon(
                     imageVector = Icons.Default.ChevronRight,
                     contentDescription = null,
-                    tint = Md3LightTextTertiary,
+                    tint = GitText3,
                     modifier = Modifier.size(14.dp)
                 )
 
@@ -1099,7 +1093,7 @@ private fun BreadcrumbBar(
                     text = seg,
                     style = MaterialTheme.typography.bodySmall,
                     fontWeight = if (isLast) FontWeight.Bold else FontWeight.Medium,
-                    color = if (isLast) Md3LightTextPrimary else Md3LightPrimary,
+                    color = if (isLast) GitText1 else GitAccent,
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
                         .clickable { onNavigateToDir(dirTarget) }
@@ -1108,7 +1102,7 @@ private fun BreadcrumbBar(
             }
         }
     }
-    HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+    HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 }
 
 @Composable
@@ -1122,8 +1116,8 @@ private fun BatchActionBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = Md3LightSurfaceVariant,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Md3LightOutlineVariant)
+        color = GitSurface2,
+        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -1138,20 +1132,20 @@ private fun BatchActionBar(
                         text = "$selectedCount selected",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightPrimary
+                        color = GitAccent
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     TextButton(
                         onClick = onSelectAll,
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text("Select All", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        Text("Select All", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GitAccent)
                     }
                     TextButton(
                         onClick = onClear,
                         contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                     ) {
-                        Text("Clear", fontSize = 12.sp, color = Md3LightTextSecondary)
+                        Text("Clear", fontSize = 12.sp, color = GitText2)
                     }
                 }
 
@@ -1165,9 +1159,9 @@ private fun BatchActionBar(
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.ContentCut, contentDescription = null, modifier = Modifier.size(14.dp), tint = Md3LightPrimary)
+                        Icon(Icons.Default.ContentCut, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText1)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Cut", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Md3LightPrimary)
+                        Text("Cut", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GitText1)
                     }
 
                     OutlinedButton(
@@ -1176,17 +1170,17 @@ private fun BatchActionBar(
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = Md3LightPrimary)
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText1)
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Copy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Md3LightPrimary)
+                        Text("Copy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GitText1)
                     }
 
                     Button(
                         onClick = onDelete,
                         enabled = selectedCount > 0,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Md3LightError,
-                            disabledContainerColor = Md3LightOutlineVariant
+                            containerColor = Color(0xFFE53935),
+                            disabledContainerColor = GitBorder
                         ),
                         shape = RoundedCornerShape(8.dp),
                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
@@ -1223,11 +1217,12 @@ private fun ExplorerItemRow(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .background(if (isSelected) GitAccentSoft else Color.Transparent)
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick
             )
-            .padding(horizontal = 16.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 11.dp)
             .testTag("explorer_item_${node.name}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1236,26 +1231,27 @@ private fun ExplorerItemRow(
                 checked = isSelected,
                 onCheckedChange = { onToggleSelect() },
                 colors = CheckboxDefaults.colors(
-                    checkedColor = Md3LightPrimary,
-                    uncheckedColor = Md3LightOutline
+                    checkedColor = GitAccent,
+                    uncheckedColor = GitText3
                 ),
-                modifier = Modifier.size(32.dp)
+                modifier = Modifier.size(28.dp)
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
 
-        // Icon
+        // Icon (Outlined Green for Folder, Outlined line icons for Files)
         if (node.isDirectory) {
             Icon(
-                imageVector = Icons.Default.Folder,
+                imageVector = Icons.Outlined.Folder,
                 contentDescription = "Directory",
-                tint = GitHubBlue,
-                modifier = Modifier.size(24.dp)
+                tint = GitAccent,
+                modifier = Modifier.size(20.dp)
             )
         } else {
             FileIconForExtension(
                 extension = node.extension.ifBlank { rawItem.extension },
-                modifier = Modifier.size(22.dp)
+                fileName = node.name,
+                modifier = Modifier.size(20.dp)
             )
         }
 
@@ -1267,8 +1263,9 @@ private fun ExplorerItemRow(
                 Text(
                     text = node.name,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (node.isDirectory) FontWeight.Bold else FontWeight.Medium,
-                    color = Md3LightTextPrimary,
+                    fontWeight = if (node.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
+                    color = GitText1,
+                    fontSize = 14.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -1277,8 +1274,8 @@ private fun ExplorerItemRow(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pinned",
-                        tint = GitHubBlue,
-                        modifier = Modifier.size(13.dp)
+                        tint = GitAccent,
+                        modifier = Modifier.size(12.dp)
                     )
                 }
             }
@@ -1287,7 +1284,9 @@ private fun ExplorerItemRow(
                 Text(
                     text = formatFileSize(node.size),
                     style = MaterialTheme.typography.labelSmall,
-                    color = Md3LightTextSecondary
+                    color = GitText3,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    fontSize = 11.sp
                 )
             }
         }
@@ -1301,8 +1300,8 @@ private fun ExplorerItemRow(
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "More actions",
-                    tint = Md3LightTextTertiary,
-                    modifier = Modifier.size(18.dp)
+                    tint = GitText3,
+                    modifier = Modifier.size(16.dp)
                 )
             }
 
@@ -1313,7 +1312,7 @@ private fun ExplorerItemRow(
                 DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Cut (Move)")
                         }
@@ -1327,7 +1326,7 @@ private fun ExplorerItemRow(
                 DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Copy")
                         }
@@ -1342,7 +1341,7 @@ private fun ExplorerItemRow(
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitHubYellow else Md3LightPrimary, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders")
                             }
@@ -1357,9 +1356,9 @@ private fun ExplorerItemRow(
                 DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (node.isDirectory) "Delete Folder" else "Delete File", color = Md3LightError)
+                            Text(if (node.isDirectory) "Delete Folder" else "Delete File", color = Color(0xFFE53935))
                         }
                     },
                     onClick = {
@@ -1372,8 +1371,8 @@ private fun ExplorerItemRow(
     }
 
     HorizontalDivider(
-        modifier = Modifier.padding(start = if (isBatchMode) 56.dp else 48.dp),
-        color = Md3LightOutlineVariant.copy(alpha = 0.5f),
+        modifier = Modifier.padding(start = if (isBatchMode) 52.dp else 48.dp),
+        color = GitBorder,
         thickness = 0.5.dp
     )
 }
@@ -1403,7 +1402,7 @@ private fun SearchResultsList(
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = null,
-                    tint = Md3LightTextTertiary,
+                    tint = GitText3,
                     modifier = Modifier.size(44.dp)
                 )
                 Spacer(modifier = Modifier.height(10.dp))
@@ -1411,12 +1410,12 @@ private fun SearchResultsList(
                     text = "No files match \"$searchQuery\"",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
-                    color = Md3LightTextPrimary
+                    color = GitText1
                 )
                 Text(
                     text = "Try searching for another filename or path",
                     style = MaterialTheme.typography.bodySmall,
-                    color = Md3LightTextSecondary
+                    color = GitText2
                 )
             }
         }
@@ -1432,6 +1431,7 @@ private fun SearchResultsList(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .background(if (isSelected) GitAccentSoft else Color.Transparent)
                         .combinedClickable(
                             onClick = {
                                 if (isBatchMode) onToggleSelect(item.path)
@@ -1444,7 +1444,7 @@ private fun SearchResultsList(
                                 onToggleSelect(item.path)
                             }
                         )
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                        .padding(horizontal = 16.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (isBatchMode) {
@@ -1452,17 +1452,18 @@ private fun SearchResultsList(
                             checked = isSelected,
                             onCheckedChange = { onToggleSelect(item.path) },
                             colors = CheckboxDefaults.colors(
-                                checkedColor = Md3LightPrimary,
-                                uncheckedColor = Md3LightOutline
+                                checkedColor = GitAccent,
+                                uncheckedColor = GitText3
                             ),
-                            modifier = Modifier.size(32.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
 
                     FileIconForExtension(
                         extension = item.extension,
-                        modifier = Modifier.size(22.dp)
+                        fileName = item.fileName,
+                        modifier = Modifier.size(20.dp)
                     )
 
                     Spacer(modifier = Modifier.width(12.dp))
@@ -1472,14 +1473,16 @@ private fun SearchResultsList(
                             text = item.fileName,
                             style = MaterialTheme.typography.bodyMedium,
                             fontWeight = FontWeight.Medium,
-                            color = Md3LightTextPrimary,
+                            color = GitText1,
+                            fontSize = 14.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
                             text = item.path,
                             style = MaterialTheme.typography.labelSmall,
-                            color = Md3LightTextSecondary,
+                            color = GitText2,
+                            fontSize = 11.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1489,7 +1492,9 @@ private fun SearchResultsList(
                         Text(
                             text = formatFileSize(item.size),
                             style = MaterialTheme.typography.labelSmall,
-                            color = Md3LightTextTertiary
+                            color = GitText3,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            fontSize = 11.sp
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
@@ -1502,8 +1507,8 @@ private fun SearchResultsList(
                             Icon(
                                 imageVector = Icons.Default.MoreVert,
                                 contentDescription = "More actions",
-                                tint = Md3LightTextTertiary,
-                                modifier = Modifier.size(18.dp)
+                                tint = GitText3,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
@@ -1514,7 +1519,7 @@ private fun SearchResultsList(
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ContentCut, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text("Cut (Move)")
                                     }
@@ -1528,7 +1533,7 @@ private fun SearchResultsList(
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Md3LightPrimary, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text("Copy")
                                     }
@@ -1542,9 +1547,9 @@ private fun SearchResultsList(
                             DropdownMenuItem(
                                 text = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Delete", color = Md3LightError)
+                                        Text("Delete", color = Color(0xFFE53935))
                                     }
                                 },
                                 onClick = {
@@ -1558,7 +1563,7 @@ private fun SearchResultsList(
 
                 HorizontalDivider(
                     modifier = Modifier.padding(start = 48.dp),
-                    color = Md3LightOutlineVariant.copy(alpha = 0.5f),
+                    color = GitBorder,
                     thickness = 0.5.dp
                 )
             }

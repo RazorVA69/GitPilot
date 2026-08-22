@@ -314,7 +314,7 @@ fun RepoSidebarDrawer(
                 }
             }
 
-            // Search Bar & Sort Button (SS 4 style)
+            // Search Bar & Sort Button beside Filter (SS 4 style)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -332,83 +332,9 @@ fun RepoSidebarDrawer(
                         Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2)
                     },
                     trailingIcon = {
-                        Box {
-                            IconButton(
-                                onClick = { showSortMenu = true },
-                                modifier = Modifier.size(32.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.SwapVert,
-                                    contentDescription = "Sort repos",
-                                    tint = GitText2,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Last Activity")
-                                            if (sortOption == RepoSortOption.LAST_ACTIVITY) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        onSortChange(RepoSortOption.LAST_ACTIVITY)
-                                        showSortMenu = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Name (A → Z)")
-                                            if (sortOption == RepoSortOption.NAME_ASC) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        onSortChange(RepoSortOption.NAME_ASC)
-                                        showSortMenu = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Name (Z → A)")
-                                            if (sortOption == RepoSortOption.NAME_DESC) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        onSortChange(RepoSortOption.NAME_DESC)
-                                        showSortMenu = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Most Stars ⭐")
-                                            if (sortOption == RepoSortOption.STARS_DESC) {
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
-                                            }
-                                        }
-                                    },
-                                    onClick = {
-                                        onSortChange(RepoSortOption.STARS_DESC)
-                                        showSortMenu = false
-                                    }
-                                )
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { onSearchChange("") }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp), tint = GitText2)
                             }
                         }
                     },
@@ -421,15 +347,105 @@ fun RepoSidebarDrawer(
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Dedicated Sort Button beside Filter
+                Box {
+                    Surface(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { showSortMenu = true },
+                        shape = RoundedCornerShape(10.dp),
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorder)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.SwapVert,
+                                contentDescription = "Sort repos",
+                                tint = GitText1,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = showSortMenu,
+                        onDismissRequest = { showSortMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Last Activity")
+                                    if (sortOption == RepoSortOption.LAST_ACTIVITY) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onSortChange(RepoSortOption.LAST_ACTIVITY)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Name (A → Z)")
+                                    if (sortOption == RepoSortOption.NAME_ASC) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onSortChange(RepoSortOption.NAME_ASC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Name (Z → A)")
+                                    if (sortOption == RepoSortOption.NAME_DESC) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onSortChange(RepoSortOption.NAME_DESC)
+                                showSortMenu = false
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text("Most Stars ⭐")
+                                    if (sortOption == RepoSortOption.STARS_DESC) {
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                    }
+                                }
+                            },
+                            onClick = {
+                                onSortChange(RepoSortOption.STARS_DESC)
+                                showSortMenu = false
+                            }
+                        )
+                    }
+                }
             }
 
-            // Filter Chips Bar (SS 4 format: "All · 19", "Public · 18", "Private · 1", "Forks · 3")
+            // Filter Chips Bar (Centered with Accent on Selected Chip)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.Center
             ) {
                 val filters = listOf(
                     Triple(RepoFilterType.ALL, "All", allCount),
@@ -445,17 +461,18 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onFilterChange(filter) },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) GitSurface2 else Color.Transparent,
-                        border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else BorderStroke(1.dp, GitBorder)
+                        color = if (isSelected) GitAccentSoft else Color.Transparent,
+                        border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder)
                     ) {
                         Text(
                             text = "$label · $count",
                             fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) GitText1 else GitText2,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) GitAccent else GitText2,
                             modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                         )
                     }
+                    Spacer(modifier = Modifier.width(6.dp))
                 }
             }
 

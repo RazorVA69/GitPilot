@@ -1,23 +1,20 @@
 package com.example.ui.components
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubOrange
-import com.example.ui.theme.GitHubPurple
-import com.example.ui.theme.GitHubTeal
-import com.example.ui.theme.GitHubYellow
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
 
 data class FileTypeMeta(
     val icon: ImageVector,
@@ -29,8 +26,8 @@ object FileIcons {
     fun getMeta(fileName: String, isDirectory: Boolean): FileTypeMeta {
         if (isDirectory) {
             return FileTypeMeta(
-                icon = Icons.Default.Folder,
-                color = GitHubBlue,
+                icon = Icons.Outlined.Folder,
+                color = GitAccent,
                 label = "DIR"
             )
         }
@@ -39,40 +36,35 @@ object FileIcons {
         val lowerName = fileName.lowercase()
 
         if (lowerName.startsWith(".env") || lowerName == ".gitignore" || lowerName == ".gitattributes" || lowerName == ".editorconfig") {
-            return FileTypeMeta(Icons.Default.Description, Color(0xFF8C95A0), "Config")
+            return FileTypeMeta(Icons.Outlined.Description, GitText2, "Config")
         }
 
         if (lowerName.endsWith(".properties") || lowerName.endsWith(".pro")) {
-            return FileTypeMeta(Icons.Default.Settings, GitHubBlue, "Config")
+            return FileTypeMeta(Icons.Outlined.Settings, GitText2, "Config")
         }
 
         return when (ext) {
-            "kt", "kts" -> FileTypeMeta(Icons.Default.Code, GitHubPurple, "Kotlin")
-            "java" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "Java")
-            "js", "jsx", "mjs" -> FileTypeMeta(Icons.Default.Code, GitHubYellow, "JavaScript")
-            "ts", "tsx" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "TypeScript")
-            "py" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "Python")
-            "go" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "Go")
-            "rs" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "Rust")
-            "cpp", "c", "h", "hpp" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "C/C++")
-            "html", "htm" -> FileTypeMeta(Icons.Default.Code, GitHubOrange, "HTML")
-            "css", "scss", "sass", "less" -> FileTypeMeta(Icons.Default.Code, GitHubBlue, "CSS")
-            "json" -> FileTypeMeta(Icons.Default.Code, Color(0xFF0F9D74), "JSON")
-            "xml", "yaml", "yml", "toml" -> FileTypeMeta(Icons.Default.Settings, GitHubOrange, "Config")
-            "md", "markdown", "txt", "rst" -> FileTypeMeta(Icons.Default.Description, GitHubBlue, "Doc")
-            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" -> FileTypeMeta(Icons.Default.Image, Color(0xFF0F9D74), "Image")
-            "sh", "bash", "zsh", "bat", "cmd" -> FileTypeMeta(Icons.Default.Terminal, GitHubGreen, "Script")
-            "gradle" -> FileTypeMeta(Icons.Default.Code, GitHubPurple, "Gradle")
-            else -> FileTypeMeta(Icons.Default.Description, Color(0xFF8C95A0), "File")
+            "kt", "kts", "java", "js", "jsx", "mjs", "ts", "tsx", "py", "go", "rs", "cpp", "c", "h", "hpp", "html", "htm", "css", "scss", "sass", "less", "json", "gradle" ->
+                FileTypeMeta(Icons.Outlined.Code, GitText2, "Code")
+            "xml", "yaml", "yml", "toml", "properties", "pro" ->
+                FileTypeMeta(Icons.Outlined.Settings, GitText2, "Config")
+            "md", "markdown", "txt", "rst", "log" ->
+                FileTypeMeta(Icons.Outlined.Description, GitText2, "Doc")
+            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" ->
+                FileTypeMeta(Icons.Outlined.Image, GitText2, "Image")
+            "sh", "bash", "zsh", "bat", "cmd" ->
+                FileTypeMeta(Icons.Outlined.Terminal, GitText2, "Script")
+            else ->
+                FileTypeMeta(Icons.Outlined.Description, GitText2, "File")
         }
     }
 
     fun getLanguageColor(language: String?): Color {
         return when (language?.lowercase()) {
-            "kotlin" -> GitHubPurple
-            "java" -> GitHubOrange
-            "javascript" -> GitHubYellow
-            "typescript" -> GitHubBlue
+            "kotlin" -> Color(0xFFA97BFF)
+            "java" -> Color(0xFFB07219)
+            "javascript" -> Color(0xFFF1E05A)
+            "typescript" -> Color(0xFF3178C6)
             "python" -> Color(0xFF3572A5)
             "go" -> Color(0xFF00ADD8)
             "rust" -> Color(0xFFDEA584)
@@ -86,7 +78,7 @@ object FileIcons {
             "swift" -> Color(0xFFF05138)
             "dart" -> Color(0xFF00B4AB)
             "shell" -> Color(0xFF89E051)
-            else -> Color(0xFF8B949E)
+            else -> GitText3
         }
     }
 

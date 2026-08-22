@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.StarOutline
@@ -148,6 +149,7 @@ fun RepoListScreen(
                     }
                 },
                 actions = {
+                    // Search Action
                     IconButton(
                         onClick = {
                             isSearchVisible = !isSearchVisible
@@ -162,7 +164,99 @@ fun RepoListScreen(
                         )
                     }
 
-                    // Green Squircle Profile Badge (SS 2 style)
+                    // Sort Action & Dropdown Menu
+                    Box {
+                        IconButton(
+                            onClick = { showSortMenu = true },
+                            modifier = Modifier.testTag("repo_list_sort_btn")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Sort,
+                                contentDescription = "Sort repositories",
+                                tint = GitText1
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Last Activity")
+                                        if (sortOption == RepoSortOption.LAST_ACTIVITY) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.LAST_ACTIVITY)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Name (A → Z)")
+                                        if (sortOption == RepoSortOption.NAME_ASC) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.NAME_ASC)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Name (Z → A)")
+                                        if (sortOption == RepoSortOption.NAME_DESC) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.NAME_DESC)
+                                    showSortMenu = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Most Stars ⭐")
+                                        if (sortOption == RepoSortOption.STARS_DESC) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
+                                        }
+                                    }
+                                },
+                                onClick = {
+                                    onSortChange(RepoSortOption.STARS_DESC)
+                                    showSortMenu = false
+                                }
+                            )
+                        }
+                    }
+
+                    // Refresh Action
+                    IconButton(
+                        onClick = onRefresh,
+                        modifier = Modifier.testTag("repo_list_refresh_btn")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh repositories",
+                            tint = GitText1
+                        )
+                    }
+
+                    // User Profile Picture Avatar
                     Surface(
                         modifier = Modifier
                             .padding(end = 16.dp, start = 4.dp)
@@ -172,13 +266,21 @@ fun RepoListScreen(
                         shape = RoundedCornerShape(8.dp),
                         color = GitAccent
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = account?.username?.take(1)?.uppercase() ?: "B",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
+                        if (account?.avatarUrl != null) {
+                            AsyncImage(
+                                model = account.avatarUrl,
+                                contentDescription = "Profile picture",
+                                modifier = Modifier.fillMaxSize()
                             )
+                        } else {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = account?.username?.take(1)?.uppercase() ?: "B",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                            }
                         }
                     }
                 },
@@ -228,13 +330,13 @@ fun RepoListScreen(
                 )
             }
 
-            // Filter Chips Bar (SS 2 style)
+            // Filter Chips Bar (Centered with Accent on Selected Chip)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.Center
             ) {
                 val filterItems = listOf(
                     Triple(RepoFilterType.ALL, "All", allCount),
@@ -250,17 +352,18 @@ fun RepoListScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onFilterChange(type) },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) GitSurface2 else Color.Transparent,
-                        border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else BorderStroke(1.dp, GitBorder)
+                        color = if (isSelected) GitAccentSoft else Color.Transparent,
+                        border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder)
                     ) {
                         Text(
                             text = "$label · $count",
                             fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                            color = if (isSelected) GitText1 else GitText2,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) GitAccent else GitText2,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                         )
                     }
+                    Spacer(modifier = Modifier.width(8.dp))
                 }
             }
 
