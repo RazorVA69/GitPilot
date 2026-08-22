@@ -150,163 +150,196 @@ fun RepoListScreen(
                     }
                 },
                 actions = {
-                    // Search Action
-                    IconButton(
-                        onClick = {
-                            isSearchVisible = !isSearchVisible
-                            if (!isSearchVisible) onSearchChange("")
-                        },
-                        modifier = Modifier.testTag("repo_list_search_btn")
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 12.dp)
                     ) {
-                        Icon(
-                            imageVector = if (isSearchVisible) Icons.Default.Close else Icons.Default.Search,
-                            contentDescription = "Search",
-                            tint = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitText1
-                        )
-                    }
-
-                    // Sort Action & Dropdown Menu
-                    Box {
-                        IconButton(
-                            onClick = { showSortMenu = true },
-                            modifier = Modifier.testTag("repo_list_sort_btn")
+                        // Search Action
+                        Surface(
+                            onClick = {
+                                isSearchVisible = !isSearchVisible
+                                if (!isSearchVisible) onSearchChange("")
+                            },
+                            shape = CircleShape,
+                            color = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface2,
+                            border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitBorder),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("repo_list_search_btn")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Sort,
-                                contentDescription = "Sort repositories",
-                                tint = GitText1
-                            )
-                        }
-
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false },
-                            shape = RoundedCornerShape(12.dp),
-                            containerColor = GitSurface,
-                            border = BorderStroke(1.dp, GitBorderStrong),
-                            shadowElevation = 8.dp
-                        ) {
-                            Text(
-                                text = "SORT REPOSITORIES",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = GitText3,
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
-
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Last Activity", fontSize = 13.sp, color = GitText1)
-                                        if (sortOption == RepoSortOption.LAST_ACTIVITY) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.LAST_ACTIVITY)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Name (A → Z)", fontSize = 13.sp, color = GitText1)
-                                        if (sortOption == RepoSortOption.NAME_ASC) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.NAME_ASC)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Name (Z → A)", fontSize = 13.sp, color = GitText1)
-                                        if (sortOption == RepoSortOption.NAME_DESC) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.NAME_DESC)
-                                    showSortMenu = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Most Stars", fontSize = 13.sp, color = GitText1)
-                                        if (sortOption == RepoSortOption.STARS_DESC) {
-                                            Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                        }
-                                    }
-                                },
-                                onClick = {
-                                    onSortChange(RepoSortOption.STARS_DESC)
-                                    showSortMenu = false
-                                }
-                            )
-                        }
-                    }
-
-                    // Refresh Action
-                    IconButton(
-                        onClick = onRefresh,
-                        modifier = Modifier.testTag("repo_list_refresh_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Refresh repositories",
-                            tint = GitText1
-                        )
-                    }
-
-                    // User Profile Picture Avatar
-                    Surface(
-                        modifier = Modifier
-                            .padding(end = 16.dp, start = 4.dp)
-                            .size(32.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable(onClick = onOpenLeftDrawer),
-                        shape = RoundedCornerShape(8.dp),
-                        color = GitAccent
-                    ) {
-                        if (account?.avatarUrl != null) {
-                            AsyncImage(
-                                model = account.avatarUrl,
-                                contentDescription = "Profile picture",
-                                modifier = Modifier.fillMaxSize()
-                            )
-                        } else {
                             Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = account?.username?.take(1)?.uppercase() ?: "B",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp
+                                Icon(
+                                    imageVector = if (isSearchVisible) Icons.Default.Close else Icons.Default.Search,
+                                    contentDescription = "Search",
+                                    tint = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitText1,
+                                    modifier = Modifier.size(17.dp)
                                 )
+                            }
+                        }
+
+                        // Sort Action & Dropdown Menu
+                        Box {
+                            Surface(
+                                onClick = { showSortMenu = true },
+                                shape = CircleShape,
+                                color = if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccentSoft else GitSurface2,
+                                border = BorderStroke(1.dp, if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccent else GitBorder),
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .testTag("repo_list_sort_btn")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Sort,
+                                        contentDescription = "Sort repositories",
+                                        tint = if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccent else GitText1,
+                                        modifier = Modifier.size(17.dp)
+                                    )
+                                }
+                            }
+
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false },
+                                shape = RoundedCornerShape(12.dp),
+                                containerColor = GitSurface,
+                                border = BorderStroke(1.dp, GitBorderStrong),
+                                shadowElevation = 8.dp
+                            ) {
+                                Text(
+                                    text = "SORT REPOSITORIES",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GitText3,
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Last Activity", fontSize = 13.sp, color = GitText1)
+                                            if (sortOption == RepoSortOption.LAST_ACTIVITY) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.LAST_ACTIVITY)
+                                        showSortMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Name (A → Z)", fontSize = 13.sp, color = GitText1)
+                                            if (sortOption == RepoSortOption.NAME_ASC) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.NAME_ASC)
+                                        showSortMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Name (Z → A)", fontSize = 13.sp, color = GitText1)
+                                            if (sortOption == RepoSortOption.NAME_DESC) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.NAME_DESC)
+                                        showSortMenu = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Most Stars", fontSize = 13.sp, color = GitText1)
+                                            if (sortOption == RepoSortOption.STARS_DESC) {
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    },
+                                    onClick = {
+                                        onSortChange(RepoSortOption.STARS_DESC)
+                                        showSortMenu = false
+                                    }
+                                )
+                            }
+                        }
+
+                        // Refresh Action
+                        Surface(
+                            onClick = onRefresh,
+                            shape = CircleShape,
+                            color = GitSurface2,
+                            border = BorderStroke(1.dp, GitBorder),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("repo_list_refresh_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Refresh repositories",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // User Profile Picture Avatar
+                        Surface(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .clickable(onClick = onOpenLeftDrawer),
+                            shape = CircleShape,
+                            border = BorderStroke(1.5.dp, GitAccent.copy(alpha = 0.5f)),
+                            color = GitAccent
+                        ) {
+                            if (account?.avatarUrl != null) {
+                                AsyncImage(
+                                    model = account.avatarUrl,
+                                    contentDescription = "Profile picture",
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = account?.username?.take(1)?.uppercase() ?: "B",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
+                                }
                             }
                         }
                     }

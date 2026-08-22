@@ -216,6 +216,7 @@ fun FileTreeExplorer(
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
+                            shape = RoundedCornerShape(6.dp),
                             color = GitSurface2,
                             border = BorderStroke(1.dp, GitBorder)
                         ) {
@@ -242,7 +243,7 @@ fun FileTreeExplorer(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Branch",
                                     tint = GitText2,
-                                    modifier = Modifier.size(14.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
@@ -252,6 +253,7 @@ fun FileTreeExplorer(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onRefresh),
+                            shape = RoundedCornerShape(6.dp),
                             color = if (syncStatus == SyncStatus.ERROR) Color(0xFFFFEBEE) else GitAccentSoft,
                             border = BorderStroke(1.dp, if (syncStatus == SyncStatus.ERROR) Md3LightError.copy(alpha = 0.3f) else GitAccent.copy(alpha = 0.3f))
                         ) {
@@ -265,7 +267,7 @@ fun FileTreeExplorer(
                                         contentDescription = "Syncing",
                                         tint = GitAccent,
                                         modifier = Modifier
-                                            .size(11.dp)
+                                            .size(10.dp)
                                             .rotate(syncRotation)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
@@ -278,13 +280,13 @@ fun FileTreeExplorer(
                                 } else {
                                     Box(
                                         modifier = Modifier
-                                            .size(6.dp)
+                                            .size(5.dp)
                                             .background(
                                                 color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent,
                                                 shape = CircleShape
                                             )
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(3.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
                                         fontSize = 10.sp,
@@ -311,83 +313,113 @@ fun FileTreeExplorer(
             },
             actions = {
                 // Search Files Button
-                IconButton(
+                Surface(
                     onClick = { isSearchExpanded = !isSearchExpanded },
-                    modifier = Modifier.testTag("explorer_search_toggle_btn")
+                    shape = CircleShape,
+                    color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface2,
+                    border = BorderStroke(1.dp, if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitBorder),
+                    modifier = Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .testTag("explorer_search_toggle_btn")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search Files",
-                        tint = if (isSearchExpanded) GitAccent else GitText1
-                    )
-                }
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
+                                contentDescription = "Search Files",
+                                tint = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitText1,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
 
-                // Multi-Select Mode Button
-                IconButton(
-                    onClick = onToggleBatchMode,
-                    modifier = Modifier.testTag("explorer_multiselect_btn")
-                ) {
-                    if (isBatchMode) {
+                    // Multi-Select Mode Button
+                    Surface(
+                        onClick = onToggleBatchMode,
+                        shape = CircleShape,
+                        color = if (isBatchMode) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isBatchMode) GitAccent else GitBorder),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .testTag("explorer_multiselect_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Checklist,
+                                contentDescription = "Multi-Select Mode",
+                                tint = if (isBatchMode) GitAccent else GitText1,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // Sync & Refresh Button
+                    Surface(
+                        onClick = onRefresh,
+                        shape = CircleShape,
+                        color = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitBorder),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .testTag("explorer_sync_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = "Sync Repository",
+                                tint = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitText1,
+                                modifier = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
+                                    Modifier.size(16.dp).rotate(syncRotation)
+                                } else {
+                                    Modifier.size(16.dp)
+                                }
+                            )
+                        }
+                    }
+
+                    // Add File / Folder / Upload Button
+                    Surface(
+                        onClick = onOpenNewFileDialog,
+                        shape = CircleShape,
+                        color = GitButtonPrimary,
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .testTag("explorer_add_file_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Add or Upload",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    // Overflow Menu
+                    Box {
                         Surface(
+                            onClick = { showOverflowMenu = true },
                             shape = CircleShape,
-                            color = GitAccentSoft,
-                            modifier = Modifier.size(32.dp)
+                            color = GitSurface2,
+                            border = BorderStroke(1.dp, GitBorder),
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .testTag("explorer_overflow_menu_btn")
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Default.Checklist,
-                                    contentDescription = "Exit Multi-Select",
-                                    tint = GitAccent,
-                                    modifier = Modifier.size(20.dp)
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More Options",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Checklist,
-                            contentDescription = "Multi-Select Mode",
-                            tint = GitText1
-                        )
-                    }
-                }
-
-                // Sync & Refresh Button
-                IconButton(
-                    onClick = onRefresh,
-                    modifier = Modifier.testTag("explorer_sync_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Sync,
-                        contentDescription = "Sync Repository",
-                        tint = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitText1,
-                        modifier = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) Modifier.rotate(syncRotation) else Modifier
-                    )
-                }
-
-                // Add File / Folder / Upload Button
-                IconButton(
-                    onClick = onOpenNewFileDialog,
-                    modifier = Modifier.testTag("explorer_add_file_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add or Upload",
-                        tint = GitAccent
-                    )
-                }
-
-                // Overflow Menu
-                Box {
-                    IconButton(
-                        onClick = { showOverflowMenu = true },
-                        modifier = Modifier.testTag("explorer_overflow_menu_btn")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More Options",
-                            tint = GitText1
-                        )
-                    }
 
                     DropdownMenu(
                         expanded = showOverflowMenu,
@@ -831,6 +863,7 @@ fun FileTreeExplorer(
                     searchQuery = searchQuery,
                     isBatchMode = isBatchMode,
                     selectedFilePaths = selectedFilePaths,
+                    clipboard = clipboard,
                     onOpenFile = onOpenFile,
                     onToggleSelect = onToggleSelectFile,
                     onToggleBatchMode = onToggleBatchMode,
@@ -910,12 +943,20 @@ fun FileTreeExplorer(
 
                             val isFolderPinned = childNode.isDirectory && pinnedFolders.contains(childNode.path)
 
+                            // Check if in clipboard for Cut/Copy visual indication
+                            val isClipboardMatch = clipboard?.items?.any { clipItem ->
+                                clipItem.path == childNode.path || (childNode.isDirectory && (clipItem.path == childNode.path || clipItem.path.startsWith("${childNode.path}/")))
+                            } == true
+                            val isCutClipboard = isClipboardMatch && clipboard?.isCut == true
+
                             ExplorerItemRow(
                                 node = childNode,
                                 rawItem = rawItem,
                                 isBatchMode = isBatchMode,
                                 isSelected = isSelected,
                                 isPinned = isFolderPinned,
+                                isInClipboard = isClipboardMatch,
+                                isCutClipboard = isCutClipboard,
                                 onClick = {
                                     if (isBatchMode) {
                                         if (childNode.isDirectory) {
@@ -1211,6 +1252,8 @@ private fun ExplorerItemRow(
     isBatchMode: Boolean,
     isSelected: Boolean,
     isPinned: Boolean = false,
+    isInClipboard: Boolean = false,
+    isCutClipboard: Boolean = false,
     onClick: () -> Unit,
     onLongClick: () -> Unit = {},
     onToggleSelect: () -> Unit,
@@ -1222,164 +1265,196 @@ private fun ExplorerItemRow(
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(if (isSelected) GitAccentSoft else Color.Transparent)
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
-            .padding(horizontal = 16.dp, vertical = 11.dp)
-            .testTag("explorer_item_${node.name}"),
-        verticalAlignment = Alignment.CenterVertically
+    val rowBackgroundColor = when {
+        isInClipboard -> Color(0xFFFFEBEE)
+        isSelected -> GitAccentSoft
+        else -> Color.Transparent
+    }
+
+    val rowBorder = if (isInClipboard) {
+        BorderStroke(1.dp, Md3LightError.copy(alpha = 0.5f))
+    } else null
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = rowBackgroundColor,
+        border = rowBorder
     ) {
-        if (isBatchMode) {
-            Checkbox(
-                checked = isSelected,
-                onCheckedChange = { onToggleSelect() },
-                colors = CheckboxDefaults.colors(
-                    checkedColor = GitAccent,
-                    uncheckedColor = GitText3
-                ),
-                modifier = Modifier.size(28.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-
-        // Icon (Outlined Green for Folder, Outlined line icons for Files)
-        if (node.isDirectory) {
-            Icon(
-                imageVector = Icons.Outlined.Folder,
-                contentDescription = "Directory",
-                tint = GitAccent,
-                modifier = Modifier.size(20.dp)
-            )
-        } else {
-            FileIconForExtension(
-                extension = node.extension.ifBlank { rawItem.extension },
-                fileName = node.name,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(12.dp))
-
-        // Name & Meta
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = node.name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (node.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
-                    color = GitText1,
-                    fontSize = 14.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
                 )
-                if (isPinned) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = "Pinned",
-                        tint = GitAccent,
-                        modifier = Modifier.size(12.dp)
+                .padding(horizontal = 16.dp, vertical = 11.dp)
+                .testTag("explorer_item_${node.name}"),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isBatchMode) {
+                Checkbox(
+                    checked = isSelected,
+                    onCheckedChange = { onToggleSelect() },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = GitAccent,
+                        uncheckedColor = GitText3
+                    ),
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+
+            // Icon (Outlined Green for Folder, Outlined line icons for Files)
+            if (node.isDirectory) {
+                Icon(
+                    imageVector = Icons.Outlined.Folder,
+                    contentDescription = "Directory",
+                    tint = if (isInClipboard) Md3LightError else GitAccent,
+                    modifier = Modifier.size(20.dp)
+                )
+            } else {
+                FileIconForExtension(
+                    extension = node.extension.ifBlank { rawItem.extension },
+                    fileName = node.name,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Name & Meta
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = node.name,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (node.isDirectory) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isInClipboard) Color(0xFFC62828) else GitText1,
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (isPinned) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Pinned",
+                            tint = GitAccent,
+                            modifier = Modifier.size(12.dp)
+                        )
+                    }
+                    if (isInClipboard) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = Md3LightError.copy(alpha = 0.12f),
+                            border = BorderStroke(0.5.dp, Md3LightError.copy(alpha = 0.4f))
+                        ) {
+                            Text(
+                                text = if (isCutClipboard) "CUT" else "COPIED",
+                                color = Md3LightError,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (!node.isDirectory && node.size != null && node.size > 0) {
+                    Text(
+                        text = FileIcons.formatFileSize(node.size),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = GitText3,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        fontSize = 11.sp
                     )
                 }
             }
 
-            if (!node.isDirectory && node.size != null && node.size > 0) {
-                Text(
-                    text = formatFileSize(node.size),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = GitText3,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                    fontSize = 11.sp
-                )
-            }
-        }
+            // Context Action Menu
+            Box {
+                IconButton(
+                    onClick = { showMenu = true },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More actions",
+                        tint = GitText3,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
 
-        // Context Action Menu
-        Box {
-            IconButton(
-                onClick = { showMenu = true },
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.MoreVert,
-                    contentDescription = "More actions",
-                    tint = GitText3,
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false },
-                shape = RoundedCornerShape(12.dp),
-                containerColor = GitSurface,
-                border = BorderStroke(1.dp, GitBorderStrong),
-                shadowElevation = 8.dp
-            ) {
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Cut (Move)", fontSize = 13.sp, color = GitText1)
-                        }
-                    },
-                    onClick = {
-                        onCut()
-                        showMenu = false
-                    }
-                )
-
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Copy", fontSize = 13.sp, color = GitText1)
-                        }
-                    },
-                    onClick = {
-                        onCopy()
-                        showMenu = false
-                    }
-                )
-
-                if (node.isDirectory) {
+                DropdownMenu(
+                    expanded = showMenu,
+                    onDismissRequest = { showMenu = false },
+                    shape = RoundedCornerShape(12.dp),
+                    containerColor = GitSurface,
+                    border = BorderStroke(1.dp, GitBorderStrong),
+                    shadowElevation = 8.dp
+                ) {
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1)
+                                Text("Cut (Move)", fontSize = 13.sp, color = GitText1)
                             }
                         },
                         onClick = {
-                            onTogglePinFolder()
+                            onCut()
+                            showMenu = false
+                        }
+                    )
+
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Copy", fontSize = 13.sp, color = GitText1)
+                            }
+                        },
+                        onClick = {
+                            onCopy()
+                            showMenu = false
+                        }
+                    )
+
+                    if (node.isDirectory) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1)
+                                }
+                            },
+                            onClick = {
+                                onTogglePinFolder()
+                                showMenu = false
+                            }
+                        )
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
+
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(if (node.isDirectory) "Delete Folder" else "Delete File", fontSize = 13.sp, color = Md3LightError)
+                            }
+                        },
+                        onClick = {
+                            onDelete()
                             showMenu = false
                         }
                     )
                 }
-
-                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
-
-                DropdownMenuItem(
-                    text = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text(if (node.isDirectory) "Delete Folder" else "Delete File", fontSize = 13.sp, color = Md3LightError)
-                        }
-                    },
-                    onClick = {
-                        onDelete()
-                        showMenu = false
-                    }
-                )
             }
         }
     }
@@ -1398,6 +1473,7 @@ private fun SearchResultsList(
     searchQuery: String,
     isBatchMode: Boolean,
     selectedFilePaths: Set<String>,
+    clipboard: ClipboardState? = null,
     onOpenFile: (GitTreeItem) -> Unit,
     onToggleSelect: (String) -> Unit,
     onToggleBatchMode: () -> Unit = {},
@@ -1440,137 +1516,171 @@ private fun SearchResultsList(
         ) {
             items(items, key = { it.path }) { item ->
                 val isSelected = selectedFilePaths.contains(item.path)
+                val isClipboardMatch = clipboard?.items?.any { clipItem ->
+                    clipItem.path == item.path || (item.isDirectory && (clipItem.path == item.path || clipItem.path.startsWith("${item.path}/")))
+                } == true
+                val isCutClipboard = isClipboardMatch && clipboard?.isCut == true
                 var showMenu by remember { mutableStateOf(false) }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(if (isSelected) GitAccentSoft else Color.Transparent)
-                        .combinedClickable(
-                            onClick = {
-                                if (isBatchMode) onToggleSelect(item.path)
-                                else onOpenFile(item)
-                            },
-                            onLongClick = {
-                                if (!isBatchMode) {
-                                    onToggleBatchMode()
-                                }
-                                onToggleSelect(item.path)
-                            }
-                        )
-                        .padding(horizontal = 16.dp, vertical = 11.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                val searchRowBg = when {
+                    isClipboardMatch -> Color(0xFFFFEBEE)
+                    isSelected -> GitAccentSoft
+                    else -> Color.Transparent
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = searchRowBg,
+                    border = if (isClipboardMatch) BorderStroke(1.dp, Md3LightError.copy(alpha = 0.5f)) else null
                 ) {
-                    if (isBatchMode) {
-                        Checkbox(
-                            checked = isSelected,
-                            onCheckedChange = { onToggleSelect(item.path) },
-                            colors = CheckboxDefaults.colors(
-                                checkedColor = GitAccent,
-                                uncheckedColor = GitText3
-                            ),
-                            modifier = Modifier.size(28.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .combinedClickable(
+                                onClick = {
+                                    if (isBatchMode) onToggleSelect(item.path)
+                                    else onOpenFile(item)
+                                },
+                                onLongClick = {
+                                    if (!isBatchMode) {
+                                        onToggleBatchMode()
+                                    }
+                                    onToggleSelect(item.path)
+                                }
+                            )
+                            .padding(horizontal = 16.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isBatchMode) {
+                            Checkbox(
+                                checked = isSelected,
+                                onCheckedChange = { onToggleSelect(item.path) },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = GitAccent,
+                                    uncheckedColor = GitText3
+                                ),
+                                modifier = Modifier.size(28.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        FileIconForExtension(
+                            extension = item.extension,
+                            fileName = item.fileName,
+                            modifier = Modifier.size(20.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
 
-                    FileIconForExtension(
-                        extension = item.extension,
-                        fileName = item.fileName,
-                        modifier = Modifier.size(20.dp)
-                    )
+                        Spacer(modifier = Modifier.width(12.dp))
 
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = item.fileName,
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium,
-                            color = GitText1,
-                            fontSize = 14.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = item.path,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = GitText2,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    if (item.size != null && item.size > 0) {
-                        Text(
-                            text = formatFileSize(item.size),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = GitText3,
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            fontSize = 11.sp
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                    }
-
-                    Box {
-                        IconButton(
-                            onClick = { showMenu = true },
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "More actions",
-                                tint = GitText3,
-                                modifier = Modifier.size(16.dp)
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = item.fileName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.Medium,
+                                    color = if (isClipboardMatch) Color(0xFFC62828) else GitText1,
+                                    fontSize = 14.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                if (isClipboardMatch) {
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = Md3LightError.copy(alpha = 0.12f),
+                                        border = BorderStroke(0.5.dp, Md3LightError.copy(alpha = 0.4f))
+                                    ) {
+                                        Text(
+                                            text = if (isCutClipboard) "CUT" else "COPIED",
+                                            color = Md3LightError,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = FontFamily.Monospace,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = item.path,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GitText2,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
 
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Cut (Move)")
-                                    }
-                                },
-                                onClick = {
-                                    onCutItem(item.path, item.isDirectory, item.sha)
-                                    showMenu = false
-                                }
+                        if (item.size != null && item.size > 0) {
+                            Text(
+                                text = FileIcons.formatFileSize(item.size),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GitText3,
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontSize = 11.sp
                             )
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
 
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Copy")
-                                    }
-                                },
-                                onClick = {
-                                    onCopyItem(item.path, item.isDirectory, item.sha)
-                                    showMenu = false
-                                }
-                            )
+                        Box {
+                            IconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More actions",
+                                    tint = GitText3,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
 
-                            DropdownMenuItem(
-                                text = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Delete", color = Color(0xFFE53935))
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Cut (Move)")
+                                        }
+                                    },
+                                    onClick = {
+                                        onCutItem(item.path, item.isDirectory, item.sha)
+                                        showMenu = false
                                     }
-                                },
-                                onClick = {
-                                    onDeleteSingle(item.path, item.sha)
-                                    showMenu = false
-                                }
-                            )
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Copy")
+                                        }
+                                    },
+                                    onClick = {
+                                        onCopyItem(item.path, item.isDirectory, item.sha)
+                                        showMenu = false
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Delete", color = Color(0xFFE53935))
+                                        }
+                                    },
+                                    onClick = {
+                                        onDeleteSingle(item.path, item.sha)
+                                        showMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
@@ -1582,14 +1692,5 @@ private fun SearchResultsList(
                 )
             }
         }
-    }
-}
-
-private fun formatFileSize(bytes: Long): String {
-    return when {
-        bytes < 1024 -> "$bytes B"
-        bytes < 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f KB", bytes / 1024f)
-        bytes < 1024 * 1024 * 1024 -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024f * 1024f))
-        else -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024f * 1024f * 1024f))
     }
 }

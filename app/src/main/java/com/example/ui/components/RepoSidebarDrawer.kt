@@ -49,6 +49,8 @@ import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.BookmarkBorder
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.ui.res.painterResource
+import com.example.R
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -558,17 +560,28 @@ fun RepoSidebarDrawer(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     // Proper Repository Icon based on type
-                                    val repoIcon = when {
-                                        repo.private -> Icons.Default.Lock
-                                        repo.fork -> Icons.AutoMirrored.Outlined.CallSplit
-                                        else -> Icons.Outlined.BookmarkBorder
+                                    if (repo.private) {
+                                        Icon(
+                                            imageVector = Icons.Default.Lock,
+                                            contentDescription = "Private Repo",
+                                            tint = if (isSelected) GitAccent else GitYellow,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    } else if (repo.fork) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Outlined.CallSplit,
+                                            contentDescription = "Fork",
+                                            tint = if (isSelected) GitAccent else GitText2,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    } else {
+                                        Icon(
+                                            painter = painterResource(id = R.drawable.ic_repo),
+                                            contentDescription = "Repository",
+                                            tint = if (isSelected) GitAccent else GitText2,
+                                            modifier = Modifier.size(16.dp)
+                                        )
                                     }
-                                    Icon(
-                                        imageVector = repoIcon,
-                                        contentDescription = if (repo.private) "Private Repo" else "Repo",
-                                        tint = if (isSelected) GitAccent else if (repo.private) GitYellow else GitText2,
-                                        modifier = Modifier.size(16.dp)
-                                    )
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
@@ -645,12 +658,28 @@ fun RepoSidebarDrawer(
             containerColor = GitSurface,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (repo.private) Icons.Default.Lock else Icons.Outlined.BookmarkBorder,
-                        contentDescription = null,
-                        tint = GitAccent,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    if (repo.private) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = GitYellow,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else if (repo.fork) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Outlined.CallSplit,
+                            contentDescription = null,
+                            tint = GitAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    } else {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_repo),
+                            contentDescription = null,
+                            tint = GitAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(repo.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = GitText1, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

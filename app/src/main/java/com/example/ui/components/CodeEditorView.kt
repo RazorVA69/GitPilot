@@ -270,120 +270,165 @@ fun CodeEditorView(
             },
             actions = {
                 // 1. UNDO BUTTON
-                IconButton(
+                Surface(
                     onClick = { performUndo() },
                     enabled = undoStack.isNotEmpty(),
-                    modifier = Modifier.testTag("editor_undo_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Undo",
-                        tint = if (undoStack.isNotEmpty()) GitText1 else GitText3
-                    )
-                }
-
-                // 2. REDO BUTTON
-                IconButton(
-                    onClick = { performRedo() },
-                    enabled = redoStack.isNotEmpty(),
-                    modifier = Modifier.testTag("editor_redo_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Redo,
-                        contentDescription = "Redo",
-                        tint = if (redoStack.isNotEmpty()) GitText1 else GitText3
-                    )
-                }
-
-                // 3. SEARCH BUTTON
-                IconButton(
-                    onClick = {
-                        isSearchVisible = !isSearchVisible
-                        isReplaceMode = false
-                    },
-                    modifier = Modifier.testTag("editor_search_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search",
-                        tint = if (isSearchVisible && !isReplaceMode) GitAccent else GitText1
-                    )
-                }
-
-                // 4. REPLACE BUTTON
-                IconButton(
-                    onClick = {
-                        isSearchVisible = true
-                        isReplaceMode = true
-                    },
-                    modifier = Modifier.testTag("editor_replace_btn")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.FindReplace,
-                        contentDescription = "Replace",
-                        tint = if (isSearchVisible && isReplaceMode) GitAccent else GitText1
-                    )
-                }
-
-                // 5. PROMINENT COMMIT BUTTON
-                Button(
-                    onClick = onOpenCommitDialog,
-                    enabled = !isLoading,
+                    shape = CircleShape,
+                    color = if (undoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, GitBorder),
                     modifier = Modifier
-                        .padding(end = 4.dp)
-                        .testTag("editor_commit_btn"),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = GitButtonPrimary,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .testTag("editor_undo_btn")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Save,
-                        contentDescription = null,
-                        modifier = Modifier.size(15.dp),
-                        tint = Color.White
-                    )
-                    Spacer(modifier = Modifier.width(5.dp))
-                    Text(
-                        text = if (isDirty) "Commit" else "Save",
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 13.sp,
-                        color = Color.White
-                    )
-                    if (isDirty) {
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Box(
-                            modifier = Modifier
-                                .size(6.dp)
-                                .background(GitAccent, CircleShape)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo",
+                                tint = if (undoStack.isNotEmpty()) GitText1 else GitText3,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
-                }
 
-                // 6. THREE-DOT MORE OPTIONS MENU
-                Box {
-                    IconButton(
-                        onClick = { showMoreMenu = true },
-                        modifier = Modifier.testTag("editor_more_options_btn")
+                    // 2. REDO BUTTON
+                    Surface(
+                        onClick = { performRedo() },
+                        enabled = redoStack.isNotEmpty(),
+                        shape = CircleShape,
+                        color = if (redoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, GitBorder),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .testTag("editor_redo_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Redo,
+                                contentDescription = "Redo",
+                                tint = if (redoStack.isNotEmpty()) GitText1 else GitText3,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // 3. SEARCH BUTTON
+                    Surface(
+                        onClick = {
+                            isSearchVisible = !isSearchVisible
+                            isReplaceMode = false
+                        },
+                        shape = CircleShape,
+                        color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isSearchVisible && !isReplaceMode) GitAccent else GitBorder),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .testTag("editor_search_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = if (isSearchVisible && !isReplaceMode) GitAccent else GitText1,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // 4. REPLACE BUTTON
+                    Surface(
+                        onClick = {
+                            isSearchVisible = true
+                            isReplaceMode = true
+                        },
+                        shape = CircleShape,
+                        color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isSearchVisible && isReplaceMode) GitAccent else GitBorder),
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .testTag("editor_replace_btn")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.FindReplace,
+                                contentDescription = "Replace",
+                                tint = if (isSearchVisible && isReplaceMode) GitAccent else GitText1,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+
+                    // 5. PROMINENT COMMIT BUTTON
+                    Button(
+                        onClick = onOpenCommitDialog,
+                        enabled = !isLoading,
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("editor_commit_btn"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GitButtonPrimary,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More options",
-                            tint = GitText1
+                            imageVector = Icons.Default.Save,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp),
+                            tint = Color.White
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isDirty) "Commit" else "Save",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.sp,
+                            color = Color.White
+                        )
+                        if (isDirty) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .background(GitAccent, CircleShape)
+                            )
+                        }
                     }
 
-                    DropdownMenu(
-                        expanded = showMoreMenu,
-                        onDismissRequest = { showMoreMenu = false },
-                        properties = androidx.compose.ui.window.PopupProperties(focusable = false),
-                        shape = RoundedCornerShape(12.dp),
-                        containerColor = GitSurface,
-                        border = BorderStroke(1.dp, GitBorder),
-                        shadowElevation = 4.dp
-                    ) {
+                    // 6. THREE-DOT MORE OPTIONS MENU
+                    Box {
+                        Surface(
+                            onClick = { showMoreMenu = true },
+                            shape = CircleShape,
+                            color = GitSurface2,
+                            border = BorderStroke(1.dp, GitBorder),
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_more_options_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "More options",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = showMoreMenu,
+                            onDismissRequest = { showMoreMenu = false },
+                            properties = androidx.compose.ui.window.PopupProperties(focusable = false),
+                            shape = RoundedCornerShape(12.dp),
+                            containerColor = GitSurface,
+                            border = BorderStroke(1.dp, GitBorderStrong),
+                            shadowElevation = 8.dp
+                        ) {
                         // Zoom In
                         DropdownMenuItem(
                             text = { Text("Zoom In (A+)", color = GitText1, fontSize = 13.sp) },
@@ -708,9 +753,9 @@ fun CodeEditorView(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .width(gutterWidth)
-                                    .background(GitBg)
+                                    .background(GitSurface)
                                     .verticalScroll(verticalScrollState)
-                                    .padding(top = 12.dp, bottom = 120.dp, start = 4.dp, end = 6.dp)
+                                    .padding(top = 12.dp, bottom = 280.dp, start = 4.dp, end = 6.dp)
                             ) {
                                 Text(
                                     text = lineNumbersText,
@@ -732,18 +777,18 @@ fun CodeEditorView(
                             )
                         }
 
-                        // Text Editor Field with generous bottom padding (120dp) so IME keyboard does not hide the end of file
+                        // Text Editor Field with generous bottom padding (280dp) so IME keyboard never hides the end of file
                         val textModifier = if (isWordWrapEnabled) {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
-                                .padding(top = 12.dp, bottom = 120.dp, start = 12.dp, end = 18.dp)
+                                .padding(top = 12.dp, bottom = 280.dp, start = 12.dp, end = 18.dp)
                         } else {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
                                 .horizontalScroll(horizontalScrollState)
-                                .padding(top = 12.dp, bottom = 120.dp, start = 12.dp, end = 24.dp)
+                                .padding(top = 12.dp, bottom = 280.dp, start = 12.dp, end = 24.dp)
                         }
 
                         BasicTextField(
