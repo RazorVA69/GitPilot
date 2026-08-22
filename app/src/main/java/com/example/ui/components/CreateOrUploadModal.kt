@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,12 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -125,7 +132,7 @@ fun CreateOrUploadModal(
     var commitMessage by remember { mutableStateOf("") }
     var targetBranch by remember { mutableStateOf(currentBranch) }
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Files Upload, 1: Folder Upload, 2: New File, 3: New Folder, 4: Templates
-    var showFolderDropdown by remember { mutableStateOf(false) }
+    var showFolderPickerDialog by remember { mutableStateOf(false) }
 
     // Staged files for batch upload
     var stagedFiles by remember { mutableStateOf<List<Pair<String, ByteArray>>>(emptyList()) }
@@ -323,7 +330,7 @@ fun CreateOrUploadModal(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Quick Path Selector Chips (Smooth pills)
+                // Quick Path Selector Chips (Always keeping Browse Repo Folders accessible even with long paths)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -331,6 +338,33 @@ fun CreateOrUploadModal(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    // Browse Folders Primary Quick Action Button
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { showFolderPickerDialog = true },
+                        color = GitSurface2,
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Outlined.Folder,
+                                contentDescription = null,
+                                tint = GitAccent,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Browse Folders...", fontSize = 11.5.sp, color = GitText1, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText2)
+                        }
+                    }
+
+                    // Repo Root Chip
                     val isRoot = targetDirectory.isBlank()
                     Surface(
                         modifier = Modifier
@@ -360,8 +394,10 @@ fun CreateOrUploadModal(
                         }
                     }
 
+                    // Current Folder Chip (Truncated with max width so it NEVER pushes other buttons off-screen)
                     if (initialDirectory.isNotBlank()) {
                         val isInitial = targetDirectory == initialDirectory
+                        val displayDirName = initialDirectory.substringAfterLast('/')
                         Surface(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
@@ -382,62 +418,14 @@ fun CreateOrUploadModal(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = "Current ($initialDirectory)",
+                                    text = "Current ($displayDirName)",
                                     fontSize = 11.5.sp,
                                     fontWeight = if (isInitial) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isInitial) GitAccent else GitText1
+                                    color = if (isInitial) GitAccent else GitText1,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 160.dp)
                                 )
-                            }
-                        }
-                    }
-
-                    if (existingDirectories.isNotEmpty()) {
-                        Box {
-                            Surface(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { showFolderDropdown = true },
-                                color = GitSurface2,
-                                border = BorderStroke(1.dp, GitBorderStrong),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Outlined.Folder,
-                                        contentDescription = null,
-                                        tint = GitText2,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Browse Repo Folders...", fontSize = 11.5.sp, color = GitText1, fontWeight = FontWeight.Medium)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText2)
-                                }
-                            }
-
-                            DropdownMenu(
-                                expanded = showFolderDropdown,
-                                onDismissRequest = { showFolderDropdown = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Repo Root ( / )", fontWeight = FontWeight.Bold, color = GitText1) },
-                                    onClick = {
-                                        targetDirectory = ""
-                                        showFolderDropdown = false
-                                    }
-                                )
-                                existingDirectories.take(20).forEach { dir ->
-                                    DropdownMenuItem(
-                                        text = { Text(dir, color = GitText1, fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
-                                        onClick = {
-                                            targetDirectory = dir
-                                            showFolderDropdown = false
-                                        }
-                                    )
-                                }
                             }
                         }
                     }
@@ -445,7 +433,7 @@ fun CreateOrUploadModal(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Target Directory Text Input
+                // Target Directory Text Input with Trailing Folder Picker Action
                 OutlinedTextField(
                     value = targetDirectory,
                     onValueChange = { targetDirectory = it },
@@ -455,6 +443,16 @@ fun CreateOrUploadModal(
                     placeholder = { Text("Leave blank for repo root or enter folder path...", color = GitText3, fontSize = 12.5.sp) },
                     leadingIcon = {
                         Icon(Icons.Outlined.Folder, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { showFolderPickerDialog = true }) {
+                            Icon(
+                                Icons.Outlined.Folder,
+                                contentDescription = "Browse Repository Folders",
+                                tint = GitAccent,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1035,6 +1033,227 @@ fun CreateOrUploadModal(
                 stagedSummary = summary
             }
         )
+    }
+
+    // Repository Folder Picker Dialog (Fast, searchable, beautiful Light Modern aesthetic)
+    if (showFolderPickerDialog) {
+        FolderPickerModalDialog(
+            directories = existingDirectories,
+            currentSelection = targetDirectory,
+            onSelectFolder = { selected ->
+                targetDirectory = selected
+                showFolderPickerDialog = false
+            },
+            onDismiss = { showFolderPickerDialog = false }
+        )
+    }
+}
+
+@Composable
+private fun FolderPickerModalDialog(
+    directories: List<String>,
+    currentSelection: String,
+    onSelectFolder: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredDirectories = remember(directories, searchQuery) {
+        if (searchQuery.isBlank()) directories
+        else directories.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.92f)
+                .clip(RoundedCornerShape(16.dp)),
+            color = GitSurface,
+            border = BorderStroke(1.dp, GitBorderStrong),
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(20.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Outlined.Folder,
+                            contentDescription = null,
+                            tint = GitAccent,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Select Destination Folder",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = GitText1
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2, modifier = Modifier.size(18.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Search Box
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text("Filter folders...", color = GitText3, fontSize = 13.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Outlined.Search, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = GitAccent,
+                        unfocusedBorderColor = GitBorderStrong,
+                        focusedContainerColor = GitSurface2,
+                        unfocusedContainerColor = GitSurface2
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Folder List
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(280.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    // Always show Repo Root ( / )
+                    item {
+                        val isSelected = currentSelection.isBlank()
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onSelectFolder("") },
+                            color = if (isSelected) GitAccentSoft else GitSurface2,
+                            border = BorderStroke(1.dp, if (isSelected) GitAccent else GitBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Outlined.Folder,
+                                    contentDescription = null,
+                                    tint = if (isSelected) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Repository Root ( / )",
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        color = if (isSelected) GitAccent else GitText1
+                                    )
+                                    Text(
+                                        text = "Top-level directory",
+                                        fontSize = 11.sp,
+                                        color = GitText2
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (filteredDirectories.isEmpty() && searchQuery.isNotBlank()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No matching folders found",
+                                    color = GitText3,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+
+                    items(filteredDirectories) { dirPath ->
+                        val isSelected = currentSelection == dirPath
+                        val depth = dirPath.count { it == '/' }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onSelectFolder(dirPath) },
+                            color = if (isSelected) GitAccentSoft else Color.Transparent,
+                            border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Spacer(modifier = Modifier.width((depth * 8).dp.coerceAtMost(24.dp)))
+                                Icon(
+                                    Icons.Outlined.Folder,
+                                    contentDescription = null,
+                                    tint = if (isSelected) GitAccent else GitText2,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = dirPath,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) GitAccent else GitText1,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                // Footer Cancel Button
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = GitText1
+                    ),
+                    border = BorderStroke(1.dp, GitBorderStrong)
+                ) {
+                    Text("Close", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+        }
     }
 }
 

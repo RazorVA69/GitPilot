@@ -3,18 +3,21 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -52,6 +55,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
@@ -83,21 +87,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.FileContentResponse
-import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreen
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitAccentSoft
+import com.example.ui.theme.GitBg
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
+import com.example.ui.theme.GitButtonPrimary
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
+import com.example.ui.theme.GitYellow
 import com.example.ui.theme.GitHubOrange
-import com.example.ui.theme.Md3LightCodeBg
-import com.example.ui.theme.Md3LightCodeBorder
-import com.example.ui.theme.Md3LightCodeGutter
 import com.example.ui.theme.Md3LightError
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
-import com.example.ui.theme.Md3LightTextTertiary
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,7 +213,8 @@ fun CodeEditorView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(Md3LightCodeBg)
+            .background(GitSurface)
+            .imePadding()
     ) {
         // TOP APP BAR
         TopAppBar(
@@ -227,7 +231,7 @@ fun CodeEditorView(
                                 text = fileName,
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Md3LightTextPrimary,
+                                color = GitText1,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -236,7 +240,7 @@ fun CodeEditorView(
                                 Box(
                                     modifier = Modifier
                                         .size(7.dp)
-                                        .background(GitHubOrange, CircleShape)
+                                        .background(GitYellow, CircleShape)
                                 )
                             }
                         }
@@ -244,7 +248,7 @@ fun CodeEditorView(
                             text = filePath,
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
-                            color = Md3LightTextSecondary,
+                            color = GitText2,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             fontSize = 11.sp
@@ -260,7 +264,7 @@ fun CodeEditorView(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = Md3LightTextPrimary
+                        tint = GitText1
                     )
                 }
             },
@@ -274,7 +278,7 @@ fun CodeEditorView(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
                         contentDescription = "Undo",
-                        tint = if (undoStack.isNotEmpty()) Md3LightTextPrimary else Md3LightTextTertiary
+                        tint = if (undoStack.isNotEmpty()) GitText1 else GitText3
                     )
                 }
 
@@ -287,7 +291,7 @@ fun CodeEditorView(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Redo,
                         contentDescription = "Redo",
-                        tint = if (redoStack.isNotEmpty()) Md3LightTextPrimary else Md3LightTextTertiary
+                        tint = if (redoStack.isNotEmpty()) GitText1 else GitText3
                     )
                 }
 
@@ -302,7 +306,7 @@ fun CodeEditorView(
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = "Search",
-                        tint = if (isSearchVisible && !isReplaceMode) Md3LightPrimary else Md3LightTextSecondary
+                        tint = if (isSearchVisible && !isReplaceMode) GitAccent else GitText1
                     )
                 }
 
@@ -317,11 +321,11 @@ fun CodeEditorView(
                     Icon(
                         imageVector = Icons.Default.FindReplace,
                         contentDescription = "Replace",
-                        tint = if (isSearchVisible && isReplaceMode) Md3LightPrimary else Md3LightTextSecondary
+                        tint = if (isSearchVisible && isReplaceMode) GitAccent else GitText1
                     )
                 }
 
-                // 5. PROMINENT COMMIT BUTTON (OUTSIDE)
+                // 5. PROMINENT COMMIT BUTTON
                 Button(
                     onClick = onOpenCommitDialog,
                     enabled = !isLoading,
@@ -329,24 +333,33 @@ fun CodeEditorView(
                         .padding(end = 4.dp)
                         .testTag("editor_commit_btn"),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isDirty) GitHubGreen else GitHubBlue
+                        containerColor = GitButtonPrimary,
+                        contentColor = Color.White
                     ),
-                    shape = RoundedCornerShape(8.dp),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Save,
                         contentDescription = null,
-                        modifier = Modifier.size(16.dp),
+                        modifier = Modifier.size(15.dp),
                         tint = Color.White
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = if (isDirty) "Commit" else "Save",
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = 13.sp,
                         color = Color.White
                     )
+                    if (isDirty) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(GitAccent, CircleShape)
+                        )
+                    }
                 }
 
                 // 6. THREE-DOT MORE OPTIONS MENU
@@ -358,19 +371,23 @@ fun CodeEditorView(
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = "More options",
-                            tint = Md3LightTextPrimary
+                            tint = GitText1
                         )
                     }
 
                     DropdownMenu(
                         expanded = showMoreMenu,
                         onDismissRequest = { showMoreMenu = false },
-                        properties = androidx.compose.ui.window.PopupProperties(focusable = false)
+                        properties = androidx.compose.ui.window.PopupProperties(focusable = false),
+                        shape = RoundedCornerShape(12.dp),
+                        containerColor = GitSurface,
+                        border = BorderStroke(1.dp, GitBorder),
+                        shadowElevation = 4.dp
                     ) {
                         // Zoom In
                         DropdownMenuItem(
-                            text = { Text("Zoom In (A+)") },
-                            leadingIcon = { Icon(Icons.Default.ZoomIn, contentDescription = null) },
+                            text = { Text("Zoom In (A+)", color = GitText1, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.ZoomIn, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 fontSize = (fontSize + 1.5f).coerceAtMost(24f)
                                 showMoreMenu = false
@@ -379,8 +396,8 @@ fun CodeEditorView(
 
                         // Zoom Out
                         DropdownMenuItem(
-                            text = { Text("Zoom Out (A-)") },
-                            leadingIcon = { Icon(Icons.Default.ZoomOut, contentDescription = null) },
+                            text = { Text("Zoom Out (A-)", color = GitText1, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.ZoomOut, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 fontSize = (fontSize - 1.5f).coerceAtLeast(9f)
                                 showMoreMenu = false
@@ -389,14 +406,15 @@ fun CodeEditorView(
 
                         // Reset Zoom
                         DropdownMenuItem(
-                            text = { Text("Reset Zoom (13.5sp)") },
+                            text = { Text("Reset Zoom (13.5sp)", color = GitText1, fontSize = 13.sp) },
+                            leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 fontSize = 13.5f
                                 showMoreMenu = false
                             }
                         )
 
-                        HorizontalDivider()
+                        HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
 
                         // Word Wrap Toggle
                         DropdownMenuItem(
@@ -406,13 +424,13 @@ fun CodeEditorView(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Word Wrap")
+                                    Text("Word Wrap", color = GitText1, fontSize = 13.sp)
                                     if (isWordWrapEnabled) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
-                            leadingIcon = { Icon(Icons.Default.WrapText, contentDescription = null) },
+                            leadingIcon = { Icon(Icons.Default.WrapText, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 isWordWrapEnabled = !isWordWrapEnabled
                                 showMoreMenu = false
@@ -427,12 +445,13 @@ fun CodeEditorView(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Line Numbers")
+                                    Text("Line Numbers", color = GitText1, fontSize = 13.sp)
                                     if (showLineNumbers) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(16.dp))
+                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
+                            leadingIcon = { Icon(Icons.Default.WrapText, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
                             onClick = {
                                 showLineNumbers = !showLineNumbers
                                 showMoreMenu = false
@@ -440,10 +459,10 @@ fun CodeEditorView(
                         )
 
                         if (isMarkdown) {
-                            HorizontalDivider()
+                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
                             DropdownMenuItem(
-                                text = { Text(if (isMarkdownPreviewMode) "Edit Mode" else "Preview Markdown") },
-                                leadingIcon = { Icon(Icons.Default.Preview, contentDescription = null) },
+                                text = { Text(if (isMarkdownPreviewMode) "Edit Mode" else "Preview Markdown", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = { Icon(Icons.Default.Preview, contentDescription = null, tint = GitAccent, modifier = Modifier.size(18.dp)) },
                                 onClick = {
                                     onToggleMarkdownPreview()
                                     showMoreMenu = false
@@ -452,10 +471,10 @@ fun CodeEditorView(
                         }
 
                         if (isDirty) {
-                            HorizontalDivider()
+                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
                             DropdownMenuItem(
-                                text = { Text("Discard Changes", color = Md3LightError) },
-                                leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Md3LightError) },
+                                text = { Text("Discard Changes", color = Md3LightError, fontSize = 13.sp) },
+                                leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(18.dp)) },
                                 onClick = {
                                     onContentChange(originalContent)
                                     undoStack.clear()
@@ -468,12 +487,12 @@ fun CodeEditorView(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Md3LightSurface,
-                titleContentColor = Md3LightTextPrimary
+                containerColor = GitSurface,
+                titleContentColor = GitText1
             )
         )
 
-        HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+        HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
         // EXPANDABLE SEARCH & REPLACE BAR
         AnimatedVisibility(
@@ -483,8 +502,8 @@ fun CodeEditorView(
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Md3LightSurfaceVariant,
-                shadowElevation = 2.dp
+                color = GitSurface2,
+                border = BorderStroke(1.dp, GitBorder)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     // Row 1: Find Input & Navigation
@@ -501,10 +520,10 @@ fun CodeEditorView(
                             modifier = Modifier
                                 .weight(1f)
                                 .testTag("editor_find_input"),
-                            placeholder = { Text("Find...", fontSize = 12.sp) },
+                            placeholder = { Text("Find...", fontSize = 12.sp, color = GitText3) },
                             singleLine = true,
                             leadingIcon = {
-                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = Md3LightTextSecondary)
+                                Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2)
                             },
                             trailingIcon = {
                                 if (searchQuery.isNotEmpty()) {
@@ -512,17 +531,17 @@ fun CodeEditorView(
                                         text = if (matches.isNotEmpty()) "${(currentMatchIndex + 1).coerceAtMost(matches.size)}/${matches.size}" else "0/0",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (matches.isNotEmpty()) GitHubBlue else Md3LightError,
+                                        color = if (matches.isNotEmpty()) GitAccent else Md3LightError,
                                         modifier = Modifier.padding(end = 8.dp)
                                     )
                                 }
                             },
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             colors = OutlinedTextFieldDefaults.colors(
-                                focusedContainerColor = Color.White,
-                                unfocusedContainerColor = Color.White,
-                                focusedBorderColor = Md3LightPrimary,
-                                unfocusedBorderColor = Md3LightOutline
+                                focusedContainerColor = GitSurface,
+                                unfocusedContainerColor = GitSurface,
+                                focusedBorderColor = GitAccent,
+                                unfocusedBorderColor = GitBorder
                             )
                         )
 
@@ -538,7 +557,7 @@ fun CodeEditorView(
                             enabled = matches.isNotEmpty(),
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous Match", modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Previous Match", modifier = Modifier.size(20.dp), tint = GitText1)
                         }
 
                         // Match Next
@@ -551,7 +570,7 @@ fun CodeEditorView(
                             enabled = matches.isNotEmpty(),
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next Match", modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next Match", modifier = Modifier.size(20.dp), tint = GitText1)
                         }
 
                         // Close Search
@@ -563,7 +582,7 @@ fun CodeEditorView(
                             },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close Find", modifier = Modifier.size(18.dp))
+                            Icon(Icons.Default.Close, contentDescription = "Close Find", modifier = Modifier.size(18.dp), tint = GitText2)
                         }
                     }
 
@@ -580,17 +599,17 @@ fun CodeEditorView(
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("editor_replace_input"),
-                                placeholder = { Text("Replace with...", fontSize = 12.sp) },
+                                placeholder = { Text("Replace with...", fontSize = 12.sp, color = GitText3) },
                                 singleLine = true,
                                 leadingIcon = {
-                                    Icon(Icons.Default.FindReplace, contentDescription = null, modifier = Modifier.size(16.dp), tint = Md3LightTextSecondary)
+                                    Icon(Icons.Default.FindReplace, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2)
                                 },
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color.White,
-                                    unfocusedContainerColor = Color.White,
-                                    focusedBorderColor = Md3LightPrimary,
-                                    unfocusedBorderColor = Md3LightOutline
+                                    focusedContainerColor = GitSurface,
+                                    unfocusedContainerColor = GitSurface,
+                                    focusedBorderColor = GitAccent,
+                                    unfocusedBorderColor = GitBorder
                                 )
                             )
 
@@ -599,11 +618,11 @@ fun CodeEditorView(
                             Button(
                                 onClick = { replaceCurrentMatch() },
                                 enabled = matches.isNotEmpty(),
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GitHubBlue),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text("Replace", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("Replace", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                             }
 
                             Spacer(modifier = Modifier.width(4.dp))
@@ -611,11 +630,11 @@ fun CodeEditorView(
                             Button(
                                 onClick = { replaceAllMatches() },
                                 enabled = matches.isNotEmpty(),
-                                shape = RoundedCornerShape(6.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = GitHubBlue),
-                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                             ) {
-                                Text("All", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                Text("All", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
                             }
                         }
                     }
@@ -623,14 +642,14 @@ fun CodeEditorView(
             }
         }
 
-        // EDITOR BODY (High Performance Layout)
+        // EDITOR BODY (High Performance Pure White Layout)
         Box(modifier = Modifier.weight(1f)) {
             if (isLoading) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = Md3LightPrimary)
+                    CircularProgressIndicator(color = GitAccent)
                 }
             } else if (isImage && file?.downloadUrl != null) {
                 // Image preview viewer
@@ -654,13 +673,15 @@ fun CodeEditorView(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .background(GitSurface)
                         .verticalScroll(rememberScrollState())
-                        .padding(20.dp)
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .padding(bottom = 120.dp)
                 ) {
                     Text(
                         text = content,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = Md3LightTextPrimary,
+                        color = GitText1,
                         lineHeight = 22.sp
                     )
                 }
@@ -669,7 +690,11 @@ fun CodeEditorView(
                 val verticalScrollState = rememberScrollState()
                 val horizontalScrollState = rememberScrollState()
 
-                BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                BoxWithConstraints(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(GitSurface)
+                ) {
                     val containerHeight = maxHeight
                     val containerWidth = maxWidth
 
@@ -677,21 +702,21 @@ fun CodeEditorView(
                         // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
                         if (showLineNumbers) {
                             val digits = remember(lineCount) { lineCount.toString().length }
-                            val gutterWidth = (digits * 9 + 18).dp.coerceAtLeast(36.dp)
+                            val gutterWidth = (digits * 9 + 22).dp.coerceAtLeast(40.dp)
 
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .width(gutterWidth)
-                                    .background(Md3LightCodeGutter)
+                                    .background(GitBg)
                                     .verticalScroll(verticalScrollState)
-                                    .padding(top = 12.dp, bottom = if (!isWordWrapEnabled) 20.dp else 12.dp, start = 4.dp, end = 6.dp)
+                                    .padding(top = 12.dp, bottom = 120.dp, start = 4.dp, end = 6.dp)
                             ) {
                                 Text(
                                     text = lineNumbersText,
                                     fontSize = fontSize.sp,
                                     fontFamily = FontFamily.Monospace,
-                                    color = Md3LightTextTertiary,
+                                    color = GitText3,
                                     textAlign = TextAlign.End,
                                     lineHeight = (fontSize * 1.5).sp,
                                     modifier = Modifier.fillMaxWidth()
@@ -703,22 +728,22 @@ fun CodeEditorView(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .width(1.dp)
-                                    .background(Md3LightCodeBorder)
+                                    .background(GitBorder)
                             )
                         }
 
-                        // Text Editor Field
+                        // Text Editor Field with generous bottom padding (120dp) so IME keyboard does not hide the end of file
                         val textModifier = if (isWordWrapEnabled) {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
-                                .padding(top = 12.dp, bottom = 12.dp, start = 12.dp, end = 18.dp)
+                                .padding(top = 12.dp, bottom = 120.dp, start = 12.dp, end = 18.dp)
                         } else {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
                                 .horizontalScroll(horizontalScrollState)
-                                .padding(top = 12.dp, bottom = 20.dp, start = 12.dp, end = 24.dp)
+                                .padding(top = 12.dp, bottom = 120.dp, start = 12.dp, end = 24.dp)
                         }
 
                         BasicTextField(
@@ -728,10 +753,10 @@ fun CodeEditorView(
                             textStyle = TextStyle(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = fontSize.sp,
-                                color = Md3LightTextPrimary,
+                                color = GitText1,
                                 lineHeight = (fontSize * 1.5).sp
                             ),
-                            cursorBrush = SolidColor(GitHubBlue)
+                            cursorBrush = SolidColor(GitAccent)
                         )
                     }
 
@@ -755,7 +780,7 @@ fun CodeEditorView(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.Black.copy(alpha = 0.05f))
+                                    .background(Color.Black.copy(alpha = 0.04f))
                             )
                             // Scrollbar Thumb
                             Box(
@@ -764,7 +789,7 @@ fun CodeEditorView(
                                     .fillMaxWidth()
                                     .height(thumbHeight)
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF57606A).copy(alpha = 0.8f))
+                                    .background(GitText3.copy(alpha = 0.6f))
                             )
                         }
                     }
@@ -789,7 +814,7 @@ fun CodeEditorView(
                                 modifier = Modifier
                                     .fillMaxSize()
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.Black.copy(alpha = 0.05f))
+                                    .background(Color.Black.copy(alpha = 0.04f))
                             )
                             // Scrollbar Thumb
                             Box(
@@ -798,7 +823,7 @@ fun CodeEditorView(
                                     .fillMaxHeight()
                                     .width(thumbWidth)
                                     .clip(RoundedCornerShape(4.dp))
-                                    .background(Color(0xFF57606A).copy(alpha = 0.8f))
+                                    .background(GitText3.copy(alpha = 0.6f))
                             )
                         }
                     }
@@ -811,8 +836,8 @@ fun CodeEditorView(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding(),
-            color = Md3LightSurface,
-            border = androidx.compose.foundation.BorderStroke(0.5.dp, Md3LightOutlineVariant)
+            color = GitSurface,
+            border = BorderStroke(0.5.dp, GitBorder)
         ) {
             Row(
                 modifier = Modifier
@@ -828,17 +853,17 @@ fun CodeEditorView(
                     Text(
                         text = "$lineCount lines",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Md3LightTextSecondary
+                        color = GitText2
                     )
                     Text(
                         text = "$charCount chars",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Md3LightTextSecondary
+                        color = GitText2
                     )
                     Text(
                         text = FileIcons.formatFileSize(file?.size ?: charCount.toLong()),
                         style = MaterialTheme.typography.labelSmall,
-                        color = Md3LightTextSecondary
+                        color = GitText2
                     )
                 }
 
@@ -850,15 +875,30 @@ fun CodeEditorView(
                         text = "UTF-8",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = FontFamily.Monospace,
-                        color = Md3LightTextTertiary
+                        color = GitText3
                     )
-                    Text(
-                        text = "branch: $selectedBranch",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = GitHubBlue
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(GitAccentSoft)
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .background(GitAccent, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = selectedBranch,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GitAccent,
+                            fontSize = 11.sp
+                        )
+                    }
                 }
             }
         }

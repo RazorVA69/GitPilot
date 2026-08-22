@@ -391,14 +391,20 @@ fun FileTreeExplorer(
 
                     DropdownMenu(
                         expanded = showOverflowMenu,
-                        onDismissRequest = { showOverflowMenu = false }
+                        onDismissRequest = { showOverflowMenu = false },
+                        shape = RoundedCornerShape(12.dp),
+                        containerColor = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        shadowElevation = 8.dp
                     ) {
                         Text(
                             text = "SORT BY",
                             style = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.Bold,
                             color = GitText3,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                         )
 
                         DropdownMenuItem(
@@ -408,7 +414,7 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Folders First")
+                                    Text("Folders First", fontSize = 13.sp, color = GitText1)
                                     if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -427,7 +433,7 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Files First")
+                                    Text("Files First", fontSize = 13.sp, color = GitText1)
                                     if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -446,7 +452,7 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Name (A → Z)")
+                                    Text("Name (A → Z)", fontSize = 13.sp, color = GitText1)
                                     if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -465,7 +471,7 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Name (Z → A)")
+                                    Text("Name (Z → A)", fontSize = 13.sp, color = GitText1)
                                     if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -477,7 +483,7 @@ fun FileTreeExplorer(
                             }
                         )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
 
                         DropdownMenuItem(
                             text = {
@@ -486,14 +492,14 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Reverse Sort Order")
+                                    Text("Reverse Sort Order", fontSize = 13.sp, color = GitText1)
                                     if (isFileTreeSortReversed) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
                                 }
                             },
                             leadingIcon = {
-                                Icon(Icons.Default.SwapVert, contentDescription = null, tint = if (isFileTreeSortReversed) GitAccent else GitText2)
+                                Icon(Icons.Default.SwapVert, contentDescription = null, tint = if (isFileTreeSortReversed) GitAccent else GitText2, modifier = Modifier.size(18.dp))
                             },
                             onClick = {
                                 onToggleFileTreeSortReverse()
@@ -501,7 +507,7 @@ fun FileTreeExplorer(
                             }
                         )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
 
                         DropdownMenuItem(
                             text = {
@@ -510,11 +516,11 @@ fun FileTreeExplorer(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("GitHub Terminal", fontWeight = FontWeight.Bold, color = GitAccent)
+                                    Text("GitHub Terminal", fontWeight = FontWeight.Bold, color = GitAccent, fontSize = 13.sp)
                                 }
                             },
                             leadingIcon = {
-                                Icon(Icons.Default.Terminal, contentDescription = "Terminal", tint = GitAccent)
+                                Icon(Icons.Default.Terminal, contentDescription = "Terminal", tint = GitAccent, modifier = Modifier.size(18.dp))
                             },
                             onClick = {
                                 onOpenTerminal()
@@ -523,12 +529,12 @@ fun FileTreeExplorer(
                             modifier = Modifier.testTag("menu_item_github_terminal")
                         )
 
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
 
                         DropdownMenuItem(
-                            text = { Text("Back to Repositories") },
+                            text = { Text("Back to Repositories", fontSize = 13.sp, color = GitText1) },
                             leadingIcon = {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = GitText2)
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                             },
                             onClick = {
                                 onNavigateToReposList()
@@ -1309,14 +1315,18 @@ private fun ExplorerItemRow(
 
             DropdownMenu(
                 expanded = showMenu,
-                onDismissRequest = { showMenu = false }
+                onDismissRequest = { showMenu = false },
+                shape = RoundedCornerShape(12.dp),
+                containerColor = GitSurface,
+                border = BorderStroke(1.dp, GitBorderStrong),
+                shadowElevation = 8.dp
             ) {
                 DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Cut (Move)")
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Cut (Move)", fontSize = 13.sp, color = GitText1)
                         }
                     },
                     onClick = {
@@ -1329,8 +1339,8 @@ private fun ExplorerItemRow(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Copy")
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text("Copy", fontSize = 13.sp, color = GitText1)
                         }
                     },
                     onClick = {
@@ -1344,8 +1354,8 @@ private fun ExplorerItemRow(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders")
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1)
                             }
                         },
                         onClick = {
@@ -1355,12 +1365,14 @@ private fun ExplorerItemRow(
                     )
                 }
 
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
+
                 DropdownMenuItem(
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (node.isDirectory) "Delete Folder" else "Delete File", color = Color(0xFFE53935))
+                            Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(if (node.isDirectory) "Delete Folder" else "Delete File", fontSize = 13.sp, color = Md3LightError)
                         }
                     },
                     onClick = {
