@@ -13,10 +13,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -63,6 +65,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -77,10 +80,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -269,24 +275,29 @@ fun CodeEditorView(
                 }
             },
             actions = {
-                // 1. UNDO BUTTON
-                Surface(
-                    onClick = { performUndo() },
-                    enabled = undoStack.isNotEmpty(),
-                    shape = CircleShape,
-                    color = if (undoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
-                    border = BorderStroke(1.dp, GitBorder),
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .testTag("editor_undo_btn")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(end = 8.dp)
                 ) {
+                    // 1. UNDO BUTTON
+                    Surface(
+                        onClick = { performUndo() },
+                        enabled = undoStack.isNotEmpty(),
+                        shape = CircleShape,
+                        color = if (undoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .testTag("editor_undo_btn")
+                    ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Undo,
                                 contentDescription = "Undo",
                                 tint = if (undoStack.isNotEmpty()) GitText1 else GitText3,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -297,9 +308,9 @@ fun CodeEditorView(
                         enabled = redoStack.isNotEmpty(),
                         shape = CircleShape,
                         color = if (redoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, GitBorder),
+                        border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .testTag("editor_redo_btn")
                     ) {
@@ -308,7 +319,7 @@ fun CodeEditorView(
                                 imageVector = Icons.AutoMirrored.Filled.Redo,
                                 contentDescription = "Redo",
                                 tint = if (redoStack.isNotEmpty()) GitText1 else GitText3,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -321,9 +332,9 @@ fun CodeEditorView(
                         },
                         shape = CircleShape,
                         color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isSearchVisible && !isReplaceMode) GitAccent else GitBorder),
+                        border = BorderStroke(1.dp, if (isSearchVisible && !isReplaceMode) GitAccent else GitBorder.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .testTag("editor_search_btn")
                     ) {
@@ -332,7 +343,7 @@ fun CodeEditorView(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "Search",
                                 tint = if (isSearchVisible && !isReplaceMode) GitAccent else GitText1,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -345,9 +356,9 @@ fun CodeEditorView(
                         },
                         shape = CircleShape,
                         color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isSearchVisible && isReplaceMode) GitAccent else GitBorder),
+                        border = BorderStroke(1.dp, if (isSearchVisible && isReplaceMode) GitAccent else GitBorder.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .testTag("editor_replace_btn")
                     ) {
@@ -356,7 +367,7 @@ fun CodeEditorView(
                                 imageVector = Icons.Default.FindReplace,
                                 contentDescription = "Replace",
                                 tint = if (isSearchVisible && isReplaceMode) GitAccent else GitText1,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -366,7 +377,7 @@ fun CodeEditorView(
                         onClick = onOpenCommitDialog,
                         enabled = !isLoading,
                         modifier = Modifier
-                            .height(34.dp)
+                            .height(36.dp)
                             .testTag("editor_commit_btn"),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = GitButtonPrimary,
@@ -378,7 +389,7 @@ fun CodeEditorView(
                         Icon(
                             imageVector = Icons.Default.Save,
                             contentDescription = null,
-                            modifier = Modifier.size(14.dp),
+                            modifier = Modifier.size(15.dp),
                             tint = Color.White
                         )
                         Spacer(modifier = Modifier.width(4.dp))
@@ -404,9 +415,9 @@ fun CodeEditorView(
                             onClick = { showMoreMenu = true },
                             shape = CircleShape,
                             color = GitSurface2,
-                            border = BorderStroke(1.dp, GitBorder),
+                            border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .testTag("editor_more_options_btn")
                         ) {
@@ -415,7 +426,7 @@ fun CodeEditorView(
                                     imageVector = Icons.Default.MoreVert,
                                     contentDescription = "More options",
                                     tint = GitText1,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
                         }
@@ -530,8 +541,9 @@ fun CodeEditorView(
                         }
                     }
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = GitSurface,
                 titleContentColor = GitText1
             )
@@ -734,6 +746,33 @@ fun CodeEditorView(
                 // Code Editor with High Performance Synchronized Gutter & Custom Scrollbars
                 val verticalScrollState = rememberScrollState()
                 val horizontalScrollState = rememberScrollState()
+                val density = LocalDensity.current
+                val imeInsets = WindowInsets.ime
+                val imeBottom = imeInsets.getBottom(density)
+
+                // Track TextFieldValue to know cursor/selection location
+                var textFieldValue by remember {
+                    mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
+                }
+
+                LaunchedEffect(content) {
+                    if (textFieldValue.text != content) {
+                        textFieldValue = textFieldValue.copy(text = content)
+                    }
+                }
+
+                val cursorIndex = remember(textFieldValue.selection, textFieldValue.text) {
+                    textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
+                }
+
+                val cursorLine = remember(textFieldValue.text, cursorIndex) {
+                    var line = 0
+                    val text = textFieldValue.text
+                    for (i in 0 until cursorIndex) {
+                        if (text[i] == '\n') line++
+                    }
+                    line
+                }
 
                 BoxWithConstraints(
                     modifier = Modifier
@@ -742,6 +781,26 @@ fun CodeEditorView(
                 ) {
                     val containerHeight = maxHeight
                     val containerWidth = maxWidth
+
+                    // Ensure active cursor line is automatically scrolled into view whenever selection changes or keyboard pops up
+                    LaunchedEffect(cursorLine, imeBottom > 0) {
+                        val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
+                        val cursorY = (cursorLine * lineHeightPx).toInt()
+                        val viewportHeightPx = with(density) { containerHeight.toPx() }.toInt()
+                        val currentScroll = verticalScrollState.value
+                        val visibleTop = currentScroll
+                        val visibleBottom = currentScroll + viewportHeightPx
+
+                        val topMarginPx = with(density) { 32.dp.toPx() }.toInt()
+                        val bottomMarginPx = with(density) { 90.dp.toPx() }.toInt()
+
+                        if (cursorY < visibleTop + topMarginPx) {
+                            verticalScrollState.animateScrollTo((cursorY - topMarginPx).coerceAtLeast(0))
+                        } else if (cursorY > visibleBottom - bottomMarginPx) {
+                            val target = cursorY - viewportHeightPx + bottomMarginPx
+                            verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                        }
+                    }
 
                     Row(modifier = Modifier.fillMaxSize()) {
                         // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
@@ -755,7 +814,7 @@ fun CodeEditorView(
                                     .width(gutterWidth)
                                     .background(GitSurface)
                                     .verticalScroll(verticalScrollState)
-                                    .padding(top = 12.dp, bottom = 280.dp, start = 4.dp, end = 6.dp)
+                                    .padding(top = 12.dp, bottom = 360.dp, start = 4.dp, end = 6.dp)
                             ) {
                                 Text(
                                     text = lineNumbersText,
@@ -777,23 +836,28 @@ fun CodeEditorView(
                             )
                         }
 
-                        // Text Editor Field with generous bottom padding (280dp) so IME keyboard never hides the end of file
+                        // Text Editor Field with generous bottom padding (360dp) so IME keyboard never hides the end of file
                         val textModifier = if (isWordWrapEnabled) {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
-                                .padding(top = 12.dp, bottom = 280.dp, start = 12.dp, end = 18.dp)
+                                .padding(top = 12.dp, bottom = 360.dp, start = 12.dp, end = 18.dp)
                         } else {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
                                 .horizontalScroll(horizontalScrollState)
-                                .padding(top = 12.dp, bottom = 280.dp, start = 12.dp, end = 24.dp)
+                                .padding(top = 12.dp, bottom = 360.dp, start = 12.dp, end = 24.dp)
                         }
 
                         BasicTextField(
-                            value = content,
-                            onValueChange = { handleTextChange(it) },
+                            value = textFieldValue,
+                            onValueChange = { newTfv ->
+                                textFieldValue = newTfv
+                                if (newTfv.text != content) {
+                                    handleTextChange(newTfv.text)
+                                }
+                            },
                             modifier = textModifier.testTag("code_editor_textarea"),
                             textStyle = TextStyle(
                                 fontFamily = FontFamily.Monospace,

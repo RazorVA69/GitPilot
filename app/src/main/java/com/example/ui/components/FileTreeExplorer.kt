@@ -312,23 +312,28 @@ fun FileTreeExplorer(
                 }
             },
             actions = {
-                // Search Files Button
-                Surface(
-                    onClick = { isSearchExpanded = !isSearchExpanded },
-                    shape = CircleShape,
-                    color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface2,
-                    border = BorderStroke(1.dp, if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitBorder),
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .testTag("explorer_search_toggle_btn")
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.padding(end = 8.dp)
                 ) {
+                    // Search Files Button
+                    Surface(
+                        onClick = { isSearchExpanded = !isSearchExpanded },
+                        shape = CircleShape,
+                        color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitBorder.copy(alpha = 0.5f)),
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .testTag("explorer_search_toggle_btn")
+                    ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
                                 imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
                                 contentDescription = "Search Files",
                                 tint = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitText1,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -338,9 +343,9 @@ fun FileTreeExplorer(
                         onClick = onToggleBatchMode,
                         shape = CircleShape,
                         color = if (isBatchMode) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isBatchMode) GitAccent else GitBorder),
+                        border = BorderStroke(1.dp, if (isBatchMode) GitAccent else GitBorder.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .testTag("explorer_multiselect_btn")
                     ) {
@@ -349,7 +354,7 @@ fun FileTreeExplorer(
                                 imageVector = Icons.Default.Checklist,
                                 contentDescription = "Multi-Select Mode",
                                 tint = if (isBatchMode) GitAccent else GitText1,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
@@ -359,9 +364,9 @@ fun FileTreeExplorer(
                         onClick = onRefresh,
                         shape = CircleShape,
                         color = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitBorder),
+                        border = BorderStroke(1.dp, if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitBorder.copy(alpha = 0.5f)),
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .testTag("explorer_sync_btn")
                     ) {
@@ -371,9 +376,9 @@ fun FileTreeExplorer(
                                 contentDescription = "Sync Repository",
                                 tint = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitText1,
                                 modifier = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
-                                    Modifier.size(16.dp).rotate(syncRotation)
+                                    Modifier.size(17.dp).rotate(syncRotation)
                                 } else {
-                                    Modifier.size(16.dp)
+                                    Modifier.size(17.dp)
                                 }
                             )
                         }
@@ -385,7 +390,7 @@ fun FileTreeExplorer(
                         shape = CircleShape,
                         color = GitButtonPrimary,
                         modifier = Modifier
-                            .size(34.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .testTag("explorer_add_file_btn")
                     ) {
@@ -405,9 +410,9 @@ fun FileTreeExplorer(
                             onClick = { showOverflowMenu = true },
                             shape = CircleShape,
                             color = GitSurface2,
-                            border = BorderStroke(1.dp, GitBorder),
+                            border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .clip(CircleShape)
                                 .testTag("explorer_overflow_menu_btn")
                         ) {
@@ -416,7 +421,7 @@ fun FileTreeExplorer(
                                     imageVector = Icons.Default.MoreVert,
                                     contentDescription = "More Options",
                                     tint = GitText1,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(17.dp)
                                 )
                             }
                         }
@@ -575,12 +580,13 @@ fun FileTreeExplorer(
                         )
                     }
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = GitSurface,
-                titleContentColor = GitText1
-            )
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(
+            containerColor = GitSurface,
+            titleContentColor = GitText1
         )
+    )
 
         HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
