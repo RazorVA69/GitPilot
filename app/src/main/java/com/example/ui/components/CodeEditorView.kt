@@ -761,6 +761,15 @@ fun CodeEditorView(
                     }
                 }
 
+                // Sync search match selection into textFieldValue
+                LaunchedEffect(matches, currentMatchIndex) {
+                    if (matches.isNotEmpty() && currentMatchIndex in matches.indices && searchQuery.isNotEmpty()) {
+                        val matchStart = matches[currentMatchIndex]
+                        val matchEnd = (matchStart + searchQuery.length).coerceAtMost(content.length)
+                        textFieldValue = textFieldValue.copy(selection = TextRange(matchStart, matchEnd))
+                    }
+                }
+
                 val cursorIndex = remember(textFieldValue.selection, textFieldValue.text) {
                     textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
                 }
@@ -768,7 +777,8 @@ fun CodeEditorView(
                 val cursorLine = remember(textFieldValue.text, cursorIndex) {
                     var line = 0
                     val text = textFieldValue.text
-                    for (i in 0 until cursorIndex) {
+                    val limit = cursorIndex.coerceAtMost(text.length)
+                    for (i in 0 until limit) {
                         if (text[i] == '\n') line++
                     }
                     line
@@ -782,23 +792,33 @@ fun CodeEditorView(
                     val containerHeight = maxHeight
                     val containerWidth = maxWidth
 
-                    // Ensure active cursor line is automatically scrolled into view whenever selection changes or keyboard pops up
-                    LaunchedEffect(cursorLine, imeBottom > 0) {
+                    // Ensure active cursor line is automatically scrolled into view whenever:
+                    // 1. Cursor line moves (user taps or types)
+                    // 2. Container height changes (keyboard opens, closes, or resizes)
+                    // 3. Selection changes
+                    LaunchedEffect(cursorLine, containerHeight, textFieldValue.selection) {
                         val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
-                        val cursorY = (cursorLine * lineHeightPx).toInt()
+                        val topPaddingPx = with(density) { 12.dp.toPx() }
+                        val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
+                        val cursorHeightPx = lineHeightPx.toInt()
                         val viewportHeightPx = with(density) { containerHeight.toPx() }.toInt()
-                        val currentScroll = verticalScrollState.value
-                        val visibleTop = currentScroll
-                        val visibleBottom = currentScroll + viewportHeightPx
 
-                        val topMarginPx = with(density) { 32.dp.toPx() }.toInt()
-                        val bottomMarginPx = with(density) { 90.dp.toPx() }.toInt()
+                        if (viewportHeightPx > 0) {
+                            val currentScroll = verticalScrollState.value
+                            val visibleTop = currentScroll
+                            val visibleBottom = currentScroll + viewportHeightPx
 
-                        if (cursorY < visibleTop + topMarginPx) {
-                            verticalScrollState.animateScrollTo((cursorY - topMarginPx).coerceAtLeast(0))
-                        } else if (cursorY > visibleBottom - bottomMarginPx) {
-                            val target = cursorY - viewportHeightPx + bottomMarginPx
-                            verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                            val topMarginPx = with(density) { 32.dp.toPx() }.toInt()
+                            val bottomMarginPx = with(density) { 72.dp.toPx() }.toInt()
+
+                            if (cursorY < visibleTop + topMarginPx) {
+                                val target = (cursorY - topMarginPx).coerceAtLeast(0)
+                                verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                            } else if (cursorY + cursorHeightPx > visibleBottom - bottomMarginPx) {
+                                // Scroll up so the cursor is placed in the upper-middle of the visible screen above keyboard
+                                val target = (cursorY - (viewportHeightPx / 3)).coerceAtLeast(0)
+                                verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                            }
                         }
                     }
 
