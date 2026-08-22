@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
+import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Book
@@ -39,13 +40,14 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.BookmarkBorder
-import androidx.compose.material.icons.outlined.Description
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -439,12 +441,12 @@ fun RepoSidebarDrawer(
                 }
             }
 
-            // Filter Chips Bar (Centered with Accent on Selected Chip)
+            // Filter Chips Bar (Centered with Accent on Selected Chip, strong clear typography)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.Center
             ) {
                 val filters = listOf(
@@ -461,15 +463,15 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onFilterChange(filter) },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) GitAccentSoft else Color.Transparent,
-                        border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder)
+                        color = if (isSelected) GitAccentSoft else GitSurface2,
+                        border = if (isSelected) BorderStroke(1.5.dp, GitAccent) else BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Text(
                             text = "$label · $count",
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) GitAccent else GitText2,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
+                            fontSize = 12.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                            color = if (isSelected) GitAccent else GitText1,
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 6.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(6.dp))
@@ -529,11 +531,16 @@ fun RepoSidebarDrawer(
                                         .padding(horizontal = 10.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Outlined File / Repo Icon (SS 4)
+                                    // Proper Repository Icon based on type
+                                    val repoIcon = when {
+                                        repo.private -> Icons.Default.Lock
+                                        repo.fork -> Icons.AutoMirrored.Outlined.CallSplit
+                                        else -> Icons.Outlined.BookmarkBorder
+                                    }
                                     Icon(
-                                        imageVector = Icons.Outlined.Description,
-                                        contentDescription = null,
-                                        tint = if (isSelected) GitAccent else GitText3,
+                                        imageVector = repoIcon,
+                                        contentDescription = if (repo.private) "Private Repo" else "Repo",
+                                        tint = if (isSelected) GitAccent else if (repo.private) GitYellow else GitText2,
                                         modifier = Modifier.size(16.dp)
                                     )
 

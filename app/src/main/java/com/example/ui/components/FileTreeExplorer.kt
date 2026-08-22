@@ -798,7 +798,7 @@ fun FileTreeExplorer(
 
         // Main Explorer Content List
         Box(modifier = Modifier.weight(1f)) {
-            if (isLoadingTree && rawTreeItems.isEmpty()) {
+            if (isLoadingTree || (rootNode == null && rawTreeItems.isEmpty())) {
                 Box(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
@@ -806,12 +806,14 @@ fun FileTreeExplorer(
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         CircularProgressIndicator(
                             color = GitAccent,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp),
+                            strokeWidth = 2.5.dp
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(14.dp))
                         Text(
                             text = "Loading repository files...",
                             style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium,
                             color = GitText2
                         )
                     }

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ForkRight
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -458,6 +459,8 @@ fun RepoListScreen(
 
         AlertDialog(
             onDismissRequest = { selectedRepoForActions = null },
+            shape = RoundedCornerShape(14.dp),
+            containerColor = GitSurface,
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
@@ -466,48 +469,59 @@ fun RepoListScreen(
                         tint = GitAccent,
                         modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(repo.name, fontWeight = FontWeight.Bold, fontSize = 16.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = repo.name,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = GitText1,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select quick action for this repository:", fontSize = 13.sp, color = GitText2)
-
-                    Spacer(modifier = Modifier.height(4.dp))
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Select action for repository:",
+                        fontSize = 13.sp,
+                        color = GitText2
+                    )
 
                     // 1. PIN / UNPIN
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 onTogglePinRepo(repo.id)
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = GitSurface2
+                        color = if (isPinned) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isPinned) GitAccent.copy(alpha = 0.3f) else GitBorder)
                     ) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.PushPin,
                                 contentDescription = null,
-                                tint = if (isPinned) GitYellow else GitText1,
-                                modifier = Modifier.size(20.dp)
+                                tint = if (isPinned) GitAccent else GitText1,
+                                modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
                                     text = if (isPinned) "Unpin from Top" else "Pin to Top",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.5.sp,
+                                    color = if (isPinned) GitAccent else GitText1
                                 )
                                 Text(
                                     text = if (isPinned) "Remove priority pin" else "Keep at the top of your sidebar & repo list",
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     color = GitText2
                                 )
                             }
@@ -518,35 +532,36 @@ fun RepoListScreen(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 onSetWorkingRepo(if (isWorking) null else repo.id)
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = if (isWorking) GitAccentSoft else GitSurface2
+                        color = if (isWorking) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isWorking) GitAccent.copy(alpha = 0.3f) else GitBorder)
                     ) {
                         Row(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Bolt,
                                 contentDescription = null,
                                 tint = if (isWorking) GitAccent else GitText1,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
                                 Text(
                                     text = if (isWorking) "Remove Working Repository" else "Set as Working Repository",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.5.sp,
                                     color = if (isWorking) GitAccent else GitText1
                                 )
                                 Text(
                                     text = "Auto-opens automatically whenever you launch the app",
-                                    fontSize = 11.sp,
+                                    fontSize = 11.5.sp,
                                     color = GitText2
                                 )
                             }
@@ -555,8 +570,11 @@ fun RepoListScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { selectedRepoForActions = null }) {
-                    Text("Close", color = GitAccent)
+                TextButton(
+                    onClick = { selectedRepoForActions = null },
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Close", color = GitAccent, fontWeight = FontWeight.SemiBold)
                 }
             }
         )
@@ -586,54 +604,73 @@ fun RepositoryRowItem(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp)
+                .padding(start = 22.dp, end = 12.dp, top = 14.dp, bottom = 14.dp)
         ) {
-            // Repo Name Row
+            // Repo Name Row with 3-dot Menu Icon
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = repo.name,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = GitText1,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-
-                if (isPinned) {
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Icon(
-                        imageVector = Icons.Default.PushPin,
-                        contentDescription = "Pinned",
-                        tint = GitYellow,
-                        modifier = Modifier.size(13.dp)
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = repo.name,
+                        fontSize = 15.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = GitText1,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+
+                    if (isPinned) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.PushPin,
+                            contentDescription = "Pinned",
+                            tint = GitYellow,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+
+                    if (isWorking) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(
+                            imageVector = Icons.Default.Bolt,
+                            contentDescription = "Working",
+                            tint = GitAccent,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                 }
 
-                if (isWorking) {
-                    Spacer(modifier = Modifier.width(6.dp))
+                IconButton(
+                    onClick = onLongClick,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("repo_row_menu_${repo.name}")
+                ) {
                     Icon(
-                        imageVector = Icons.Default.Bolt,
-                        contentDescription = "Working",
-                        tint = GitAccent,
-                        modifier = Modifier.size(13.dp)
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Repository actions",
+                        tint = GitText3,
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
 
             // Description Row (SS 2 format)
             if (!repo.description.isNullOrBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = repo.description,
                     fontSize = 13.sp,
                     color = GitText2,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    lineHeight = 18.sp
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(end = 12.dp)
                 )
             }
 

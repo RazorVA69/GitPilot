@@ -665,6 +665,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     currentDirectoryPath = "",
                     activeFile = null,
                     activeFilePath = null,
+                    rawTreeItems = emptyList(),
+                    rootExplorerNode = null,
+                    matchingSearchFiles = emptyList(),
+                    isLoadingTree = true,
                     isBatchMode = false,
                     selectedFilePaths = emptySet(),
                     pinnedFolders = savedPinnedFolders,
@@ -781,6 +785,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 currentDirectoryPath = "",
                 activeFile = null,
                 activeFilePath = null,
+                rawTreeItems = emptyList(),
+                rootExplorerNode = null,
+                matchingSearchFiles = emptyList(),
+                isLoadingTree = true,
                 showBranchSelector = false
             )
         }

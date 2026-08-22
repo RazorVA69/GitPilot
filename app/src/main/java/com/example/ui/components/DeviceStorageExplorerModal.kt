@@ -90,6 +90,15 @@ import androidx.compose.ui.unit.sp
 import com.example.ui.theme.GitHubBlue
 import com.example.ui.theme.GitHubGreen
 import com.example.ui.theme.GitHubYellow
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitAccentSoft
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitButtonPrimary
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
 import com.example.ui.theme.Md3LightBackground
 import com.example.ui.theme.Md3LightOutline
 import com.example.ui.theme.Md3LightOutlineVariant
@@ -824,8 +833,8 @@ fun DeviceStorageExplorerModal(
             // Bottom Confirmation Action Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Md3LightSurface,
-                shadowElevation = 8.dp
+                color = GitSurface,
+                border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder)
             ) {
                 Row(
                     modifier = Modifier
@@ -837,17 +846,24 @@ fun DeviceStorageExplorerModal(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", fontWeight = FontWeight.Medium)
                     }
 
                     Button(
                         onClick = { stageAndConfirmSelection() },
                         enabled = selectedPaths.isNotEmpty() && !isCollectingFiles,
                         modifier = Modifier.weight(1.5f),
-                        colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
-                        shape = RoundedCornerShape(8.dp)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GitButtonPrimary,
+                            contentColor = Color.White,
+                            disabledContainerColor = GitBorder,
+                            disabledContentColor = GitText3
+                        ),
+                        shape = RoundedCornerShape(10.dp)
                     ) {
                         if (isCollectingFiles) {
                             CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp))
@@ -858,7 +874,7 @@ fun DeviceStorageExplorerModal(
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Select ${selectedPaths.size} Item(s)",
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 fontSize = 13.sp
                             )
                         }
@@ -873,22 +889,28 @@ fun DeviceStorageExplorerModal(
         val name = File(path).name
         AlertDialog(
             onDismissRequest = { folderToUnpinPrompt = null },
-            title = { Text("Unpin Folder") },
-            text = { Text("Remove \"$name\" from pinned folders?") },
+            shape = RoundedCornerShape(14.dp),
+            containerColor = GitSurface,
+            title = { Text("Unpin Folder", fontWeight = FontWeight.Bold, color = GitText1) },
+            text = { Text("Remove \"$name\" from pinned folders?", color = GitText2) },
             confirmButton = {
                 Button(
                     onClick = {
                         unpinFolder(path)
                         folderToUnpinPrompt = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen)
+                    colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
+                    shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Unpin")
+                    Text("Unpin", fontWeight = FontWeight.SemiBold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { folderToUnpinPrompt = null }) {
-                    Text("Cancel")
+                TextButton(
+                    onClick = { folderToUnpinPrompt = null },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Cancel", color = GitText2)
                 }
             }
         )

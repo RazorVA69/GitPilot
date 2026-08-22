@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +35,8 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,8 +45,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,9 +53,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.ScrollableTabRow
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -76,18 +75,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.documentfile.provider.DocumentFile
-import com.example.ui.theme.GitHubBlue
-import com.example.ui.theme.GitHubGreen
-import com.example.ui.theme.GitHubYellow
-import com.example.ui.theme.Md3LightCodeBg
-import com.example.ui.theme.Md3LightOutline
-import com.example.ui.theme.Md3LightOutlineVariant
-import com.example.ui.theme.Md3LightPrimary
-import com.example.ui.theme.Md3LightPrimaryContainer
-import com.example.ui.theme.Md3LightSurface
-import com.example.ui.theme.Md3LightSurfaceVariant
-import com.example.ui.theme.Md3LightTextPrimary
-import com.example.ui.theme.Md3LightTextSecondary
+import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitAccentDeep
+import com.example.ui.theme.GitAccentSoft
+import com.example.ui.theme.GitBg
+import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
+import com.example.ui.theme.GitSurface
+import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitSurface3
+import com.example.ui.theme.GitText1
+import com.example.ui.theme.GitText2
+import com.example.ui.theme.GitText3
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -195,9 +194,18 @@ fun CreateOrUploadModal(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Md3LightSurface,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        dragHandle = null
+        containerColor = GitSurface,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        dragHandle = {
+            Box(
+                modifier = Modifier
+                    .padding(vertical = 10.dp)
+                    .width(36.dp)
+                    .height(4.dp)
+                    .clip(CircleShape)
+                    .background(GitBorderStrong)
+            )
+        }
     ) {
         Column(
             modifier = Modifier
@@ -207,13 +215,12 @@ fun CreateOrUploadModal(
             // Header Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Md3LightSurface,
-                shadowElevation = 0.5.dp
+                color = GitSurface
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                        .padding(horizontal = 20.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -222,12 +229,12 @@ fun CreateOrUploadModal(
                             text = "Add to Repository",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Md3LightTextPrimary
+                            color = GitText1
                         )
                         Text(
                             text = "Branch: $targetBranch",
                             style = MaterialTheme.typography.labelSmall,
-                            color = Md3LightTextSecondary,
+                            color = GitText2,
                             fontFamily = FontFamily.Monospace
                         )
                     }
@@ -236,51 +243,67 @@ fun CreateOrUploadModal(
                         onClick = onDismiss,
                         modifier = Modifier.size(32.dp)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2)
                     }
                 }
             }
 
-            HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+            HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
-            // Segmented Scrollable Tabs
-            ScrollableTabRow(
-                selectedTabIndex = selectedTab,
-                edgePadding = 16.dp,
-                containerColor = Md3LightSurfaceVariant,
-                contentColor = Md3LightPrimary,
-                divider = {}
+            // Segmented Scrollable Tabs (Light Modern tab bar)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .background(GitSurface2)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Tab(
-                    selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text("Upload Files", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
-                    icon = { Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                val tabTitles = listOf("Upload Files", "Upload Folder", "New File", "New Folder", "Templates")
+                val tabIcons = listOf(
+                    Icons.Default.UploadFile,
+                    Icons.Default.DriveFolderUpload,
+                    Icons.Default.NoteAdd,
+                    Icons.Default.CreateNewFolder,
+                    null
                 )
-                Tab(
-                    selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text("Upload Folder", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
-                    icon = { Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                )
-                Tab(
-                    selected = selectedTab == 2,
-                    onClick = { selectedTab = 2 },
-                    text = { Text("New File", fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
-                    icon = { Icon(Icons.Default.NoteAdd, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                )
-                Tab(
-                    selected = selectedTab == 3,
-                    onClick = { selectedTab = 3 },
-                    text = { Text("New Folder", fontWeight = if (selectedTab == 3) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) },
-                    icon = { Icon(Icons.Default.CreateNewFolder, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                )
-                Tab(
-                    selected = selectedTab == 4,
-                    onClick = { selectedTab = 4 },
-                    text = { Text("Templates", fontWeight = if (selectedTab == 4) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) }
-                )
+
+                tabTitles.forEachIndexed { index, title ->
+                    val isTabSelected = selectedTab == index
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { selectedTab = index },
+                        color = if (isTabSelected) GitSurface else Color.Transparent,
+                        border = if (isTabSelected) BorderStroke(1.dp, GitBorderStrong) else null,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            tabIcons[index]?.let { icon ->
+                                Icon(
+                                    imageVector = icon,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp),
+                                    tint = if (isTabSelected) GitAccent else GitText2
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+                            Text(
+                                text = title,
+                                fontSize = 12.sp,
+                                fontWeight = if (isTabSelected) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isTabSelected) GitText1 else GitText2
+                            )
+                        }
+                    }
+                }
             }
+
+            HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
             Column(
                 modifier = Modifier
@@ -290,15 +313,17 @@ fun CreateOrUploadModal(
             ) {
                 // Target Directory Section
                 Text(
-                    text = "Target Directory Path in Repository",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "TARGET DIRECTORY PATH IN REPOSITORY",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Md3LightTextPrimary
+                    color = GitText2,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
                 )
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // Quick Path Selector Chips (Smooth pills, no cut-off corners)
+                // Quick Path Selector Chips (Smooth pills)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -306,74 +331,99 @@ fun CreateOrUploadModal(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChip(
-                        selected = targetDirectory.isBlank(),
-                        onClick = { targetDirectory = "" },
-                        label = { Text("Repo Root ( / )", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                        leadingIcon = {
+                    val isRoot = targetDirectory.isBlank()
+                    Surface(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { targetDirectory = "" },
+                        color = if (isRoot) GitAccentSoft else GitSurface2,
+                        border = BorderStroke(1.dp, if (isRoot) GitAccent else GitBorderStrong),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Icon(
-                                Icons.Default.Folder,
+                                Icons.Outlined.Folder,
                                 contentDescription = null,
-                                tint = GitHubBlue,
+                                tint = if (isRoot) GitAccent else GitText2,
                                 modifier = Modifier.size(14.dp)
                             )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = Md3LightPrimaryContainer,
-                            selectedLabelColor = Md3LightPrimary
-                        ),
-                        shape = RoundedCornerShape(16.dp)
-                    )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Repo Root ( / )",
+                                fontSize = 11.5.sp,
+                                fontWeight = if (isRoot) FontWeight.Bold else FontWeight.Medium,
+                                color = if (isRoot) GitAccent else GitText1
+                            )
+                        }
+                    }
 
                     if (initialDirectory.isNotBlank()) {
-                        FilterChip(
-                            selected = targetDirectory == initialDirectory,
-                            onClick = { targetDirectory = initialDirectory },
-                            label = { Text("Current ($initialDirectory)", fontSize = 11.sp) },
-                            leadingIcon = {
+                        val isInitial = targetDirectory == initialDirectory
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { targetDirectory = initialDirectory },
+                            color = if (isInitial) GitAccentSoft else GitSurface2,
+                            border = BorderStroke(1.dp, if (isInitial) GitAccent else GitBorderStrong),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Icon(
-                                    Icons.Default.Folder,
+                                    Icons.Outlined.Folder,
                                     contentDescription = null,
-                                    tint = GitHubBlue,
+                                    tint = if (isInitial) GitAccent else GitText2,
                                     modifier = Modifier.size(14.dp)
                                 )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Md3LightPrimaryContainer,
-                                selectedLabelColor = Md3LightPrimary
-                            ),
-                            shape = RoundedCornerShape(16.dp)
-                        )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Current ($initialDirectory)",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = if (isInitial) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isInitial) GitAccent else GitText1
+                                )
+                            }
+                        }
                     }
 
                     if (existingDirectories.isNotEmpty()) {
                         Box {
-                            FilterChip(
-                                selected = false,
-                                onClick = { showFolderDropdown = true },
-                                label = {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Browse Repo Folders...", fontSize = 11.sp)
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp))
-                                    }
-                                },
-                                leadingIcon = {
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { showFolderDropdown = true },
+                                color = GitSurface2,
+                                border = BorderStroke(1.dp, GitBorderStrong),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
                                     Icon(
-                                        Icons.Default.Folder,
+                                        Icons.Outlined.Folder,
                                         contentDescription = null,
-                                        tint = GitHubBlue,
+                                        tint = GitText2,
                                         modifier = Modifier.size(14.dp)
                                     )
-                                },
-                                shape = RoundedCornerShape(16.dp)
-                            )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Browse Repo Folders...", fontSize = 11.5.sp, color = GitText1, fontWeight = FontWeight.Medium)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText2)
+                                }
+                            }
 
                             DropdownMenu(
                                 expanded = showFolderDropdown,
                                 onDismissRequest = { showFolderDropdown = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = { Text("Repo Root ( / )", fontWeight = FontWeight.Bold) },
+                                    text = { Text("Repo Root ( / )", fontWeight = FontWeight.Bold, color = GitText1) },
                                     onClick = {
                                         targetDirectory = ""
                                         showFolderDropdown = false
@@ -381,7 +431,7 @@ fun CreateOrUploadModal(
                                 )
                                 existingDirectories.take(20).forEach { dir ->
                                     DropdownMenuItem(
-                                        text = { Text(dir) },
+                                        text = { Text(dir, color = GitText1, fontFamily = FontFamily.Monospace, fontSize = 12.sp) },
                                         onClick = {
                                             targetDirectory = dir
                                             showFolderDropdown = false
@@ -393,7 +443,7 @@ fun CreateOrUploadModal(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Target Directory Text Input
                 OutlinedTextField(
@@ -402,14 +452,16 @@ fun CreateOrUploadModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("target_dir_input"),
-                    placeholder = { Text("Leave blank for repo root or enter folder path...") },
+                    placeholder = { Text("Leave blank for repo root or enter folder path...", color = GitText3, fontSize = 12.5.sp) },
                     leadingIcon = {
-                        Icon(Icons.Default.Folder, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(20.dp))
+                        Icon(Icons.Outlined.Folder, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Md3LightPrimary,
-                        unfocusedBorderColor = Md3LightOutline
+                        focusedBorderColor = GitAccent,
+                        unfocusedBorderColor = GitBorderStrong,
+                        focusedContainerColor = GitSurface,
+                        unfocusedContainerColor = GitSurface2
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
@@ -421,11 +473,11 @@ fun CreateOrUploadModal(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { showDeviceStorageExplorer = true },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)),
-                        border = BorderStroke(1.5.dp, GitHubGreen),
-                        shape = RoundedCornerShape(16.dp)
+                        colors = CardDefaults.cardColors(containerColor = GitAccentSoft),
+                        border = BorderStroke(1.5.dp, GitAccent),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -434,16 +486,17 @@ fun CreateOrUploadModal(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
-                                shape = CircleShape,
-                                color = GitHubGreen.copy(alpha = 0.15f),
-                                modifier = Modifier.size(44.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                color = GitSurface,
+                                border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f)),
+                                modifier = Modifier.size(42.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.Smartphone,
                                         contentDescription = null,
-                                        tint = GitHubGreen,
-                                        modifier = Modifier.size(24.dp)
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
@@ -455,45 +508,64 @@ fun CreateOrUploadModal(
                                     Text(
                                         text = "Device File Explorer",
                                         fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1B5E20),
+                                        color = GitText1,
                                         fontSize = 14.sp
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Surface(
                                         shape = RoundedCornerShape(4.dp),
-                                        color = GitHubGreen
+                                        color = GitAccent
                                     ) {
                                         Text(
                                             text = "MULTI-SELECT",
                                             fontSize = 9.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White,
-                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "Browse storage with folder pinning, sorting, and multi-file selection",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF2E7D32)
+                                    fontSize = 11.5.sp,
+                                    color = GitText2
                                 )
                             }
 
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitHubGreen, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitAccent, modifier = Modifier.size(20.dp))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = GitBorder)
+                        Text(
+                            text = "or",
+                            fontSize = 11.sp,
+                            color = GitText3,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+                        HorizontalDivider(modifier = Modifier.weight(1f), color = GitBorder)
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedButton(
                         onClick = { filePickerLauncher.launch(arrayOf("*/*")) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
                     ) {
-                        Icon(Icons.Default.UploadFile, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Outlined.OpenInNew, contentDescription = null, modifier = Modifier.size(15.dp), tint = GitText2)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Or choose via System File Picker", fontSize = 12.sp)
+                        Text("Choose via System File Picker", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
 
                     if (isReadingFiles) {
@@ -504,9 +576,9 @@ fun CreateOrUploadModal(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Md3LightPrimary)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = GitAccent, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Reading files...", fontSize = 12.sp, color = Md3LightTextSecondary)
+                            Text("Reading files...", fontSize = 12.sp, color = GitText2)
                         }
                     }
 
@@ -514,23 +586,23 @@ fun CreateOrUploadModal(
                         Spacer(modifier = Modifier.height(10.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFFE8F5E9),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f))
+                            color = GitAccentSoft,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f))
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
                                     text = stagedSummary,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF2E7D32),
+                                    color = GitAccentDeep,
                                     fontSize = 12.sp
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 stagedFiles.take(5).forEach { (name, bytes) ->
                                     Text(
                                         text = "• $name (${formatTotalBytes(bytes.size.toLong())})",
                                         fontSize = 11.sp,
-                                        color = Md3LightTextPrimary,
+                                        color = GitText1,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -538,7 +610,7 @@ fun CreateOrUploadModal(
                                     Text(
                                         text = "+ ${stagedFiles.size - 5} more files...",
                                         fontSize = 10.sp,
-                                        color = Md3LightTextSecondary
+                                        color = GitText2
                                     )
                                 }
                             }
@@ -551,11 +623,11 @@ fun CreateOrUploadModal(
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
+                            .clip(RoundedCornerShape(12.dp))
                             .clickable { showDeviceStorageExplorer = true },
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
-                        border = BorderStroke(1.5.dp, GitHubBlue),
-                        shape = RoundedCornerShape(16.dp)
+                        colors = CardDefaults.cardColors(containerColor = GitAccentSoft),
+                        border = BorderStroke(1.5.dp, GitAccent),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -564,16 +636,17 @@ fun CreateOrUploadModal(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Surface(
-                                shape = CircleShape,
-                                color = GitHubBlue.copy(alpha = 0.15f),
-                                modifier = Modifier.size(44.dp)
+                                shape = RoundedCornerShape(8.dp),
+                                color = GitSurface,
+                                border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f)),
+                                modifier = Modifier.size(42.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.DriveFolderUpload,
                                         contentDescription = null,
-                                        tint = GitHubBlue,
-                                        modifier = Modifier.size(24.dp)
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
@@ -584,31 +657,33 @@ fun CreateOrUploadModal(
                                 Text(
                                     text = "Device Folder Explorer",
                                     fontWeight = FontWeight.Bold,
-                                    color = GitHubBlue,
+                                    color = GitText1,
                                     fontSize = 14.sp
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "Select single or multiple folders to upload recursively",
-                                    fontSize = 11.sp,
-                                    color = Md3LightTextSecondary
+                                    fontSize = 11.5.sp,
+                                    color = GitText2
                                 )
                             }
 
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitAccent, modifier = Modifier.size(20.dp))
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
                     OutlinedButton(
                         onClick = { folderPickerLauncher.launch(null) },
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
                     ) {
-                        Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.DriveFolderUpload, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Or choose via System Folder Picker", fontSize = 12.sp)
+                        Text("Or choose via System Folder Picker", fontSize = 12.sp, fontWeight = FontWeight.Medium)
                     }
 
                     if (isReadingFiles) {
@@ -619,9 +694,9 @@ fun CreateOrUploadModal(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Md3LightPrimary)
+                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = GitAccent, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Indexing local directory...", fontSize = 12.sp, color = Md3LightTextSecondary)
+                            Text("Indexing local directory...", fontSize = 12.sp, color = GitText2)
                         }
                     }
 
@@ -629,23 +704,23 @@ fun CreateOrUploadModal(
                         Spacer(modifier = Modifier.height(10.dp))
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            color = Color(0xFFE3F2FD),
-                            shape = RoundedCornerShape(12.dp),
-                            border = BorderStroke(1.dp, GitHubBlue.copy(alpha = 0.4f))
+                            color = GitAccentSoft,
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f))
                         ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
+                            Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
                                     text = stagedSummary,
                                     fontWeight = FontWeight.Bold,
-                                    color = GitHubBlue,
+                                    color = GitAccentDeep,
                                     fontSize = 12.sp
                                 )
-                                Spacer(modifier = Modifier.height(6.dp))
+                                Spacer(modifier = Modifier.height(4.dp))
                                 stagedFiles.take(5).forEach { (relPath, bytes) ->
                                     Text(
                                         text = "• $relPath (${formatTotalBytes(bytes.size.toLong())})",
                                         fontSize = 11.sp,
-                                        color = Md3LightTextPrimary,
+                                        color = GitText1,
                                         fontFamily = FontFamily.Monospace
                                     )
                                 }
@@ -653,7 +728,7 @@ fun CreateOrUploadModal(
                                     Text(
                                         text = "+ ${stagedFiles.size - 5} more files...",
                                         fontSize = 10.sp,
-                                        color = Md3LightTextSecondary
+                                        color = GitText2
                                     )
                                 }
                             }
@@ -664,10 +739,12 @@ fun CreateOrUploadModal(
                 // TAB 2: NEW FILE
                 if (selectedTab == 2) {
                     Text(
-                        text = "File Name & Extension",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "FILE NAME & EXTENSION",
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText2,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.5.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
@@ -676,11 +753,13 @@ fun CreateOrUploadModal(
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("new_file_name_input"),
-                        placeholder = { Text("e.g. MyService.kt, config.json, README.md") },
+                        placeholder = { Text("e.g. MyService.kt, config.json, README.md", color = GitText3, fontSize = 12.5.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Md3LightPrimary,
-                            unfocusedBorderColor = Md3LightOutline
+                            focusedBorderColor = GitAccent,
+                            unfocusedBorderColor = GitBorderStrong,
+                            focusedContainerColor = GitSurface,
+                            unfocusedContainerColor = GitSurface2
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -688,10 +767,12 @@ fun CreateOrUploadModal(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Initial Content / Code",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "INITIAL CONTENT / CODE",
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText2,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.5.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
@@ -701,13 +782,13 @@ fun CreateOrUploadModal(
                             .fillMaxWidth()
                             .height(140.dp)
                             .testTag("new_file_content_input"),
-                        placeholder = { Text("Paste code or text content here...") },
-                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp),
+                        placeholder = { Text("Paste code or text content here...", color = GitText3, fontSize = 12.sp) },
+                        textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = GitText1),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = Md3LightCodeBg,
-                            unfocusedContainerColor = Md3LightCodeBg,
-                            focusedBorderColor = Md3LightPrimary,
-                            unfocusedBorderColor = Md3LightOutline
+                            focusedContainerColor = GitSurface2,
+                            unfocusedContainerColor = GitSurface2,
+                            focusedBorderColor = GitAccent,
+                            unfocusedBorderColor = GitBorderStrong
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -716,21 +797,25 @@ fun CreateOrUploadModal(
                 // TAB 3: NEW FOLDER
                 if (selectedTab == 3) {
                     Text(
-                        text = "Folder Name",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "FOLDER NAME",
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText2,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.5.sp
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     OutlinedTextField(
                         value = fileName,
                         onValueChange = { fileName = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("e.g. components, utils, assets") },
+                        placeholder = { Text("e.g. components, utils, assets", color = GitText3, fontSize = 12.5.sp) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Md3LightPrimary,
-                            unfocusedBorderColor = Md3LightOutline
+                            focusedBorderColor = GitAccent,
+                            unfocusedBorderColor = GitBorderStrong,
+                            focusedContainerColor = GitSurface,
+                            unfocusedContainerColor = GitSurface2
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -738,7 +823,7 @@ fun CreateOrUploadModal(
                     Text(
                         text = "Git requires a file to create a directory. A .gitkeep placeholder will be created inside.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Md3LightTextSecondary,
+                        color = GitText3,
                         fontSize = 11.sp
                     )
                 }
@@ -746,10 +831,12 @@ fun CreateOrUploadModal(
                 // TAB 4: TEMPLATES
                 if (selectedTab == 4) {
                     Text(
-                        text = "Select a Starter Template",
-                        style = MaterialTheme.typography.labelMedium,
+                        text = "SELECT A STARTER TEMPLATE",
+                        style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextPrimary
+                        color = GitText2,
+                        fontFamily = FontFamily.Monospace,
+                        letterSpacing = 0.5.sp
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -764,8 +851,8 @@ fun CreateOrUploadModal(
                                         fileContent = tContent
                                         selectedTab = 2
                                     },
-                                color = Md3LightSurfaceVariant,
-                                border = BorderStroke(1.dp, Md3LightOutlineVariant)
+                                color = GitSurface2,
+                                border = BorderStroke(1.dp, GitBorderStrong)
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
@@ -773,10 +860,10 @@ fun CreateOrUploadModal(
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Column {
-                                        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Md3LightTextPrimary)
-                                        Text(tName, fontSize = 11.sp, color = Md3LightPrimary, fontFamily = FontFamily.Monospace)
+                                        Text(label, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = GitText1)
+                                        Text(tName, fontSize = 11.sp, color = GitAccent, fontFamily = FontFamily.Monospace)
                                     }
-                                    Text("Use", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Md3LightPrimary)
+                                    Text("Use", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GitAccent)
                                 }
                             }
                         }
@@ -787,10 +874,12 @@ fun CreateOrUploadModal(
 
                 // Commit Message
                 Text(
-                    text = "Commit Message",
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "COMMIT MESSAGE",
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
-                    color = Md3LightTextPrimary
+                    color = GitText2,
+                    fontFamily = FontFamily.Monospace,
+                    letterSpacing = 0.5.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 OutlinedTextField(
@@ -806,13 +895,17 @@ fun CreateOrUploadModal(
                                 1 -> "Upload folder to ${targetDirectory.ifBlank { "root" }}"
                                 3 -> "Create folder ${fileName.ifBlank { "new folder" }}"
                                 else -> "Add ${fileName.ifBlank { "new file" }}"
-                            }
+                            },
+                            color = GitText3,
+                            fontSize = 12.5.sp
                         )
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = Md3LightPrimary,
-                        unfocusedBorderColor = Md3LightOutline
+                        focusedBorderColor = GitAccent,
+                        unfocusedBorderColor = GitBorderStrong,
+                        focusedContainerColor = GitSurface,
+                        unfocusedContainerColor = GitSurface2
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
@@ -823,19 +916,20 @@ fun CreateOrUploadModal(
                     Spacer(modifier = Modifier.height(12.dp))
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Md3LightSurfaceVariant,
-                        shape = RoundedCornerShape(10.dp)
+                        color = GitSurface2,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Uploading files to GitHub...", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                Text("$completed / $total", fontSize = 12.sp, color = Md3LightPrimary)
+                                Text("Uploading files to GitHub...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GitText1)
+                                Text("$completed / $total", fontSize = 12.sp, color = GitAccent, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(curFile, fontSize = 11.sp, color = Md3LightTextSecondary, maxLines = 1)
+                            Text(curFile, fontSize = 11.sp, color = GitText2, maxLines = 1, fontFamily = FontFamily.Monospace)
                         }
                     }
                 }
@@ -850,9 +944,11 @@ fun CreateOrUploadModal(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
                     ) {
-                        Text("Cancel")
+                        Text("Cancel", fontWeight = FontWeight.Medium)
                     }
 
                     Button(
@@ -903,19 +999,25 @@ fun CreateOrUploadModal(
                                         (selectedTab == 3 && fileName.isNotBlank()) ||
                                         (selectedTab == 4 && fileName.isNotBlank())
                                 ),
-                        colors = ButtonDefaults.buttonColors(containerColor = GitHubGreen),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = GitText1,
+                            contentColor = Color.White,
+                            disabledContainerColor = GitSurface3,
+                            disabledContentColor = GitText3
+                        ),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         if (isCommitting || isUploading) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Committing...")
+                            Text("Committing...", color = Color.White, fontSize = 12.sp)
                         } else {
-                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 if (selectedTab == 0 || selectedTab == 1) "Upload & Commit" else "Create & Commit",
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
                             )
                         }
                     }

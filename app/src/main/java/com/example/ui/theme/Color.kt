@@ -13,6 +13,7 @@ val GitBorderStrong = Color(0x240F0F19) // rgba(15,15,25,.14) ~ #D8DCDF
 val GitText1 = Color(0xFF14141B) // Primary text
 val GitText2 = Color(0xFF63636F) // Secondary text
 val GitText3 = Color(0xFF98979F) // Tertiary / Muted text
+val GitButtonPrimary = Color(0xFF14141B) // Solid near-black primary button fill
 
 val GitAccent = Color(0xFF0F9D74) // Deep Emerald accent
 val GitAccentDeep = Color(0xFF0C7D5C) // Darker emerald for pressed / focused
