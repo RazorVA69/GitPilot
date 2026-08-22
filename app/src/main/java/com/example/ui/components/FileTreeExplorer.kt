@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -213,6 +214,7 @@ fun FileTreeExplorer(
                         // Branch Chip
                         Surface(
                             modifier = Modifier
+                                .height(22.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
@@ -221,7 +223,9 @@ fun FileTreeExplorer(
                             border = BorderStroke(1.dp, GitBorder)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .padding(horizontal = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -251,6 +255,7 @@ fun FileTreeExplorer(
                         // Live Sync Status Pill
                         Surface(
                             modifier = Modifier
+                                .height(22.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onRefresh),
                             shape = RoundedCornerShape(6.dp),
@@ -258,7 +263,9 @@ fun FileTreeExplorer(
                             border = BorderStroke(1.dp, if (syncStatus == SyncStatus.ERROR) Md3LightError.copy(alpha = 0.3f) else GitAccent.copy(alpha = 0.3f))
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .padding(horizontal = 6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
@@ -267,13 +274,13 @@ fun FileTreeExplorer(
                                         contentDescription = "Syncing",
                                         tint = GitAccent,
                                         modifier = Modifier
-                                            .size(10.dp)
+                                            .size(11.dp)
                                             .rotate(syncRotation)
                                     )
-                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Syncing",
-                                        fontSize = 10.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Medium,
                                         color = GitAccent
                                     )
@@ -286,11 +293,11 @@ fun FileTreeExplorer(
                                                 shape = CircleShape
                                             )
                                     )
-                                    Spacer(modifier = Modifier.width(3.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium,
                                         color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent
                                     )
                                 }
