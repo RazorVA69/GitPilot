@@ -607,21 +607,22 @@ fun RepoSidebarDrawer(
                                         )
                                     }
 
-                                    // Stars (SS 4 format: ☆ count)
+                                    // Stars (SS 4 format: ☆ count in accent color)
                                     if (repo.stargazersCount > 0) {
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Row(verticalAlignment = Alignment.CenterVertically) {
                                             Icon(
                                                 imageVector = Icons.Outlined.StarOutline,
                                                 contentDescription = null,
-                                                tint = if (isSelected) GitAccent else GitText3,
+                                                tint = GitAccent,
                                                 modifier = Modifier.size(13.dp)
                                             )
                                             Spacer(modifier = Modifier.width(2.dp))
                                             Text(
                                                 text = "${repo.stargazersCount}",
                                                 fontSize = 11.sp,
-                                                color = if (isSelected) GitAccent else GitText3
+                                                fontWeight = FontWeight.Medium,
+                                                color = GitAccent
                                             )
                                         }
                                     }

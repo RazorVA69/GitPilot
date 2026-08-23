@@ -93,6 +93,7 @@ import com.example.ui.theme.GitHubYellow
 import com.example.ui.theme.GitAccent
 import com.example.ui.theme.GitAccentSoft
 import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
 import com.example.ui.theme.GitButtonPrimary
 import com.example.ui.theme.GitSurface
 import com.example.ui.theme.GitSurface2
@@ -308,7 +309,7 @@ fun DeviceStorageExplorerModal(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = Md3LightSurface,
+        containerColor = GitSurface,
         dragHandle = null
     ) {
         Column(
@@ -319,8 +320,7 @@ fun DeviceStorageExplorerModal(
             // Header Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = Md3LightSurface,
-                shadowElevation = 1.dp
+                color = GitSurface
             ) {
                 Row(
                     modifier = Modifier
@@ -330,24 +330,33 @@ fun DeviceStorageExplorerModal(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Smartphone,
-                            contentDescription = null,
-                            tint = GitHubBlue,
-                            modifier = Modifier.size(24.dp)
-                        )
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = GitAccentSoft,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Smartphone,
+                                    contentDescription = null,
+                                    tint = GitAccent,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
                                 text = "Device File Explorer",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Md3LightTextPrimary
+                                color = GitText1,
+                                fontSize = 15.sp
                             )
                             Text(
-                                text = "Select any files or folders to upload",
+                                text = "Select files or folders to upload",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Md3LightTextSecondary
+                                color = GitText2
                             )
                         }
                     }
@@ -357,7 +366,7 @@ fun DeviceStorageExplorerModal(
                             Icon(
                                 imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
                                 contentDescription = "Search",
-                                tint = if (isSearchExpanded) Md3LightPrimary else Md3LightTextSecondary
+                                tint = if (isSearchExpanded) GitAccent else GitText2
                             )
                         }
 
@@ -367,21 +376,24 @@ fun DeviceStorageExplorerModal(
                                 Icon(
                                     imageVector = Icons.Default.Sort,
                                     contentDescription = "Sort",
-                                    tint = Md3LightTextSecondary
+                                    tint = GitText2
                                 )
                             }
 
                             DropdownMenu(
                                 expanded = showSortDropdown,
-                                onDismissRequest = { showSortDropdown = false }
+                                onDismissRequest = { showSortDropdown = false },
+                                containerColor = GitSurface,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
+                                shape = RoundedCornerShape(10.dp)
                             ) {
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Folders First")
+                                            Text("Folders First", fontSize = 13.sp, color = GitText1)
                                             if (sortBy == DeviceFolderSortBy.TYPE) {
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                             }
                                         }
                                     },
@@ -393,10 +405,10 @@ fun DeviceStorageExplorerModal(
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Name")
+                                            Text("Name", fontSize = 13.sp, color = GitText1)
                                             if (sortBy == DeviceFolderSortBy.NAME) {
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                             }
                                         }
                                     },
@@ -408,10 +420,10 @@ fun DeviceStorageExplorerModal(
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Date Modified")
+                                            Text("Date Modified", fontSize = 13.sp, color = GitText1)
                                             if (sortBy == DeviceFolderSortBy.DATE_MODIFIED) {
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                             }
                                         }
                                     },
@@ -423,10 +435,10 @@ fun DeviceStorageExplorerModal(
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text("Size")
+                                            Text("Size", fontSize = 13.sp, color = GitText1)
                                             if (sortBy == DeviceFolderSortBy.SIZE) {
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitHubBlue, modifier = Modifier.size(14.dp))
+                                                Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(14.dp))
                                             }
                                         }
                                     },
@@ -443,22 +455,22 @@ fun DeviceStorageExplorerModal(
                             Icon(
                                 imageVector = Icons.Default.SwapVert,
                                 contentDescription = "Reverse Sort",
-                                tint = if (isSortReversed) Md3LightPrimary else Md3LightTextSecondary
+                                tint = if (isSortReversed) GitAccent else GitText2
                             )
                         }
 
                         IconButton(onClick = { refreshDirectory(currentDir) }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = Md3LightTextSecondary)
+                            Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = GitText2)
                         }
 
                         IconButton(onClick = onDismiss) {
-                            Icon(Icons.Default.Close, contentDescription = "Close", tint = Md3LightTextSecondary)
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2)
                         }
                     }
                 }
             }
 
-            HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+            HorizontalDivider(color = GitBorder, thickness = 1.dp)
 
             // Permission Banner (if not yet full access)
             if (!hasAllFilesPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -513,19 +525,19 @@ fun DeviceStorageExplorerModal(
                     Icon(
                         imageVector = Icons.Default.PushPin,
                         contentDescription = "Pinned",
-                        tint = GitHubBlue,
-                        modifier = Modifier.size(14.dp)
+                        tint = GitAccent,
+                        modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
                         text = "Pinned:",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Md3LightTextSecondary
+                        color = GitText2
                     )
                 }
 
-                // Render Pinned Folder Pills (Smooth rounded shape, never cut off, any folder can be unpinned)
+                // Render Pinned Folder Pills
                 pinnedFolderPaths.forEach { path ->
                     val file = File(path)
                     val label = if (path == defaultRoot.absolutePath) "Storage Root" else file.name
@@ -539,10 +551,10 @@ fun DeviceStorageExplorerModal(
                                     currentDir = file
                                 }
                             },
-                        color = if (isCurrent) Md3LightPrimaryContainer else Md3LightSurfaceVariant,
+                        color = if (isCurrent) GitAccentSoft else GitSurface2,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (isCurrent) Md3LightPrimary.copy(alpha = 0.5f) else Md3LightOutlineVariant
+                            if (isCurrent) GitAccent else GitBorderStrong
                         ),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -554,14 +566,14 @@ fun DeviceStorageExplorerModal(
                                 imageVector = Icons.Default.Folder,
                                 contentDescription = null,
                                 modifier = Modifier.size(14.dp),
-                                tint = GitHubBlue
+                                tint = if (isCurrent) GitAccent else GitText2
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = label,
                                 fontSize = 11.sp,
                                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isCurrent) Md3LightPrimary else Md3LightTextPrimary
+                                color = if (isCurrent) GitAccent else GitText1
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Icon(
@@ -571,21 +583,21 @@ fun DeviceStorageExplorerModal(
                                     .size(13.dp)
                                     .clip(CircleShape)
                                     .clickable { folderToUnpinPrompt = path },
-                                tint = Md3LightTextTertiary
+                                tint = GitText3
                             )
                         }
                     }
                 }
 
-                // Button to Pin Current Directory (Smooth pill, no cut corners)
+                // Button to Pin Current Directory
                 val isAlreadyPinned = pinnedFolderPaths.contains(currentDir.absolutePath)
                 if (!isAlreadyPinned) {
                     Surface(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { pinCurrentFolder() },
-                        color = GitHubGreen.copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GitHubGreen.copy(alpha = 0.4f)),
+                        color = GitAccentSoft,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitAccent.copy(alpha = 0.4f)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Row(
@@ -595,7 +607,7 @@ fun DeviceStorageExplorerModal(
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
-                                tint = GitHubGreen,
+                                tint = GitAccent,
                                 modifier = Modifier.size(13.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
@@ -603,7 +615,7 @@ fun DeviceStorageExplorerModal(
                                 text = "Pin Current",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = GitHubGreen
+                                color = GitAccent
                             )
                         }
                     }
@@ -618,22 +630,22 @@ fun DeviceStorageExplorerModal(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 4.dp),
-                    placeholder = { Text("Filter items in folder...", fontSize = 12.sp) },
+                    placeholder = { Text("Filter items in folder...", fontSize = 12.sp, color = GitText3) },
                     singleLine = true,
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = GitText2) },
                     trailingIcon = {
                         if (searchQuery.isNotEmpty()) {
                             IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp), tint = GitText2)
                             }
                         }
                     },
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = Md3LightPrimary,
-                        unfocusedBorderColor = Md3LightOutline
+                        focusedContainerColor = GitSurface,
+                        unfocusedContainerColor = GitSurface2,
+                        focusedBorderColor = GitAccent,
+                        unfocusedBorderColor = GitBorderStrong
                     )
                 )
             }
@@ -642,7 +654,7 @@ fun DeviceStorageExplorerModal(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Md3LightSurfaceVariant)
+                    .background(GitSurface2)
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -657,7 +669,7 @@ fun DeviceStorageExplorerModal(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Parent Directory",
-                        tint = if (parentFile != null && parentFile.canRead()) Md3LightPrimary else Md3LightTextTertiary,
+                        tint = if (parentFile != null && parentFile.canRead()) GitAccent else GitText3,
                         modifier = Modifier.size(16.dp)
                     )
                 }
@@ -670,11 +682,11 @@ fun DeviceStorageExplorerModal(
                     fontWeight = FontWeight.Bold,
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
-                    color = Md3LightTextPrimary
+                    color = GitText1
                 )
             }
 
-            HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+            HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
             // Selection Summary Bar & Select All
             Row(
@@ -689,7 +701,7 @@ fun DeviceStorageExplorerModal(
                         text = "${selectedPaths.size} selected",
                         style = MaterialTheme.typography.bodySmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (selectedPaths.isNotEmpty()) GitHubGreen else Md3LightTextSecondary
+                        color = if (selectedPaths.isNotEmpty()) GitAccent else GitText2
                     )
                     if (selectedPaths.isNotEmpty()) {
                         Spacer(modifier = Modifier.width(12.dp))
@@ -697,7 +709,7 @@ fun DeviceStorageExplorerModal(
                             onClick = { selectedPaths.clear() },
                             contentPadding = PaddingValues(0.dp)
                         ) {
-                            Text("Clear", fontSize = 11.sp, color = Md3LightTextSecondary)
+                            Text("Clear", fontSize = 11.sp, color = GitText2)
                         }
                     }
                 }
@@ -713,24 +725,24 @@ fun DeviceStorageExplorerModal(
                     },
                     contentPadding = PaddingValues(0.dp)
                 ) {
-                    Text("Select All in Folder", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GitHubBlue)
+                    Text("Select All in Folder", fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = GitAccent)
                 }
             }
 
-            HorizontalDivider(color = Md3LightOutlineVariant, thickness = 0.5.dp)
+            HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
             // Main File & Folder List
             Box(modifier = Modifier.weight(1f)) {
                 if (isLoadingFiles) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(color = GitHubBlue, modifier = Modifier.size(32.dp))
+                        CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(32.dp))
                     }
                 } else if (displayedList.isEmpty()) {
                     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Folder, contentDescription = null, tint = Md3LightTextTertiary, modifier = Modifier.size(40.dp))
+                            Icon(Icons.Default.Folder, contentDescription = null, tint = GitText3, modifier = Modifier.size(40.dp))
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Folder is empty or unreadable", color = Md3LightTextSecondary, fontSize = 13.sp)
+                            Text("Folder is empty or unreadable", color = GitText2, fontSize = 13.sp)
                         }
                     }
                 } else {
@@ -765,8 +777,8 @@ fun DeviceStorageExplorerModal(
                                         }
                                     },
                                     colors = CheckboxDefaults.colors(
-                                        checkedColor = GitHubGreen,
-                                        uncheckedColor = Md3LightOutline
+                                        checkedColor = GitAccent,
+                                        uncheckedColor = GitBorderStrong
                                     ),
                                     modifier = Modifier.size(32.dp)
                                 )
@@ -778,7 +790,7 @@ fun DeviceStorageExplorerModal(
                                     Icon(
                                         imageVector = Icons.Default.Folder,
                                         contentDescription = "Folder",
-                                        tint = GitHubBlue,
+                                        tint = GitAccent,
                                         modifier = Modifier.size(24.dp)
                                     )
                                 } else {
@@ -790,13 +802,13 @@ fun DeviceStorageExplorerModal(
 
                                 Spacer(modifier = Modifier.width(12.dp))
 
-                                // Name & Meta (NO repetitive "Folder (tap to open)" text)
+                                // Name & Meta
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = item.name,
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = if (item.isDirectory) FontWeight.Bold else FontWeight.Medium,
-                                        color = Md3LightTextPrimary,
+                                        color = GitText1,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -805,7 +817,7 @@ fun DeviceStorageExplorerModal(
                                         Text(
                                             text = formatFileSize(item.size),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = Md3LightTextSecondary
+                                            color = GitText2
                                         )
                                     }
                                 }
@@ -814,7 +826,7 @@ fun DeviceStorageExplorerModal(
                                     Icon(
                                         imageVector = Icons.Default.ChevronRight,
                                         contentDescription = "Open",
-                                        tint = Md3LightTextTertiary,
+                                        tint = GitText2,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -822,7 +834,7 @@ fun DeviceStorageExplorerModal(
 
                             HorizontalDivider(
                                 modifier = Modifier.padding(start = 58.dp),
-                                color = Md3LightOutlineVariant.copy(alpha = 0.4f),
+                                color = GitBorder,
                                 thickness = 0.5.dp
                             )
                         }
@@ -847,7 +859,7 @@ fun DeviceStorageExplorerModal(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
                     ) {
                         Text("Cancel", fontWeight = FontWeight.Medium)

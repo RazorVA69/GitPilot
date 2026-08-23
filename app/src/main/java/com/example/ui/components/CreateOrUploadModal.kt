@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -29,10 +31,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DriveFolderUpload
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.UploadFile
@@ -1057,9 +1061,12 @@ private fun FolderPickerModalDialog(
     onDismiss: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var isFullscreen by remember { mutableStateOf(false) }
+
     val filteredDirectories = remember(directories, searchQuery) {
-        if (searchQuery.isBlank()) directories
-        else directories.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
+        val sorted = directories.sorted()
+        if (searchQuery.isBlank()) sorted
+        else sorted.filter { it.contains(searchQuery.trim(), ignoreCase = true) }
     }
 
     Dialog(
@@ -1068,7 +1075,8 @@ private fun FolderPickerModalDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
+                .fillMaxWidth(if (isFullscreen) 0.98f else 0.94f)
+                .fillMaxHeight(if (isFullscreen) 0.94f else 0.72f)
                 .clip(RoundedCornerShape(16.dp)),
             color = GitSurface,
             border = BorderStroke(1.dp, GitBorderStrong),
@@ -1077,48 +1085,91 @@ private fun FolderPickerModalDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(20.dp)
             ) {
-                // Header
+                // Header Bar with Fullscreen toggle and Close
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Outlined.Folder,
-                            contentDescription = null,
-                            tint = GitAccent,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Select Destination Folder",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = GitText1
-                        )
-                    }
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(28.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2, modifier = Modifier.size(18.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = GitAccentSoft,
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Outlined.Folder,
+                                    contentDescription = null,
+                                    tint = GitAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Browse Repository Folders",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = GitText1,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "${directories.size} folders in repository",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = GitText2
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(
+                            onClick = { isFullscreen = !isFullscreen },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isFullscreen) Icons.Default.CloseFullscreen else Icons.Default.Fullscreen,
+                                contentDescription = if (isFullscreen) "Exit Fullscreen" else "Expand Fullscreen",
+                                tint = GitText2,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Search Box
+                // Search Filter Box
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Filter folders...", color = GitText3, fontSize = 13.sp) },
+                    placeholder = { Text("Filter repository folders...", color = GitText3, fontSize = 12.5.sp) },
                     leadingIcon = {
-                        Icon(Icons.Outlined.Search, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Outlined.Search, contentDescription = null, tint = GitText2, modifier = Modifier.size(17.dp))
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = GitText2, modifier = Modifier.size(14.dp))
+                            }
+                        }
                     },
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1130,16 +1181,16 @@ private fun FolderPickerModalDialog(
                     shape = RoundedCornerShape(10.dp)
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Folder List
+                // Folder List (Takes available height dynamically)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(280.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    // Always show Repo Root ( / )
+                    // Always show Repo Root ( / ) at top matching SS 8
                     item {
                         val isSelected = currentSelection.isBlank()
                         Surface(
@@ -1147,8 +1198,8 @@ private fun FolderPickerModalDialog(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onSelectFolder("") },
-                            color = if (isSelected) GitAccentSoft else GitSurface2,
-                            border = BorderStroke(1.dp, if (isSelected) GitAccent else GitBorder),
+                            color = if (isSelected) GitAccentSoft else Color.Transparent,
+                            border = if (isSelected) BorderStroke(1.dp, GitAccent.copy(alpha = 0.5f)) else null,
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
@@ -1166,19 +1217,34 @@ private fun FolderPickerModalDialog(
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Repository Root ( / )",
+                                        text = "Repo Root ( / )",
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                                         fontSize = 13.sp,
                                         color = if (isSelected) GitAccent else GitText1
                                     )
-                                    Text(
-                                        text = "Top-level directory",
-                                        fontSize = 11.sp,
-                                        color = GitText2
-                                    )
+                                }
+                                if (isSelected) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = GitAccent
+                                    ) {
+                                        Text(
+                                            text = "SELECTED",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
                                 }
                             }
                         }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            color = GitBorder,
+                            thickness = 0.5.dp
+                        )
                     }
 
                     if (filteredDirectories.isEmpty() && searchQuery.isNotBlank()) {
@@ -1190,9 +1256,9 @@ private fun FolderPickerModalDialog(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "No matching folders found",
+                                    text = "No matching folders found for \"$searchQuery\"",
                                     color = GitText3,
-                                    fontSize = 13.sp
+                                    fontSize = 12.5.sp
                                 )
                             }
                         }
@@ -1200,14 +1266,13 @@ private fun FolderPickerModalDialog(
 
                     items(filteredDirectories) { dirPath ->
                         val isSelected = currentSelection == dirPath
-                        val depth = dirPath.count { it == '/' }
                         Surface(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onSelectFolder(dirPath) },
                             color = if (isSelected) GitAccentSoft else Color.Transparent,
-                            border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder),
+                            border = if (isSelected) BorderStroke(1.dp, GitAccent.copy(alpha = 0.5f)) else null,
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
@@ -1216,7 +1281,6 @@ private fun FolderPickerModalDialog(
                                     .padding(horizontal = 12.dp, vertical = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Spacer(modifier = Modifier.width((depth * 8).dp.coerceAtMost(24.dp)))
                                 Icon(
                                     Icons.Outlined.Folder,
                                     contentDescription = null,
@@ -1227,20 +1291,41 @@ private fun FolderPickerModalDialog(
                                 Text(
                                     text = dirPath,
                                     fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
+                                    fontSize = 12.5.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = if (isSelected) GitAccent else GitText1,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
                                 )
+                                if (isSelected) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = GitAccent
+                                    ) {
+                                        Text(
+                                            text = "SELECTED",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 38.dp),
+                            color = GitBorder,
+                            thickness = 0.5.dp
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Footer Cancel Button
+                // Footer Close Button
                 OutlinedButton(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth(),

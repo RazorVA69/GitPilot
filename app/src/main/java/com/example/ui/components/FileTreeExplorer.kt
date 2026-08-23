@@ -265,7 +265,7 @@ fun FileTreeExplorer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 6.dp),
+                                    .padding(horizontal = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
@@ -277,7 +277,7 @@ fun FileTreeExplorer(
                                             .size(11.dp)
                                             .rotate(syncRotation)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = "Syncing",
                                         fontSize = 11.sp,
@@ -293,7 +293,7 @@ fun FileTreeExplorer(
                                                 shape = CircleShape
                                             )
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
                                         fontSize = 11.sp,

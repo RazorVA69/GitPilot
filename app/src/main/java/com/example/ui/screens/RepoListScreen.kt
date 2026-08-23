@@ -759,20 +759,21 @@ fun RepositoryRowItem(
                     }
                 }
 
-                // Stars (SS 2: outlined star ☆ + count)
+                // Stars (SS 2: outlined star ☆ + count in accent color)
                 if (repo.stargazersCount > 0) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             imageVector = Icons.Outlined.StarOutline,
                             contentDescription = "Stars",
-                            tint = GitText2,
+                            tint = GitAccent,
                             modifier = Modifier.size(14.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = "${repo.stargazersCount}",
                             fontSize = 12.sp,
-                            color = GitText2
+                            fontWeight = FontWeight.Medium,
+                            color = GitAccent
                         )
                     }
                 }
