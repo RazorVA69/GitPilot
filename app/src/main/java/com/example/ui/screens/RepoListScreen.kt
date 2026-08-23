@@ -162,8 +162,8 @@ fun RepoListScreen(
                                 if (!isSearchVisible) onSearchChange("")
                             },
                             shape = CircleShape,
-                            color = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface,
-                            border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitBorderStrong),
+                            color = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccentSoft else GitTopBarButtonBg,
+                            border = if (isSearchVisible || searchQuery.isNotEmpty()) BorderStroke(1.dp, GitAccent) else null,
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -184,12 +184,12 @@ fun RepoListScreen(
                             Surface(
                                 onClick = { showSortMenu = true },
                                 shape = CircleShape,
-                                color = if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccentSoft else GitSurface,
-                                border = BorderStroke(1.dp, if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccent else GitBorderStrong),
+                                color = if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccentSoft else GitTopBarButtonBg,
+                                border = if (sortOption != RepoSortOption.LAST_ACTIVITY) BorderStroke(1.dp, GitAccent) else null,
                                 modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(CircleShape)
-                                    .testTag("repo_list_sort_btn")
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("repo_list_sort_btn")
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
@@ -298,8 +298,7 @@ fun RepoListScreen(
                         Surface(
                             onClick = onRefresh,
                             shape = CircleShape,
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorderStrong),
+                            color = GitTopBarButtonBg,
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)

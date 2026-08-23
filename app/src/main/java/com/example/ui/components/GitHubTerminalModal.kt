@@ -7,6 +7,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -77,9 +78,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -159,11 +163,23 @@ fun GitHubTerminalModal(
     var historyIndex by remember { mutableIntStateOf(-1) }
     var isFullscreen by remember { mutableStateOf(false) }
 
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     // Auto scroll to bottom when new terminal output arrives
     LaunchedEffect(terminalLines.size) {
         if (terminalLines.isNotEmpty()) {
             listState.animateScrollToItem(terminalLines.size - 1)
         }
+    }
+
+    // Auto-focus terminal input on open
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(200)
+        try {
+            focusRequester.requestFocus()
+            keyboardController?.show()
+        } catch (_: Exception) {}
     }
 
     val quickCommands = remember {
@@ -183,12 +199,21 @@ fun GitHubTerminalModal(
         )
     }
 
+    val mobileShortcuts = remember {
+        listOf(
+            "git", "status", "pull", "push", "branch", "log", "diff",
+            "commit", "-m \"\"", "add .", "checkout", "clone", "clear", "help",
+            "|", "&&", "/", "-", "~", "origin", "main"
+        )
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             dismissOnBackPress = true,
-            dismissOnClickOutside = false
+            dismissOnClickOutside = false,
+            decorFitsSystemWindows = false
         )
     ) {
         Box(
@@ -414,6 +439,13 @@ fun GitHubTerminalModal(
                             .weight(1f)
                             .fillMaxWidth()
                             .background(TermBg)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) {
+                                focusRequester.requestFocus()
+                                keyboardController?.show()
+                            }
                     ) {
                         LazyColumn(
                             state = listState,
@@ -443,6 +475,92 @@ fun GitHubTerminalModal(
                                             fontFamily = FontFamily.Monospace,
                                             fontSize = 12.sp,
                                             color = TermDim
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = TermSurfaceBorder)
+
+                    // Mobile Virtual Key Shortcuts Accessory Row
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = TermSurface
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState())
+                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            // Quick Paste Button
+                            Surface(
+                                onClick = {
+                                    val clip = clipboardManager.getText()?.text
+                                    if (!clip.isNullOrEmpty()) {
+                                        inputCommand = if (inputCommand.isEmpty()) clip else "$inputCommand $clip"
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    }
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                color = TermBg,
+                                border = BorderStroke(1.dp, TermSurfaceBorder),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentPaste,
+                                        contentDescription = "Paste",
+                                        tint = TermPromptUser,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Paste",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        color = TermText
+                                    )
+                                }
+                            }
+
+                            // Quick key tokens
+                            mobileShortcuts.forEach { token ->
+                                Surface(
+                                    onClick = {
+                                        inputCommand = if (inputCommand.isEmpty()) {
+                                            token
+                                        } else if (inputCommand.endsWith(" ") || token.startsWith("-") || token.startsWith("/") || token.startsWith("|")) {
+                                            "$inputCommand$token"
+                                        } else {
+                                            "$inputCommand $token"
+                                        }
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = TermBg,
+                                    border = BorderStroke(1.dp, TermSurfaceBorder),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = token,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            fontWeight = if (token == "git" || token == "push" || token == "pull") FontWeight.Bold else FontWeight.Normal,
+                                            color = if (token == "git") TermPromptUser else TermText
                                         )
                                     }
                                 }
@@ -524,7 +642,7 @@ fun GitHubTerminalModal(
                                 onValueChange = { inputCommand = it },
                                 placeholder = {
                                     Text(
-                                        text = "Enter or paste git command(s)...",
+                                        text = "Enter or paste git command...",
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 13.sp,
                                         color = TermDim
@@ -535,10 +653,26 @@ fun GitHubTerminalModal(
                                     color = TermText,
                                     fontSize = 13.sp
                                 ),
+                                trailingIcon = {
+                                    if (inputCommand.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = { inputCommand = "" },
+                                            modifier = Modifier.size(24.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Clear input",
+                                                tint = TermDim,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
                                 maxLines = if (isFullscreen) 6 else 4,
                                 keyboardOptions = KeyboardOptions(
-                                    imeAction = if (lineCount <= 1) ImeAction.Send else ImeAction.Default,
-                                    keyboardType = KeyboardType.Ascii
+                                    imeAction = ImeAction.Send,
+                                    keyboardType = KeyboardType.Text,
+                                    autoCorrect = false
                                 ),
                                 keyboardActions = KeyboardActions(
                                     onSend = {
@@ -561,6 +695,7 @@ fun GitHubTerminalModal(
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier
                                     .weight(1f)
+                                    .focusRequester(focusRequester)
                                     .testTag("terminal_command_input")
                             )
 

@@ -215,43 +215,42 @@ fun FileTreeExplorer(
                         // Branch Chip
                         Surface(
                             modifier = Modifier
-                                .height(22.dp)
+                                .height(24.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
                             shape = RoundedCornerShape(6.dp),
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorderStrong)
+                            color = GitTopBarButtonBg,
+                            border = BorderStroke(1.dp, GitBorder)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 6.dp),
+                                    .padding(horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
                                         .size(5.dp)
-                                        .background(GitText3, CircleShape)
+                                        .background(GitText2, CircleShape)
                                 )
-                                Spacer(modifier = Modifier.width(4.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = selectedBranch,
-                                    style = MaterialTheme.typography.labelSmall,
                                     fontFamily = FontFamily.Monospace,
-                                    color = GitText2,
+                                    color = GitText1,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 70.dp)
+                                    modifier = Modifier.widthIn(max = 85.dp)
                                 )
-                                Spacer(modifier = Modifier.width(2.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Branch",
                                     tint = GitText2,
-                                    modifier = Modifier.size(13.dp)
+                                    modifier = Modifier.size(14.dp)
                                 )
                             }
                         }
@@ -259,17 +258,17 @@ fun FileTreeExplorer(
                         // Live Sync Status Pill
                         Surface(
                             modifier = Modifier
-                                .height(22.dp)
+                                .height(24.dp)
                                 .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onRefresh),
                             shape = RoundedCornerShape(6.dp),
                             color = if (syncStatus == SyncStatus.ERROR) Color(0xFFFFEBEE) else GitAccentSoft,
-                            border = BorderStroke(1.dp, if (syncStatus == SyncStatus.ERROR) Md3LightError.copy(alpha = 0.3f) else GitAccent.copy(alpha = 0.3f))
+                            border = BorderStroke(1.dp, if (syncStatus == SyncStatus.ERROR) Md3LightError.copy(alpha = 0.35f) else GitAccent.copy(alpha = 0.35f))
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 8.dp),
+                                    .padding(horizontal = 9.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
@@ -278,14 +277,14 @@ fun FileTreeExplorer(
                                         contentDescription = "Syncing",
                                         tint = GitAccent,
                                         modifier = Modifier
-                                            .size(11.dp)
+                                            .size(12.dp)
                                             .rotate(syncRotation)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = "Syncing",
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = GitAccent
                                     )
                                 } else {
@@ -297,11 +296,11 @@ fun FileTreeExplorer(
                                                 shape = CircleShape
                                             )
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
                                         fontSize = 11.sp,
-                                        fontWeight = FontWeight.Medium,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent
                                     )
                                 }
@@ -324,16 +323,16 @@ fun FileTreeExplorer(
             },
             actions = {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 6.dp)
+                    modifier = Modifier.padding(end = 8.dp)
                 ) {
                     // Search Files Button
                     Surface(
                         onClick = { isSearchExpanded = !isSearchExpanded },
                         shape = CircleShape,
-                        color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface,
-                        border = BorderStroke(1.dp, if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitBorderStrong),
+                        color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitTopBarButtonBg,
+                        border = if (isSearchExpanded || searchQuery.isNotEmpty()) BorderStroke(1.dp, GitAccent) else null,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -353,8 +352,8 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = onToggleBatchMode,
                         shape = CircleShape,
-                        color = if (isBatchMode) GitAccentSoft else GitSurface,
-                        border = BorderStroke(1.dp, if (isBatchMode) GitAccent else GitBorderStrong),
+                        color = if (isBatchMode) GitAccentSoft else GitTopBarButtonBg,
+                        border = if (isBatchMode) BorderStroke(1.dp, GitAccent) else null,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -374,8 +373,8 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = onRefresh,
                         shape = CircleShape,
-                        color = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccentSoft else GitSurface,
-                        border = BorderStroke(1.dp, if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitBorderStrong),
+                        color = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccentSoft else GitTopBarButtonBg,
+                        border = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) BorderStroke(1.dp, GitAccent) else null,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -399,8 +398,7 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = onOpenNewFileDialog,
                         shape = CircleShape,
-                        color = GitSurface,
-                        border = BorderStroke(1.dp, GitBorderStrong),
+                        color = GitTopBarButtonBg,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -421,8 +419,7 @@ fun FileTreeExplorer(
                         Surface(
                             onClick = { showOverflowMenu = true },
                             shape = CircleShape,
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorderStrong),
+                            color = GitTopBarButtonBg,
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -438,7 +435,7 @@ fun FileTreeExplorer(
                             }
                         }
 
-                    DropdownMenu(
+                        DropdownMenu(
                         expanded = showOverflowMenu,
                         onDismissRequest = { showOverflowMenu = false },
                         shape = RoundedCornerShape(12.dp),

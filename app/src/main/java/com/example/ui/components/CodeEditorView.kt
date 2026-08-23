@@ -101,6 +101,7 @@ import com.example.ui.theme.GitBorderStrong
 import com.example.ui.theme.GitButtonPrimary
 import com.example.ui.theme.GitSurface
 import com.example.ui.theme.GitSurface2
+import com.example.ui.theme.GitTopBarButtonBg
 import com.example.ui.theme.GitText1
 import com.example.ui.theme.GitText2
 import com.example.ui.theme.GitText3
@@ -276,7 +277,7 @@ fun CodeEditorView(
             },
             actions = {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
@@ -285,8 +286,7 @@ fun CodeEditorView(
                         onClick = { performUndo() },
                         enabled = undoStack.isNotEmpty(),
                         shape = CircleShape,
-                        color = if (undoStack.isNotEmpty()) GitSurface else GitSurface.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, if (undoStack.isNotEmpty()) GitBorderStrong else GitBorder),
+                        color = if (undoStack.isNotEmpty()) GitTopBarButtonBg else GitTopBarButtonBg.copy(alpha = 0.5f),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -307,8 +307,7 @@ fun CodeEditorView(
                         onClick = { performRedo() },
                         enabled = redoStack.isNotEmpty(),
                         shape = CircleShape,
-                        color = if (redoStack.isNotEmpty()) GitSurface else GitSurface.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, if (redoStack.isNotEmpty()) GitBorderStrong else GitBorder),
+                        color = if (redoStack.isNotEmpty()) GitTopBarButtonBg else GitTopBarButtonBg.copy(alpha = 0.5f),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -331,8 +330,8 @@ fun CodeEditorView(
                             isReplaceMode = false
                         },
                         shape = CircleShape,
-                        color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitSurface,
-                        border = BorderStroke(1.dp, if (isSearchVisible && !isReplaceMode) GitAccent else GitBorderStrong),
+                        color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitTopBarButtonBg,
+                        border = if (isSearchVisible && !isReplaceMode) BorderStroke(1.dp, GitAccent) else null,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -355,8 +354,8 @@ fun CodeEditorView(
                             isReplaceMode = true
                         },
                         shape = CircleShape,
-                        color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitSurface,
-                        border = BorderStroke(1.dp, if (isSearchVisible && isReplaceMode) GitAccent else GitBorderStrong),
+                        color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitTopBarButtonBg,
+                        border = if (isSearchVisible && isReplaceMode) BorderStroke(1.dp, GitAccent) else null,
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -372,7 +371,7 @@ fun CodeEditorView(
                         }
                     }
 
-                    // 5. PROMINENT COMMIT BUTTON
+                    // 5. PROMINENT COMMIT / SAVE BUTTON (ACCENT COLOR)
                     Button(
                         onClick = onOpenCommitDialog,
                         enabled = !isLoading,
@@ -380,8 +379,10 @@ fun CodeEditorView(
                             .height(36.dp)
                             .testTag("editor_commit_btn"),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = GitButtonPrimary,
-                            contentColor = Color.White
+                            containerColor = GitAccent,
+                            contentColor = Color.White,
+                            disabledContainerColor = GitAccent.copy(alpha = 0.5f),
+                            disabledContentColor = Color.White.copy(alpha = 0.7f)
                         ),
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
@@ -392,21 +393,13 @@ fun CodeEditorView(
                             modifier = Modifier.size(15.dp),
                             tint = Color.White
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Spacer(modifier = Modifier.width(5.dp))
                         Text(
                             text = if (isDirty) "Commit" else "Save",
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 12.sp,
                             color = Color.White
                         )
-                        if (isDirty) {
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Box(
-                                modifier = Modifier
-                                    .size(5.dp)
-                                    .background(GitAccent, CircleShape)
-                            )
-                        }
                     }
 
                     // 6. THREE-DOT MORE OPTIONS MENU
@@ -414,8 +407,7 @@ fun CodeEditorView(
                         Surface(
                             onClick = { showMoreMenu = true },
                             shape = CircleShape,
-                            color = GitSurface,
-                            border = BorderStroke(1.dp, GitBorderStrong),
+                            color = GitTopBarButtonBg,
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
