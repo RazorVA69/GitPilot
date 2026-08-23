@@ -29,14 +29,23 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.FindReplace
+import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
@@ -44,9 +53,11 @@ import androidx.compose.material.icons.filled.Preview
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.WrapText
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +73,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -72,6 +84,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,17 +93,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.getSelectedText
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import com.example.data.model.FileContentResponse
 import com.example.ui.theme.GitAccent
@@ -126,6 +146,11 @@ fun CodeEditorView(
     onClose: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val clipboardManager = LocalClipboardManager.current
+    val coroutineScope = rememberCoroutineScope()
+    val verticalScrollState = rememberScrollState()
+    val horizontalScrollState = rememberScrollState()
+
     var fontSize by remember { mutableFloatStateOf(13.5f) }
     var isWordWrapEnabled by remember { mutableStateOf(false) }
     var showLineNumbers by remember { mutableStateOf(true) }
@@ -137,8 +162,23 @@ fun CodeEditorView(
     var replaceQuery by remember { mutableStateOf("") }
     var currentMatchIndex by remember { mutableIntStateOf(0) }
 
+    // Go To Line Dialog State
+    var showGoToLineDialog by remember { mutableStateOf(false) }
+    var goToLineInput by remember { mutableStateOf("") }
+
     // Three-dot Menu State
     var showMoreMenu by remember { mutableStateOf(false) }
+
+    // Text Field Value State
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
+    }
+
+    LaunchedEffect(content) {
+        if (textFieldValue.text != content) {
+            textFieldValue = textFieldValue.copy(text = content)
+        }
+    }
 
     // Undo / Redo History Stacks
     val undoStack = remember { mutableStateListOf<String>() }
@@ -156,6 +196,7 @@ fun CodeEditorView(
         if (undoStack.isNotEmpty()) {
             val previous = undoStack.removeAt(undoStack.lastIndex)
             redoStack.add(content)
+            textFieldValue = TextFieldValue(text = previous, selection = TextRange(previous.length))
             onContentChange(previous)
         }
     }
@@ -164,6 +205,7 @@ fun CodeEditorView(
         if (redoStack.isNotEmpty()) {
             val next = redoStack.removeAt(redoStack.lastIndex)
             undoStack.add(content)
+            textFieldValue = TextFieldValue(text = next, selection = TextRange(next.length))
             onContentChange(next)
         }
     }
@@ -187,6 +229,105 @@ fun CodeEditorView(
     }
 
     val charCount = remember(content) { content.length }
+
+    val hasSelection = remember(textFieldValue.selection) {
+        !textFieldValue.selection.collapsed && textFieldValue.selection.length > 0
+    }
+
+    fun copyText() {
+        val textToCopy = if (hasSelection) {
+            textFieldValue.getSelectedText().text
+        } else {
+            content
+        }
+        if (textToCopy.isNotEmpty()) {
+            clipboardManager.setText(AnnotatedString(textToCopy))
+        }
+    }
+
+    fun cutText() {
+        if (hasSelection) {
+            val selectedText = textFieldValue.getSelectedText().text
+            clipboardManager.setText(AnnotatedString(selectedText))
+            val start = textFieldValue.selection.min
+            val end = textFieldValue.selection.max
+            val newText = textFieldValue.text.removeRange(start, end)
+            textFieldValue = textFieldValue.copy(
+                text = newText,
+                selection = TextRange(start)
+            )
+            handleTextChange(newText)
+        }
+    }
+
+    fun pasteText() {
+        val clip = clipboardManager.getText()?.text
+        if (!clip.isNullOrEmpty()) {
+            if (hasSelection) {
+                val start = textFieldValue.selection.min
+                val end = textFieldValue.selection.max
+                val newText = textFieldValue.text.replaceRange(start, end, clip)
+                textFieldValue = textFieldValue.copy(
+                    text = newText,
+                    selection = TextRange(start + clip.length)
+                )
+                handleTextChange(newText)
+            } else {
+                val cursor = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
+                val newText = textFieldValue.text.substring(0, cursor) + clip + textFieldValue.text.substring(cursor)
+                textFieldValue = textFieldValue.copy(
+                    text = newText,
+                    selection = TextRange(cursor + clip.length)
+                )
+                handleTextChange(newText)
+            }
+        }
+    }
+
+    fun clearText() {
+        if (hasSelection) {
+            val start = textFieldValue.selection.min
+            val end = textFieldValue.selection.max
+            val newText = textFieldValue.text.removeRange(start, end)
+            textFieldValue = textFieldValue.copy(
+                text = newText,
+                selection = TextRange(start)
+            )
+            handleTextChange(newText)
+        } else {
+            textFieldValue = textFieldValue.copy(text = "", selection = TextRange.Zero)
+            handleTextChange("")
+        }
+    }
+
+    fun selectAllText() {
+        textFieldValue = textFieldValue.copy(selection = TextRange(0, textFieldValue.text.length))
+    }
+
+    fun deselectText() {
+        textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.selection.end))
+    }
+
+    fun jumpToLine(targetLine: Int) {
+        val clampedLine = targetLine.coerceIn(1, lineCount)
+        var charIdx = 0
+        var currentL = 1
+        for (i in content.indices) {
+            if (currentL == clampedLine) {
+                charIdx = i
+                break
+            }
+            if (content[i] == '\n') {
+                currentL++
+            }
+        }
+        textFieldValue = textFieldValue.copy(selection = TextRange(charIdx))
+        coroutineScope.launch {
+            val approxLineHeightPx = (fontSize * 3.8f).toInt()
+            val targetScroll = (clampedLine - 1) * approxLineHeightPx
+            verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+        }
+    }
 
     // Matches for search
     val matches = remember(content, searchQuery) {
@@ -215,6 +356,92 @@ fun CodeEditorView(
             val newContent = content.replace(searchQuery, replaceQuery, ignoreCase = true)
             handleTextChange(newContent)
         }
+    }
+
+    // Go to Line Dialog
+    if (showGoToLineDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showGoToLineDialog = false
+                goToLineInput = ""
+            },
+            containerColor = GitSurface,
+            shape = RoundedCornerShape(16.dp),
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.FormatListNumbered,
+                        contentDescription = null,
+                        tint = GitAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Go to Line",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = GitText1
+                    )
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter line number (1 – $lineCount):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = GitText2
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = goToLineInput,
+                        onValueChange = { input ->
+                            if (input.all { it.isDigit() }) {
+                                goToLineInput = input
+                            }
+                        },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        placeholder = { Text("e.g. 42", color = GitText3) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("go_to_line_input"),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = GitSurface,
+                            unfocusedContainerColor = GitSurface,
+                            focusedBorderColor = GitAccent,
+                            unfocusedBorderColor = GitBorderStrong
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val lineNum = goToLineInput.toIntOrNull()
+                        if (lineNum != null) {
+                            jumpToLine(lineNum)
+                        }
+                        showGoToLineDialog = false
+                        goToLineInput = ""
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Go", color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showGoToLineDialog = false
+                        goToLineInput = ""
+                    }
+                ) {
+                    Text("Cancel", color = GitText2)
+                }
+            }
+        )
     }
 
     Column(
@@ -281,125 +508,224 @@ fun CodeEditorView(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
-                    // 1. UNDO BUTTON
-                    Surface(
-                        onClick = { performUndo() },
-                        enabled = undoStack.isNotEmpty(),
-                        shape = CircleShape,
-                        color = if (undoStack.isNotEmpty()) GitTopBarButtonBg else GitTopBarButtonBg.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .testTag("editor_undo_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Undo,
-                                contentDescription = "Undo",
-                                tint = if (undoStack.isNotEmpty()) GitText1 else GitText3,
-                                modifier = Modifier.size(17.dp)
-                            )
+                    if (hasSelection) {
+                        // CONTEXTUAL ACTIONS WHEN TEXT IS SELECTED (via Select All or touch selection)
+                        // 1. CLEAR / DELETE SELECTION
+                        Surface(
+                            onClick = { clearText() },
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_clear_selection_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Clear Selection",
+                                    tint = Md3LightError,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 2. CUT
+                        Surface(
+                            onClick = { cutText() },
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_cut_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCut,
+                                    contentDescription = "Cut",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 3. COPY SELECTION
+                        Surface(
+                            onClick = { copyText() },
+                            shape = CircleShape,
+                            color = GitAccentSoft,
+                            border = BorderStroke(1.dp, GitAccent),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_copy_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy Selection",
+                                    tint = GitAccent,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 4. PASTE OVER SELECTION
+                        Surface(
+                            onClick = { pasteText() },
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_paste_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentPaste,
+                                    contentDescription = "Paste",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 5. DESELECT BUTTON
+                        Surface(
+                            onClick = { deselectText() },
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_deselect_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Deselect",
+                                    tint = GitText2,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+                    } else {
+                        // STANDARD TOP BAR ACTIONS (NO SELECTION ACTIVE)
+                        // 1. UNDO BUTTON
+                        Surface(
+                            onClick = { performUndo() },
+                            enabled = undoStack.isNotEmpty(),
+                            shape = CircleShape,
+                            color = if (undoStack.isNotEmpty()) GitTopBarButtonBg else GitTopBarButtonBg.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_undo_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                    contentDescription = "Undo",
+                                    tint = if (undoStack.isNotEmpty()) GitText1 else GitText3,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 2. REDO BUTTON
+                        Surface(
+                            onClick = { performRedo() },
+                            enabled = redoStack.isNotEmpty(),
+                            shape = CircleShape,
+                            color = if (redoStack.isNotEmpty()) GitTopBarButtonBg else GitTopBarButtonBg.copy(alpha = 0.5f),
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_redo_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                                    contentDescription = "Redo",
+                                    tint = if (redoStack.isNotEmpty()) GitText1 else GitText3,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 3. COPY BUTTON (Copies file content)
+                        Surface(
+                            onClick = { copyText() },
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_copy_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy File",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // 4. PASTE BUTTON (Pastes at cursor or appends)
+                        Surface(
+                            onClick = { pasteText() },
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("editor_paste_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentPaste,
+                                    contentDescription = "Paste",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
                         }
                     }
 
-                    // 2. REDO BUTTON
-                    Surface(
-                        onClick = { performRedo() },
-                        enabled = redoStack.isNotEmpty(),
-                        shape = CircleShape,
-                        color = if (redoStack.isNotEmpty()) GitTopBarButtonBg else GitTopBarButtonBg.copy(alpha = 0.5f),
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .testTag("editor_redo_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
+                    // 5. COMMIT BUTTON (ONLY SHOWN WHEN CHANGES EXIST / isDirty == true)
+                    if (isDirty) {
+                        Button(
+                            onClick = onOpenCommitDialog,
+                            enabled = !isLoading,
+                            modifier = Modifier
+                                .height(36.dp)
+                                .testTag("editor_commit_btn"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = GitAccent,
+                                contentColor = Color.White,
+                                disabledContainerColor = GitAccent.copy(alpha = 0.5f),
+                                disabledContentColor = Color.White.copy(alpha = 0.7f)
+                            ),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                        ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Filled.Redo,
-                                contentDescription = "Redo",
-                                tint = if (redoStack.isNotEmpty()) GitText1 else GitText3,
-                                modifier = Modifier.size(17.dp)
+                                imageVector = Icons.Default.Save,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp),
+                                tint = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Commit",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = Color.White
                             )
                         }
-                    }
-
-                    // 3. SEARCH BUTTON
-                    Surface(
-                        onClick = {
-                            isSearchVisible = !isSearchVisible
-                            isReplaceMode = false
-                        },
-                        shape = CircleShape,
-                        color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitTopBarButtonBg,
-                        border = if (isSearchVisible && !isReplaceMode) BorderStroke(1.dp, GitAccent) else null,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .testTag("editor_search_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = if (isSearchVisible && !isReplaceMode) GitAccent else GitText1,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                    }
-
-                    // 4. REPLACE BUTTON
-                    Surface(
-                        onClick = {
-                            isSearchVisible = true
-                            isReplaceMode = true
-                        },
-                        shape = CircleShape,
-                        color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitTopBarButtonBg,
-                        border = if (isSearchVisible && isReplaceMode) BorderStroke(1.dp, GitAccent) else null,
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .testTag("editor_replace_btn")
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Icon(
-                                imageVector = Icons.Default.FindReplace,
-                                contentDescription = "Replace",
-                                tint = if (isSearchVisible && isReplaceMode) GitAccent else GitText1,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                    }
-
-                    // 5. PROMINENT COMMIT / SAVE BUTTON (ACCENT COLOR)
-                    Button(
-                        onClick = onOpenCommitDialog,
-                        enabled = !isLoading,
-                        modifier = Modifier
-                            .height(36.dp)
-                            .testTag("editor_commit_btn"),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = GitAccent,
-                            contentColor = Color.White,
-                            disabledContainerColor = GitAccent.copy(alpha = 0.5f),
-                            disabledContentColor = Color.White.copy(alpha = 0.7f)
-                        ),
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Save,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                            tint = Color.White
-                        )
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = if (isDirty) "Commit" else "Save",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
-                            color = Color.White
-                        )
                     }
 
                     // 6. THREE-DOT MORE OPTIONS MENU
@@ -432,110 +758,250 @@ fun CodeEditorView(
                             border = BorderStroke(1.dp, GitBorderStrong),
                             shadowElevation = 8.dp
                         ) {
-                        // Zoom In
-                        DropdownMenuItem(
-                            text = { Text("Zoom In (A+)", color = GitText1, fontSize = 13.sp) },
-                            leadingIcon = { Icon(Icons.Default.ZoomIn, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
-                            onClick = {
-                                fontSize = (fontSize + 1.5f).coerceAtMost(24f)
-                                showMoreMenu = false
-                            }
-                        )
-
-                        // Zoom Out
-                        DropdownMenuItem(
-                            text = { Text("Zoom Out (A-)", color = GitText1, fontSize = 13.sp) },
-                            leadingIcon = { Icon(Icons.Default.ZoomOut, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
-                            onClick = {
-                                fontSize = (fontSize - 1.5f).coerceAtLeast(9f)
-                                showMoreMenu = false
-                            }
-                        )
-
-                        // Reset Zoom
-                        DropdownMenuItem(
-                            text = { Text("Reset Zoom (13.5sp)", color = GitText1, fontSize = 13.sp) },
-                            leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
-                            onClick = {
-                                fontSize = 13.5f
-                                showMoreMenu = false
-                            }
-                        )
-
-                        HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-
-                        // Word Wrap Toggle
-                        DropdownMenuItem(
-                            text = {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Word Wrap", color = GitText1, fontSize = 13.sp)
-                                    if (isWordWrapEnabled) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            },
-                            leadingIcon = { Icon(Icons.Default.WrapText, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
-                            onClick = {
-                                isWordWrapEnabled = !isWordWrapEnabled
-                                showMoreMenu = false
-                            }
-                        )
-
-                        // Line Numbers Toggle
-                        DropdownMenuItem(
-                            text = {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text("Line Numbers", color = GitText1, fontSize = 13.sp)
-                                    if (showLineNumbers) {
-                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            },
-                            leadingIcon = { Icon(Icons.Default.WrapText, contentDescription = null, tint = GitText2, modifier = Modifier.size(18.dp)) },
-                            onClick = {
-                                showLineNumbers = !showLineNumbers
-                                showMoreMenu = false
-                            }
-                        )
-
-                        if (isMarkdown) {
-                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                            // Select All
                             DropdownMenuItem(
-                                text = { Text(if (isMarkdownPreviewMode) "Edit Mode" else "Preview Markdown", color = GitText1, fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Default.Preview, contentDescription = null, tint = GitAccent, modifier = Modifier.size(18.dp)) },
+                                text = { Text("Select All", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.SelectAll,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
                                 onClick = {
-                                    onToggleMarkdownPreview()
+                                    selectAllText()
                                     showMoreMenu = false
                                 }
                             )
-                        }
 
-                        if (isDirty) {
-                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                            // Go to Line
                             DropdownMenuItem(
-                                text = { Text("Discard Changes", color = Md3LightError, fontSize = 13.sp) },
-                                leadingIcon = { Icon(Icons.Default.RestartAlt, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(18.dp)) },
+                                text = { Text("Go to Line...", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.FormatListNumbered,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
                                 onClick = {
-                                    onContentChange(originalContent)
-                                    undoStack.clear()
-                                    redoStack.clear()
+                                    showMoreMenu = false
+                                    showGoToLineDialog = true
+                                }
+                            )
+
+                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                            // Find in File
+                            DropdownMenuItem(
+                                text = { Text("Find in File", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    isSearchVisible = true
+                                    isReplaceMode = false
                                     showMoreMenu = false
                                 }
                             )
+
+                            // Find & Replace
+                            DropdownMenuItem(
+                                text = { Text("Find & Replace", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.FindReplace,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    isSearchVisible = true
+                                    isReplaceMode = true
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                            // Zoom In
+                            DropdownMenuItem(
+                                text = { Text("Zoom In (A+)", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.ZoomIn,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    fontSize = (fontSize + 1.5f).coerceAtMost(24f)
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            // Zoom Out
+                            DropdownMenuItem(
+                                text = { Text("Zoom Out (A-)", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.ZoomOut,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    fontSize = (fontSize - 1.5f).coerceAtLeast(9f)
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            // Reset Zoom
+                            DropdownMenuItem(
+                                text = { Text("Reset Zoom (13.5sp)", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.RestartAlt,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    fontSize = 13.5f
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                            // Word Wrap Toggle
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Word Wrap", color = GitText1, fontSize = 13.sp)
+                                        if (isWordWrapEnabled) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = GitAccent,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.WrapText,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    isWordWrapEnabled = !isWordWrapEnabled
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            // Line Numbers Toggle
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Line Numbers", color = GitText1, fontSize = 13.sp)
+                                        if (showLineNumbers) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = GitAccent,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.WrapText,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showLineNumbers = !showLineNumbers
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            if (isMarkdown) {
+                                HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (isMarkdownPreviewMode) "Edit Mode" else "Preview Markdown",
+                                            color = GitText1,
+                                            fontSize = 13.sp
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Preview,
+                                            contentDescription = null,
+                                            tint = GitAccent,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        onToggleMarkdownPreview()
+                                        showMoreMenu = false
+                                    }
+                                )
+                            }
+
+                            if (isDirty) {
+                                HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+                                DropdownMenuItem(
+                                    text = { Text("Discard Changes", color = Md3LightError, fontSize = 13.sp) },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.RestartAlt,
+                                            contentDescription = null,
+                                            tint = Md3LightError,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        onContentChange(originalContent)
+                                        textFieldValue = TextFieldValue(text = originalContent, selection = TextRange(originalContent.length))
+                                        undoStack.clear()
+                                        redoStack.clear()
+                                        showMoreMenu = false
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-            }
-        },
-        colors = TopAppBarDefaults.topAppBarColors(
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = GitSurface,
                 titleContentColor = GitText1
             )
@@ -736,22 +1202,9 @@ fun CodeEditorView(
                 }
             } else {
                 // Code Editor with High Performance Synchronized Gutter & Custom Scrollbars
-                val verticalScrollState = rememberScrollState()
-                val horizontalScrollState = rememberScrollState()
                 val density = LocalDensity.current
                 val imeInsets = WindowInsets.ime
                 val imeBottom = imeInsets.getBottom(density)
-
-                // Track TextFieldValue to know cursor/selection location
-                var textFieldValue by remember {
-                    mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
-                }
-
-                LaunchedEffect(content) {
-                    if (textFieldValue.text != content) {
-                        textFieldValue = textFieldValue.copy(text = content)
-                    }
-                }
 
                 // Sync search match selection into textFieldValue
                 LaunchedEffect(matches, currentMatchIndex) {
