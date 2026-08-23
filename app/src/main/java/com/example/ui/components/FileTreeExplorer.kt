@@ -195,7 +195,7 @@ fun FileTreeExplorer(
         TopAppBar(
             title = {
                 Column(
-                    verticalArrangement = Arrangement.Center,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.padding(vertical = 0.dp)
                 ) {
                     Text(
@@ -210,45 +210,43 @@ fun FileTreeExplorer(
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier.padding(top = 1.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         // Branch Chip
                         Surface(
                             modifier = Modifier
-                                .height(20.dp)
-                                .clip(RoundedCornerShape(5.dp))
+                                .height(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
-                            shape = RoundedCornerShape(5.dp),
+                            shape = RoundedCornerShape(6.dp),
                             color = GitTopBarButtonBg,
                             border = BorderStroke(1.dp, GitBorder)
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 7.dp),
+                                    .padding(horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(4.5.dp)
+                                        .size(5.dp)
                                         .background(GitText2, CircleShape)
                                 )
-                                Spacer(modifier = Modifier.width(4.5.dp))
+                                Spacer(modifier = Modifier.width(5.dp))
                                 Text(
                                     text = selectedBranch,
-                                    fontFamily = FontFamily.Monospace,
                                     color = GitText1,
-                                    fontSize = 10.5.sp,
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 85.dp)
+                                    modifier = Modifier.widthIn(max = 90.dp)
                                 )
-                                Spacer(modifier = Modifier.width(2.5.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
+                                    imageVector = Icons.Default.KeyboardArrowDown,
                                     contentDescription = "Switch Branch",
                                     tint = GitText2,
                                     modifier = Modifier.size(13.dp)
@@ -259,17 +257,17 @@ fun FileTreeExplorer(
                         // Live Sync Status Pill
                         Surface(
                             modifier = Modifier
-                                .height(20.dp)
-                                .clip(RoundedCornerShape(5.dp))
+                                .height(22.dp)
+                                .clip(RoundedCornerShape(6.dp))
                                 .clickable(onClick = onRefresh),
-                            shape = RoundedCornerShape(5.dp),
+                            shape = RoundedCornerShape(6.dp),
                             color = if (syncStatus == SyncStatus.ERROR) Color(0xFFFFEBEE) else GitAccentSoft,
                             border = BorderStroke(1.dp, if (syncStatus == SyncStatus.ERROR) Md3LightError.copy(alpha = 0.35f) else GitAccent.copy(alpha = 0.35f))
                         ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 7.dp),
+                                    .padding(horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
@@ -284,23 +282,23 @@ fun FileTreeExplorer(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Syncing",
-                                        fontSize = 10.5.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = GitAccent
                                     )
                                 } else {
                                     Box(
                                         modifier = Modifier
-                                            .size(4.5.dp)
+                                            .size(5.dp)
                                             .background(
                                                 color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent,
                                                 shape = CircleShape
                                             )
                                     )
-                                    Spacer(modifier = Modifier.width(4.5.dp))
+                                    Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
-                                        fontSize = 10.5.sp,
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.SemiBold,
                                         color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent
                                     )

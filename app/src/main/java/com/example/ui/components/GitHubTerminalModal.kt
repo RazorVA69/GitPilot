@@ -1,6 +1,6 @@
 package com.example.ui.components
 
-import android.view.WindowManager
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -68,7 +68,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -86,7 +85,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -100,10 +98,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
-import androidx.core.view.WindowCompat
 import com.example.data.model.GitHubRepository
 import kotlinx.coroutines.launch
 
@@ -212,45 +206,39 @@ fun GitHubTerminalModal(
         )
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
-            decorFitsSystemWindows = false
-        )
-    ) {
-        val view = LocalView.current
-        DisposableEffect(view) {
-            var parent = view.parent
-            while (parent != null && parent !is DialogWindowProvider) {
-                parent = parent.parent
-            }
-            (parent as? DialogWindowProvider)?.window?.let { window ->
-                window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-                WindowCompat.setDecorFitsSystemWindows(window, false)
-            }
-            onDispose {}
-        }
+    BackHandler(onBack = onDismiss)
 
-        Box(
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(if (isFullscreen) 0.dp else 10.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {
+                // Dimmed backdrop click
+                onDismiss()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.75f))
-                .statusBarsPadding()
-                .navigationBarsPadding()
-                .imePadding()
-                .padding(if (isFullscreen) 0.dp else 10.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) {
+                    // Consume click so inside of card does not dismiss
+                }
+                .testTag("github_terminal_card"),
+            shape = RoundedCornerShape(if (isFullscreen) 0.dp else 14.dp),
+            colors = CardDefaults.cardColors(containerColor = TermBg),
+            border = BorderStroke(1.dp, TermSurfaceBorder)
         ) {
-            Card(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .testTag("github_terminal_card"),
-                shape = RoundedCornerShape(if (isFullscreen) 0.dp else 14.dp),
-                colors = CardDefaults.cardColors(containerColor = TermBg),
-                border = BorderStroke(1.dp, TermSurfaceBorder)
-            ) {
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -704,6 +692,10 @@ fun GitHubTerminalModal(
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedContainerColor = TermBg,
                                     unfocusedContainerColor = TermBg,
+                                    focusedTextColor = TermText,
+                                    unfocusedTextColor = TermText,
+                                    focusedPlaceholderColor = TermDim,
+                                    unfocusedPlaceholderColor = TermDim,
                                     cursorColor = TermPromptUser,
                                     focusedBorderColor = TermPromptUser,
                                     unfocusedBorderColor = TermSurfaceBorder
