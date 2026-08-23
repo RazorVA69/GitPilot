@@ -44,9 +44,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.GitAccent
+import com.example.ui.theme.GitAccentSoft
 import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
+import com.example.ui.theme.GitButtonPrimary
 import com.example.ui.theme.GitSurface
-import com.example.ui.theme.GitSurface2
 import com.example.ui.theme.GitText1
 import com.example.ui.theme.GitText2
 import com.example.ui.theme.GitText3
@@ -109,8 +111,8 @@ fun CommitDialog(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(10.dp),
-                color = GitSurface2,
-                border = BorderStroke(1.dp, GitBorder)
+                color = GitSurface,
+                border = BorderStroke(1.dp, GitBorderStrong)
             ) {
                 Column(modifier = Modifier.padding(12.dp)) {
                     Text(
@@ -150,9 +152,9 @@ fun CommitDialog(
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = GitAccent,
-                    unfocusedBorderColor = GitBorder,
+                    unfocusedBorderColor = GitBorderStrong,
                     focusedContainerColor = GitSurface,
-                    unfocusedContainerColor = GitSurface2
+                    unfocusedContainerColor = GitSurface
                 )
             )
 
@@ -179,9 +181,9 @@ fun CommitDialog(
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = GitAccent,
-                    unfocusedBorderColor = GitBorder,
+                    unfocusedBorderColor = GitBorderStrong,
                     focusedContainerColor = GitSurface,
-                    unfocusedContainerColor = GitSurface2
+                    unfocusedContainerColor = GitSurface
                 )
             )
 
@@ -198,7 +200,7 @@ fun CommitDialog(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1),
-                    border = BorderStroke(1.dp, GitBorder)
+                    border = BorderStroke(1.dp, GitBorderStrong)
                 ) {
                     Text("Cancel")
                 }
@@ -206,7 +208,7 @@ fun CommitDialog(
                 Button(
                     onClick = { onConfirmCommit(commitMessage, targetBranch) },
                     enabled = !isCommitting && commitMessage.isNotBlank() && targetBranch.isNotBlank(),
-                    colors = ButtonDefaults.buttonColors(containerColor = GitAccent),
+                    colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
                     shape = RoundedCornerShape(10.dp),
                     modifier = Modifier
                         .weight(1.5f)

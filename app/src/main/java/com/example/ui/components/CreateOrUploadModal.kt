@@ -266,8 +266,8 @@ fun CreateOrUploadModal(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .background(GitSurface2)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .background(GitSurface)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -286,8 +286,8 @@ fun CreateOrUploadModal(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { selectedTab = index },
-                        color = if (isTabSelected) GitSurface else Color.Transparent,
-                        border = if (isTabSelected) BorderStroke(1.dp, GitBorderStrong) else null,
+                        color = if (isTabSelected) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isTabSelected) GitAccent else GitBorderStrong),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Row(
@@ -307,7 +307,7 @@ fun CreateOrUploadModal(
                                 text = title,
                                 fontSize = 12.sp,
                                 fontWeight = if (isTabSelected) FontWeight.Bold else FontWeight.Medium,
-                                color = if (isTabSelected) GitText1 else GitText2
+                                color = if (isTabSelected) GitAccent else GitText1
                             )
                         }
                     }
@@ -347,7 +347,7 @@ fun CreateOrUploadModal(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { showFolderPickerDialog = true },
-                        color = GitSurface2,
+                        color = GitSurface,
                         border = BorderStroke(1.dp, GitBorderStrong),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -374,7 +374,7 @@ fun CreateOrUploadModal(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { targetDirectory = "" },
-                        color = if (isRoot) GitAccentSoft else GitSurface2,
+                        color = if (isRoot) GitAccentSoft else GitSurface,
                         border = BorderStroke(1.dp, if (isRoot) GitAccent else GitBorderStrong),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -406,7 +406,7 @@ fun CreateOrUploadModal(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { targetDirectory = initialDirectory },
-                            color = if (isInitial) GitAccentSoft else GitSurface2,
+                            color = if (isInitial) GitAccentSoft else GitSurface,
                             border = BorderStroke(1.dp, if (isInitial) GitAccent else GitBorderStrong),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -463,7 +463,7 @@ fun CreateOrUploadModal(
                         focusedBorderColor = GitAccent,
                         unfocusedBorderColor = GitBorderStrong,
                         focusedContainerColor = GitSurface,
-                        unfocusedContainerColor = GitSurface2
+                        unfocusedContainerColor = GitSurface
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
@@ -761,7 +761,7 @@ fun CreateOrUploadModal(
                             focusedBorderColor = GitAccent,
                             unfocusedBorderColor = GitBorderStrong,
                             focusedContainerColor = GitSurface,
-                            unfocusedContainerColor = GitSurface2
+                            unfocusedContainerColor = GitSurface
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -787,8 +787,8 @@ fun CreateOrUploadModal(
                         placeholder = { Text("Paste code or text content here...", color = GitText3, fontSize = 12.sp) },
                         textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = GitText1),
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = GitSurface2,
-                            unfocusedContainerColor = GitSurface2,
+                            focusedContainerColor = GitSurface,
+                            unfocusedContainerColor = GitSurface,
                             focusedBorderColor = GitAccent,
                             unfocusedBorderColor = GitBorderStrong
                         ),
@@ -817,7 +817,7 @@ fun CreateOrUploadModal(
                             focusedBorderColor = GitAccent,
                             unfocusedBorderColor = GitBorderStrong,
                             focusedContainerColor = GitSurface,
-                            unfocusedContainerColor = GitSurface2
+                            unfocusedContainerColor = GitSurface
                         ),
                         shape = RoundedCornerShape(10.dp)
                     )
@@ -853,7 +853,7 @@ fun CreateOrUploadModal(
                                         fileContent = tContent
                                         selectedTab = 2
                                     },
-                                color = GitSurface2,
+                                color = GitSurface,
                                 border = BorderStroke(1.dp, GitBorderStrong)
                             ) {
                                 Row(
@@ -907,7 +907,7 @@ fun CreateOrUploadModal(
                         focusedBorderColor = GitAccent,
                         unfocusedBorderColor = GitBorderStrong,
                         focusedContainerColor = GitSurface,
-                        unfocusedContainerColor = GitSurface2
+                        unfocusedContainerColor = GitSurface
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
@@ -918,9 +918,9 @@ fun CreateOrUploadModal(
                     Spacer(modifier = Modifier.height(12.dp))
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = GitSurface2,
+                        color = GitAccentSoft,
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, GitBorderStrong)
+                        border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f))
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
@@ -1175,8 +1175,8 @@ private fun FolderPickerModalDialog(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GitAccent,
                         unfocusedBorderColor = GitBorderStrong,
-                        focusedContainerColor = GitSurface2,
-                        unfocusedContainerColor = GitSurface2
+                        focusedContainerColor = GitSurface,
+                        unfocusedContainerColor = GitSurface
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )

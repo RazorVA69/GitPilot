@@ -162,8 +162,8 @@ fun RepoListScreen(
                                 if (!isSearchVisible) onSearchChange("")
                             },
                             shape = CircleShape,
-                            color = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface2,
-                            border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitBorder),
+                            color = if (isSearchVisible || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface,
+                            border = BorderStroke(1.dp, if (isSearchVisible || searchQuery.isNotEmpty()) GitAccent else GitBorderStrong),
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -184,8 +184,8 @@ fun RepoListScreen(
                             Surface(
                                 onClick = { showSortMenu = true },
                                 shape = CircleShape,
-                                color = if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccentSoft else GitSurface2,
-                                border = BorderStroke(1.dp, if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccent else GitBorder),
+                                color = if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccentSoft else GitSurface,
+                                border = BorderStroke(1.dp, if (sortOption != RepoSortOption.LAST_ACTIVITY) GitAccent else GitBorderStrong),
                                 modifier = Modifier
                                     .size(36.dp)
                                     .clip(CircleShape)
@@ -298,8 +298,8 @@ fun RepoListScreen(
                         Surface(
                             onClick = onRefresh,
                             shape = CircleShape,
-                            color = GitSurface2,
-                            border = BorderStroke(1.dp, GitBorder),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorderStrong),
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -384,8 +384,8 @@ fun RepoListScreen(
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GitAccent,
                         unfocusedBorderColor = GitBorderStrong,
-                        focusedContainerColor = GitSurface2,
-                        unfocusedContainerColor = GitSurface2
+                        focusedContainerColor = GitSurface,
+                        unfocusedContainerColor = GitSurface
                     )
                 )
             }
@@ -412,8 +412,8 @@ fun RepoListScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onFilterChange(type) },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) GitAccentSoft else Color.Transparent,
-                        border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder)
+                        color = if (isSelected) GitAccentSoft else GitSurface,
+                        border = if (isSelected) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Text(
                             text = "$label · $count",
@@ -557,8 +557,8 @@ fun RepoListScreen(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = if (isPinned) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isPinned) GitAccent.copy(alpha = 0.3f) else GitBorder)
+                        color = if (isPinned) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isPinned) GitAccent.copy(alpha = 0.3f) else GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
@@ -597,8 +597,8 @@ fun RepoListScreen(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = if (isWorking) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isWorking) GitAccent.copy(alpha = 0.3f) else GitBorder)
+                        color = if (isWorking) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isWorking) GitAccent.copy(alpha = 0.3f) else GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),

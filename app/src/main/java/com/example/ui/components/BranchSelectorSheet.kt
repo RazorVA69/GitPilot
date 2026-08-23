@@ -50,8 +50,8 @@ import com.example.data.model.GitHubBranch
 import com.example.ui.theme.GitAccent
 import com.example.ui.theme.GitAccentSoft
 import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
 import com.example.ui.theme.GitSurface
-import com.example.ui.theme.GitSurface2
 import com.example.ui.theme.GitText1
 import com.example.ui.theme.GitText2
 import com.example.ui.theme.GitText3
@@ -129,9 +129,9 @@ fun BranchSelectorSheet(
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = GitAccent,
-                    unfocusedBorderColor = GitBorder,
-                    focusedContainerColor = GitSurface2,
-                    unfocusedContainerColor = GitSurface2
+                    unfocusedBorderColor = GitBorderStrong,
+                    focusedContainerColor = GitSurface,
+                    unfocusedContainerColor = GitSurface
                 )
             )
 
@@ -153,7 +153,7 @@ fun BranchSelectorSheet(
                         .heightIn(max = 300.dp),
                     shape = RoundedCornerShape(10.dp),
                     color = GitSurface,
-                    border = BorderStroke(1.dp, GitBorder)
+                    border = BorderStroke(1.dp, GitBorderStrong)
                 ) {
                     LazyColumn {
                         items(filteredBranches, key = { it.name }) { branch ->

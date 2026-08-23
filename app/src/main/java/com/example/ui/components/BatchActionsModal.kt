@@ -50,8 +50,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.GitAccent
 import com.example.ui.theme.GitBorder
+import com.example.ui.theme.GitBorderStrong
 import com.example.ui.theme.GitSurface
-import com.example.ui.theme.GitSurface2
 import com.example.ui.theme.GitText1
 import com.example.ui.theme.GitText2
 import com.example.ui.theme.GitText3
@@ -153,8 +153,8 @@ fun BatchActionsModal(
                     .fillMaxWidth()
                     .heightIn(max = 160.dp),
                 shape = RoundedCornerShape(10.dp),
-                color = GitSurface2,
-                border = BorderStroke(1.dp, GitBorder)
+                color = GitSurface,
+                border = BorderStroke(1.dp, GitBorderStrong)
             ) {
                 LazyColumn(modifier = Modifier.padding(8.dp)) {
                     items(selectedFiles) { path ->
@@ -208,9 +208,9 @@ fun BatchActionsModal(
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Md3LightError,
-                    unfocusedBorderColor = GitBorder,
+                    unfocusedBorderColor = GitBorderStrong,
                     focusedContainerColor = GitSurface,
-                    unfocusedContainerColor = GitSurface2
+                    unfocusedContainerColor = GitSurface
                 )
             )
 

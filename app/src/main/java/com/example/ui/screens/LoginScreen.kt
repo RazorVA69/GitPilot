@@ -133,7 +133,7 @@ fun LoginScreen(
     var customClientId by remember { mutableStateOf(GitHubRepository.DEFAULT_OAUTH_CLIENT_ID) }
     var showClientIdConfig by remember { mutableStateOf(false) }
 
-    val quickTokensUrl = "https://github.com/settings/tokens/new?scopes=repo,read:org,user,workflow&description=GitExplorer"
+    val quickTokensUrl = "https://github.com/settings/tokens/new?scopes=repo,read:org,user,workflow&description=GitPilot"
 
     var totalDragOffset by remember { mutableStateOf(0f) }
 
@@ -201,7 +201,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Welcome to GitExplorer",
+                text = "Welcome to GitPilot",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = GitText1,
@@ -236,7 +236,8 @@ fun LoginScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        color = GitSurface2
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(4.dp),
@@ -259,16 +260,16 @@ fun LoginScreen(
                                             }
                                         },
                                     shape = RoundedCornerShape(9.dp),
-                                    color = if (isSelected) GitSurface else Color.Transparent,
-                                    border = if (isSelected) BorderStroke(1.dp, GitBorderStrong) else null,
-                                    shadowElevation = if (isSelected) 1.5.dp else 0.dp
+                                    color = if (isSelected) GitAccentSoft else Color.Transparent,
+                                    border = if (isSelected) BorderStroke(1.dp, GitAccent) else null,
+                                    shadowElevation = 0.dp
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Text(
                                             text = title,
                                             fontSize = 12.5.sp,
                                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) GitText1 else GitText2,
+                                            color = if (isSelected) GitAccent else GitText2,
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -413,7 +414,9 @@ fun LoginScreen(
                                                     shape = RoundedCornerShape(10.dp),
                                                     colors = OutlinedTextFieldDefaults.colors(
                                                         focusedBorderColor = GitAccent,
-                                                        unfocusedBorderColor = GitBorderStrong
+                                                        unfocusedBorderColor = GitBorderStrong,
+                                                        focusedContainerColor = GitSurface,
+                                                        unfocusedContainerColor = GitSurface
                                                     )
                                                 )
                                             }
@@ -423,8 +426,8 @@ fun LoginScreen(
                                         Surface(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(14.dp),
-                                            color = GitSurface2,
-                                            border = BorderStroke(1.dp, GitBorder)
+                                            color = GitSurface,
+                                            border = BorderStroke(1.dp, GitBorderStrong)
                                         ) {
                                             Column(
                                                 modifier = Modifier.padding(16.dp),
@@ -449,7 +452,7 @@ fun LoginScreen(
                                                 // Display Code Box with Copy
                                                 Surface(
                                                     shape = RoundedCornerShape(10.dp),
-                                                    color = Color.White,
+                                                    color = GitAccentSoft,
                                                     border = BorderStroke(1.5.dp, GitAccent),
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(10.dp))
@@ -607,8 +610,8 @@ fun LoginScreen(
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = GitAccent,
                                             unfocusedBorderColor = GitBorderStrong,
-                                            focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = GitSurface2
+                                            focusedContainerColor = GitSurface,
+                                            unfocusedContainerColor = GitSurface
                                         )
                                     )
 
@@ -678,8 +681,8 @@ fun LoginScreen(
                                                     .clip(RoundedCornerShape(16.dp))
                                                     .clickable { publicUsernameInput = name },
                                                 shape = RoundedCornerShape(16.dp),
-                                                color = if (publicUsernameInput == name) GitAccentSoft else GitSurface2,
-                                                border = if (publicUsernameInput == name) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorder)
+                                                color = if (publicUsernameInput == name) GitAccentSoft else GitSurface,
+                                                border = if (publicUsernameInput == name) BorderStroke(1.dp, GitAccent) else BorderStroke(1.dp, GitBorderStrong)
                                             ) {
                                                 Text(
                                                     text = "@$name",
@@ -709,8 +712,8 @@ fun LoginScreen(
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedBorderColor = GitAccent,
                                             unfocusedBorderColor = GitBorderStrong,
-                                            focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = GitSurface2
+                                            focusedContainerColor = GitSurface,
+                                            unfocusedContainerColor = GitSurface
                                         )
                                     )
 

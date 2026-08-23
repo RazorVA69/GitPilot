@@ -219,8 +219,8 @@ fun FileTreeExplorer(
                                 .clickable(onClick = onBranchClick)
                                 .testTag("branch_badge_btn"),
                             shape = RoundedCornerShape(6.dp),
-                            color = GitSurface2,
-                            border = BorderStroke(1.dp, GitBorder)
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorderStrong)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -328,8 +328,8 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = { isSearchExpanded = !isSearchExpanded },
                         shape = CircleShape,
-                        color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitBorder.copy(alpha = 0.5f)),
+                        color = if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isSearchExpanded || searchQuery.isNotEmpty()) GitAccent else GitBorderStrong),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -349,8 +349,8 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = onToggleBatchMode,
                         shape = CircleShape,
-                        color = if (isBatchMode) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isBatchMode) GitAccent else GitBorder.copy(alpha = 0.5f)),
+                        color = if (isBatchMode) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isBatchMode) GitAccent else GitBorderStrong),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -370,8 +370,8 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = onRefresh,
                         shape = CircleShape,
-                        color = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitBorder.copy(alpha = 0.5f)),
+                        color = if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (syncStatus == SyncStatus.SYNCING || isLoadingTree) GitAccent else GitBorderStrong),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -416,8 +416,8 @@ fun FileTreeExplorer(
                         Surface(
                             onClick = { showOverflowMenu = true },
                             shape = CircleShape,
-                            color = GitSurface2,
-                            border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorderStrong),
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -601,7 +601,8 @@ fun FileTreeExplorer(
         AnimatedVisibility(visible = isSearchExpanded) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = GitSurface2
+                color = GitSurface,
+                border = BorderStroke(1.dp, GitBorderStrong)
             ) {
                 Row(
                     modifier = Modifier
@@ -632,7 +633,7 @@ fun FileTreeExplorer(
                             focusedContainerColor = GitSurface,
                             unfocusedContainerColor = GitSurface,
                             focusedBorderColor = GitAccent,
-                            unfocusedBorderColor = GitBorder
+                            unfocusedBorderColor = GitBorderStrong
                         )
                     )
                 }
@@ -681,10 +682,10 @@ fun FileTreeExplorer(
                         modifier = Modifier
                             .clip(RoundedCornerShape(16.dp))
                             .clickable { onNavigateToDir(folderPath) },
-                        color = if (isCurrent) GitAccentSoft else GitSurface2,
+                        color = if (isCurrent) GitAccentSoft else GitSurface,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
-                            if (isCurrent) GitAccent else GitBorder
+                            if (isCurrent) GitAccent else GitBorderStrong
                         ),
                         shape = RoundedCornerShape(16.dp)
                     ) {
@@ -1041,8 +1042,8 @@ fun FileTreeExplorer(
                                 onTogglePinFolder(folderNode.path)
                                 folderForActionDialog = null
                             },
-                        color = GitSurface2,
-                        border = BorderStroke(1.dp, GitBorder)
+                        color = if (isPinned) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isPinned) GitAccent.copy(alpha = 0.3f) else GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -1178,8 +1179,8 @@ private fun BatchActionBar(
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = GitSurface2,
-        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder)
+        color = GitSurface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(

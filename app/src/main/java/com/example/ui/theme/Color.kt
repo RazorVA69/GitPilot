@@ -2,13 +2,13 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// GitExplorer Redesign V4 Light Palette (HTML & Screenshot Match)
-val GitBg = Color(0xFFF6F7F9)
+// GitPilot Light Modern Palette
+val GitBg = Color(0xFFFFFFFF)
 val GitSurface = Color(0xFFFFFFFF)
-val GitSurface2 = Color(0xFFEEF0F3)
-val GitSurface3 = Color(0xFFE3E6EB)
-val GitBorder = Color(0x140F0F19) // rgba(15,15,25,.08) ~ #EAECEF
-val GitBorderStrong = Color(0x240F0F19) // rgba(15,15,25,.14) ~ #D8DCDF
+val GitSurface2 = Color(0xFFF8FAFC)
+val GitSurface3 = Color(0xFFEEF2F6)
+val GitBorder = Color(0x140F0F19) // rgba(15,15,25,.08) hairline
+val GitBorderStrong = Color(0x240F0F19) // rgba(15,15,25,.14) border
 
 val GitText1 = Color(0xFF14141B) // Primary text
 val GitText2 = Color(0xFF63636F) // Secondary text

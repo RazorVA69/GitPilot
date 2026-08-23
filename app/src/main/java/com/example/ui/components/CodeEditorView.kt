@@ -285,8 +285,8 @@ fun CodeEditorView(
                         onClick = { performUndo() },
                         enabled = undoStack.isNotEmpty(),
                         shape = CircleShape,
-                        color = if (undoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
+                        color = if (undoStack.isNotEmpty()) GitSurface else GitSurface.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, if (undoStack.isNotEmpty()) GitBorderStrong else GitBorder),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -307,8 +307,8 @@ fun CodeEditorView(
                         onClick = { performRedo() },
                         enabled = redoStack.isNotEmpty(),
                         shape = CircleShape,
-                        color = if (redoStack.isNotEmpty()) GitSurface2 else GitSurface2.copy(alpha = 0.5f),
-                        border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
+                        color = if (redoStack.isNotEmpty()) GitSurface else GitSurface.copy(alpha = 0.5f),
+                        border = BorderStroke(1.dp, if (redoStack.isNotEmpty()) GitBorderStrong else GitBorder),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -331,8 +331,8 @@ fun CodeEditorView(
                             isReplaceMode = false
                         },
                         shape = CircleShape,
-                        color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isSearchVisible && !isReplaceMode) GitAccent else GitBorder.copy(alpha = 0.5f)),
+                        color = if (isSearchVisible && !isReplaceMode) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isSearchVisible && !isReplaceMode) GitAccent else GitBorderStrong),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -355,8 +355,8 @@ fun CodeEditorView(
                             isReplaceMode = true
                         },
                         shape = CircleShape,
-                        color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isSearchVisible && isReplaceMode) GitAccent else GitBorder.copy(alpha = 0.5f)),
+                        color = if (isSearchVisible && isReplaceMode) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isSearchVisible && isReplaceMode) GitAccent else GitBorderStrong),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -414,8 +414,8 @@ fun CodeEditorView(
                         Surface(
                             onClick = { showMoreMenu = true },
                             shape = CircleShape,
-                            color = GitSurface2,
-                            border = BorderStroke(1.dp, GitBorder.copy(alpha = 0.5f)),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorderStrong),
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -559,8 +559,8 @@ fun CodeEditorView(
         ) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = GitSurface2,
-                border = BorderStroke(1.dp, GitBorder)
+                color = GitSurface,
+                border = BorderStroke(1.dp, GitBorderStrong)
             ) {
                 Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                     // Row 1: Find Input & Navigation
@@ -598,7 +598,7 @@ fun CodeEditorView(
                                 focusedContainerColor = GitSurface,
                                 unfocusedContainerColor = GitSurface,
                                 focusedBorderColor = GitAccent,
-                                unfocusedBorderColor = GitBorder
+                                unfocusedBorderColor = GitBorderStrong
                             )
                         )
 
@@ -666,7 +666,7 @@ fun CodeEditorView(
                                     focusedContainerColor = GitSurface,
                                     unfocusedContainerColor = GitSurface,
                                     focusedBorderColor = GitAccent,
-                                    unfocusedBorderColor = GitBorder
+                                    unfocusedBorderColor = GitBorderStrong
                                 )
                             )
 

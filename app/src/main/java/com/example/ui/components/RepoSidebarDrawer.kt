@@ -251,8 +251,8 @@ fun RepoSidebarDrawer(
                                 onCloseSidebar()
                             },
                         shape = RoundedCornerShape(10.dp),
-                        color = GitSurface2,
-                        border = BorderStroke(1.dp, GitBorder)
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 12.dp),
@@ -283,8 +283,8 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(10.dp))
                             .clickable(onClick = onOpenLogin),
                         shape = RoundedCornerShape(10.dp),
-                        color = GitSurface2,
-                        border = BorderStroke(1.dp, GitBorder)
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -303,8 +303,8 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(10.dp))
                             .clickable(onClick = onLogout),
                         shape = RoundedCornerShape(10.dp),
-                        color = GitSurface2,
-                        border = BorderStroke(1.dp, GitBorder)
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -345,9 +345,9 @@ fun RepoSidebarDrawer(
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = GitAccent,
-                        unfocusedBorderColor = GitBorder,
-                        focusedContainerColor = GitSurface2,
-                        unfocusedContainerColor = GitSurface2
+                        unfocusedBorderColor = GitBorderStrong,
+                        focusedContainerColor = GitSurface,
+                        unfocusedContainerColor = GitSurface
                     ),
                     shape = RoundedCornerShape(10.dp)
                 )
@@ -362,8 +362,8 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(10.dp))
                             .clickable { showSortMenu = true },
                         shape = RoundedCornerShape(10.dp),
-                        color = GitSurface2,
-                        border = BorderStroke(1.dp, GitBorder)
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Icon(
@@ -491,7 +491,7 @@ fun RepoSidebarDrawer(
                             .clip(RoundedCornerShape(8.dp))
                             .clickable { onFilterChange(filter) },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) GitAccentSoft else GitSurface2,
+                        color = if (isSelected) GitAccentSoft else GitSurface,
                         border = if (isSelected) BorderStroke(1.5.dp, GitAccent) else BorderStroke(1.dp, GitBorderStrong)
                     ) {
                         Text(
@@ -701,8 +701,8 @@ fun RepoSidebarDrawer(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = GitSurface2,
-                        border = BorderStroke(1.dp, GitBorder)
+                        color = if (isPinned) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isPinned) GitAccent.copy(alpha = 0.3f) else GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),
@@ -741,8 +741,8 @@ fun RepoSidebarDrawer(
                                 coroutineScope.launch { listState.animateScrollToItem(0) }
                                 selectedRepoForActions = null
                             },
-                        color = if (isWorking) GitAccentSoft else GitSurface2,
-                        border = BorderStroke(1.dp, if (isWorking) GitAccent.copy(alpha = 0.4f) else GitBorder)
+                        color = if (isWorking) GitAccentSoft else GitSurface,
+                        border = BorderStroke(1.dp, if (isWorking) GitAccent.copy(alpha = 0.4f) else GitBorderStrong)
                     ) {
                         Row(
                             modifier = Modifier.padding(12.dp),

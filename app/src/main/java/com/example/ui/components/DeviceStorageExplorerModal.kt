@@ -551,7 +551,7 @@ fun DeviceStorageExplorerModal(
                                     currentDir = file
                                 }
                             },
-                        color = if (isCurrent) GitAccentSoft else GitSurface2,
+                        color = if (isCurrent) GitAccentSoft else GitSurface,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
                             if (isCurrent) GitAccent else GitBorderStrong
@@ -643,7 +643,7 @@ fun DeviceStorageExplorerModal(
                     shape = RoundedCornerShape(8.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedContainerColor = GitSurface,
-                        unfocusedContainerColor = GitSurface2,
+                        unfocusedContainerColor = GitSurface,
                         focusedBorderColor = GitAccent,
                         unfocusedBorderColor = GitBorderStrong
                     )
@@ -654,7 +654,7 @@ fun DeviceStorageExplorerModal(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(GitSurface2)
+                    .background(GitSurface)
                     .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
