@@ -477,8 +477,8 @@ fun CreateOrUploadModal(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
                             .clickable { showDeviceStorageExplorer = true },
-                        colors = CardDefaults.cardColors(containerColor = GitAccentSoft),
-                        border = BorderStroke(1.5.dp, GitAccent),
+                        colors = CardDefaults.cardColors(containerColor = GitSurface),
+                        border = BorderStroke(1.dp, GitBorderStrong),
                         shape = RoundedCornerShape(12.dp)
                     ) {
                         Row(
@@ -489,7 +489,7 @@ fun CreateOrUploadModal(
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
-                                color = GitSurface,
+                                color = GitAccentSoft,
                                 border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f)),
                                 modifier = Modifier.size(42.dp)
                             ) {
@@ -535,7 +535,7 @@ fun CreateOrUploadModal(
                                 )
                             }
 
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitAccent, modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = GitText2, modifier = Modifier.size(20.dp))
                         }
                     }
 
@@ -1081,11 +1081,13 @@ private fun FolderPickerModalDialog(
             color = GitSurface,
             border = BorderStroke(1.dp, GitBorderStrong),
             shape = RoundedCornerShape(16.dp),
-            tonalElevation = 6.dp
+            tonalElevation = 0.dp,
+            shadowElevation = 12.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .background(GitSurface)
                     .padding(20.dp)
             ) {
                 // Header Bar with Fullscreen toggle and Close
@@ -1100,7 +1102,8 @@ private fun FolderPickerModalDialog(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(8.dp),
-                            color = GitAccentSoft,
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorderStrong),
                             modifier = Modifier.size(34.dp)
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -1188,7 +1191,7 @@ private fun FolderPickerModalDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // Always show Repo Root ( / ) at top matching SS 8
                     item {
@@ -1198,8 +1201,8 @@ private fun FolderPickerModalDialog(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onSelectFolder("") },
-                            color = if (isSelected) GitAccentSoft else Color.Transparent,
-                            border = if (isSelected) BorderStroke(1.dp, GitAccent.copy(alpha = 0.5f)) else null,
+                            color = if (isSelected) GitAccentSoft else GitSurface,
+                            border = BorderStroke(1.dp, if (isSelected) GitAccent else GitBorderStrong),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
@@ -1271,8 +1274,8 @@ private fun FolderPickerModalDialog(
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .clickable { onSelectFolder(dirPath) },
-                            color = if (isSelected) GitAccentSoft else Color.Transparent,
-                            border = if (isSelected) BorderStroke(1.dp, GitAccent.copy(alpha = 0.5f)) else null,
+                            color = if (isSelected) GitAccentSoft else GitSurface,
+                            border = BorderStroke(1.dp, if (isSelected) GitAccent else GitBorder),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Row(
@@ -1331,6 +1334,7 @@ private fun FolderPickerModalDialog(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = GitSurface,
                         contentColor = GitText1
                     ),
                     border = BorderStroke(1.dp, GitBorderStrong)

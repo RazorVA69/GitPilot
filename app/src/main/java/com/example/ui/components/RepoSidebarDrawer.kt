@@ -91,7 +91,6 @@ import com.example.ui.theme.GitBg
 import com.example.ui.theme.GitBorder
 import com.example.ui.theme.GitBorderStrong
 import com.example.ui.theme.GitSurface
-import com.example.ui.theme.GitSurface2
 import com.example.ui.theme.GitText1
 import com.example.ui.theme.GitText2
 import com.example.ui.theme.GitText3

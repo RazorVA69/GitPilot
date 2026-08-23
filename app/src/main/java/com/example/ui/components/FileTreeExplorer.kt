@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -240,7 +241,10 @@ fun FileTreeExplorer(
                                     fontFamily = FontFamily.Monospace,
                                     color = GitText2,
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 70.dp)
                                 )
                                 Spacer(modifier = Modifier.width(2.dp))
                                 Icon(
@@ -265,7 +269,7 @@ fun FileTreeExplorer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 10.dp),
+                                    .padding(horizontal = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
@@ -277,7 +281,7 @@ fun FileTreeExplorer(
                                             .size(11.dp)
                                             .rotate(syncRotation)
                                     )
-                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Syncing",
                                         fontSize = 11.sp,
@@ -293,7 +297,7 @@ fun FileTreeExplorer(
                                                 shape = CircleShape
                                             )
                                     )
-                                    Spacer(modifier = Modifier.width(5.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
                                         fontSize = 11.sp,
@@ -320,9 +324,9 @@ fun FileTreeExplorer(
             },
             actions = {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(end = 8.dp)
+                    modifier = Modifier.padding(end = 6.dp)
                 ) {
                     // Search Files Button
                     Surface(
@@ -395,7 +399,8 @@ fun FileTreeExplorer(
                     Surface(
                         onClick = onOpenNewFileDialog,
                         shape = CircleShape,
-                        color = GitButtonPrimary,
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong),
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
@@ -405,7 +410,7 @@ fun FileTreeExplorer(
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = "Add or Upload",
-                                tint = Color.White,
+                                tint = GitText1,
                                 modifier = Modifier.size(18.dp)
                             )
                         }
