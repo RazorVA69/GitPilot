@@ -44,8 +44,10 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
@@ -90,6 +92,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -143,6 +147,7 @@ fun FileTreeExplorer(
     onDeleteSingleFile: (path: String, sha: String) -> Unit,
     onCutItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onCopyItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
+    onRenameItem: (path: String, newName: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _, _ -> },
     onCutSelection: () -> Unit = {},
     onCopySelection: () -> Unit = {},
     onClearClipboard: () -> Unit = {},
@@ -157,6 +162,7 @@ fun FileTreeExplorer(
     var isSearchExpanded by remember { mutableStateOf(false) }
     var showOverflowMenu by remember { mutableStateOf(false) }
     var folderForActionDialog by remember { mutableStateOf<ExplorerNode?>(null) }
+    var itemToRename by remember { mutableStateOf<ExplorerNode?>(null) }
 
     // Scroll state memory per directory path
     val folderScrollPositions = remember { mutableMapOf<String, Pair<Int, Int>>() }
@@ -184,6 +190,13 @@ fun FileTreeExplorer(
             animation = tween(1000, easing = LinearEasing)
         ),
         label = "rotation"
+    )
+
+    val badgeTextStyle = TextStyle(
+        fontSize = 11.sp,
+        fontWeight = FontWeight.Medium,
+        lineHeight = 12.sp,
+        platformStyle = PlatformTextStyle(includeFontPadding = false)
     )
 
     Column(
@@ -226,7 +239,7 @@ fun FileTreeExplorer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(start = 7.dp, end = 4.dp),
+                                    .padding(horizontal = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -238,17 +251,17 @@ fun FileTreeExplorer(
                                 Text(
                                     text = selectedBranch,
                                     color = GitText1,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    style = badgeTextStyle,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.widthIn(max = 90.dp)
+                                    modifier = Modifier.widthIn(max = 85.dp)
                                 )
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Icon(
-                                    imageVector = Icons.Default.ArrowDropDown,
+                                    imageVector = Icons.Default.KeyboardArrowDown,
                                     contentDescription = "Switch Branch",
                                     tint = GitText2,
-                                    modifier = Modifier.size(16.dp)
+                                    modifier = Modifier.size(13.dp)
                                 )
                             }
                         }
@@ -281,9 +294,8 @@ fun FileTreeExplorer(
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text(
                                         text = "Syncing",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = GitAccent
+                                        color = GitAccent,
+                                        style = badgeTextStyle
                                     )
                                 } else {
                                     Box(
@@ -297,9 +309,8 @@ fun FileTreeExplorer(
                                     Spacer(modifier = Modifier.width(5.dp))
                                     Text(
                                         text = if (syncStatus == SyncStatus.ERROR) "Sync error" else "Synced",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent
+                                        color = if (syncStatus == SyncStatus.ERROR) Md3LightError else GitAccent,
+                                        style = badgeTextStyle
                                     )
                                 }
                             }
@@ -883,6 +894,15 @@ fun FileTreeExplorer(
                     onToggleBatchMode = onToggleBatchMode,
                     onCutItem = onCutItem,
                     onCopyItem = onCopyItem,
+                    onRenameItem = { path, isDir, sha ->
+                        val name = path.substringAfterLast('/')
+                        itemToRename = ExplorerNode(
+                            name = name,
+                            path = path,
+                            isDirectory = isDir,
+                            sha = sha
+                        )
+                    },
                     onDeleteSingle = onDeleteSingleFile
                 )
             } else {
@@ -1005,6 +1025,7 @@ fun FileTreeExplorer(
                                 },
                                 onCut = { onCutItem(childNode.path, childNode.isDirectory, childNode.sha) },
                                 onCopy = { onCopyItem(childNode.path, childNode.isDirectory, childNode.sha) },
+                                onRename = { itemToRename = childNode },
                                 onDelete = { onDeleteSingleFile(childNode.path, childNode.sha) },
                                 onTogglePinFolder = { onTogglePinFolder(childNode.path) },
                                 modifier = Modifier.animateItem()
@@ -1014,6 +1035,88 @@ fun FileTreeExplorer(
                 }
             }
         }
+    }
+
+    // Rename Dialog (File or Folder)
+    itemToRename?.let { node ->
+        var newName by remember(node) { mutableStateOf(node.name) }
+        var renameError by remember { mutableStateOf<String?>(null) }
+
+        AlertDialog(
+            onDismissRequest = { itemToRename = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (node.isDirectory) Icons.Outlined.Folder else Icons.Default.Edit,
+                        contentDescription = null,
+                        tint = GitAccent,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (node.isDirectory) "Rename Folder" else "Rename File",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = GitText1
+                    )
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Current: ${node.path}",
+                        fontSize = 12.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = GitText2
+                    )
+
+                    OutlinedTextField(
+                        value = newName,
+                        onValueChange = {
+                            newName = it
+                            renameError = null
+                        },
+                        label = { Text("New Name") },
+                        singleLine = true,
+                        isError = renameError != null,
+                        supportingText = renameError?.let { { Text(it, color = Md3LightError) } },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = GitAccent,
+                            unfocusedBorderColor = GitBorderStrong,
+                            focusedTextColor = GitText1,
+                            unfocusedTextColor = GitText1
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val clean = newName.trim()
+                        if (clean.isBlank()) {
+                            renameError = "Name cannot be empty"
+                        } else if (clean == node.name) {
+                            itemToRename = null
+                        } else {
+                            onRenameItem(node.path, clean, node.isDirectory, node.sha)
+                            itemToRename = null
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary, contentColor = Color.White),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Rename", fontWeight = FontWeight.SemiBold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { itemToRename = null }) {
+                    Text("Cancel", color = GitText2)
+                }
+            },
+            containerColor = GitSurface,
+            shape = RoundedCornerShape(12.dp)
+        )
     }
 
     // Folder Context Menu Dialog (for Pinning & Actions)
@@ -1273,6 +1376,7 @@ private fun ExplorerItemRow(
     onToggleSelect: () -> Unit,
     onCut: () -> Unit = {},
     onCopy: () -> Unit = {},
+    onRename: () -> Unit = {},
     onDelete: () -> Unit,
     onTogglePinFolder: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -1437,6 +1541,20 @@ private fun ExplorerItemRow(
                         }
                     )
 
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Edit, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Rename", fontSize = 13.sp, color = GitText1)
+                            }
+                        },
+                        onClick = {
+                            onRename()
+                            showMenu = false
+                        }
+                    )
+
                     if (node.isDirectory) {
                         DropdownMenuItem(
                             text = {
@@ -1493,6 +1611,7 @@ private fun SearchResultsList(
     onToggleBatchMode: () -> Unit = {},
     onCutItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onCopyItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
+    onRenameItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onDeleteSingle: (path: String, sha: String) -> Unit
 ) {
     if (items.isEmpty()) {
@@ -1677,6 +1796,20 @@ private fun SearchResultsList(
                                     },
                                     onClick = {
                                         onCopyItem(item.path, item.isDirectory, item.sha)
+                                        showMenu = false
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text("Rename")
+                                        }
+                                    },
+                                    onClick = {
+                                        onRenameItem(item.path, item.isDirectory, item.sha)
                                         showMenu = false
                                     }
                                 )

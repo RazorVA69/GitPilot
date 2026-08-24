@@ -622,150 +622,105 @@ fun GitHubTerminalModal(
                     // Command Input Console Row
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = TermSurface
+                        color = Color(0xFF161B22),
+                        border = BorderStroke(1.dp, TermSurfaceBorder)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.Bottom
+                                .padding(horizontal = 10.dp, vertical = 8.dp)
                         ) {
-                            // Prompt label
-                            Text(
-                                text = "$",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = TermPromptUser,
-                                modifier = Modifier.padding(bottom = 12.dp, start = 4.dp, end = 6.dp)
-                            )
-
-                            // Command Text Field (supports multi-line paste & manual multi-line typing)
-                            OutlinedTextField(
-                                value = inputCommand,
-                                onValueChange = { inputCommand = it },
-                                placeholder = {
-                                    Text(
-                                        text = "Enter or paste git command...",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 13.sp,
-                                        color = TermDim
-                                    )
-                                },
-                                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                                    fontFamily = FontFamily.Monospace,
-                                    color = TermText,
-                                    fontSize = 13.sp
-                                ),
-                                trailingIcon = {
-                                    if (inputCommand.isNotEmpty()) {
-                                        IconButton(
-                                            onClick = { inputCommand = "" },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Close,
-                                                contentDescription = "Clear input",
-                                                tint = TermDim,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                },
-                                maxLines = if (isFullscreen) 6 else 4,
-                                keyboardOptions = KeyboardOptions(
-                                    imeAction = ImeAction.Send,
-                                    keyboardType = KeyboardType.Text,
-                                    autoCorrect = false
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onSend = {
-                                        if (inputCommand.isNotBlank() && !isExecuting) {
-                                            val cmd = inputCommand.trim()
-                                            commandHistory.add(cmd)
-                                            historyIndex = -1
-                                            onExecuteCommand(cmd)
-                                            inputCommand = ""
-                                        }
-                                    }
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = TermBg,
-                                    unfocusedContainerColor = TermBg,
-                                    focusedTextColor = TermText,
-                                    unfocusedTextColor = TermText,
-                                    focusedPlaceholderColor = TermDim,
-                                    unfocusedPlaceholderColor = TermDim,
-                                    cursorColor = TermPromptUser,
-                                    focusedBorderColor = TermPromptUser,
-                                    unfocusedBorderColor = TermSurfaceBorder
-                                ),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .focusRequester(focusRequester)
-                                    .testTag("terminal_command_input")
-                            )
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // History Navigation & Execute Actions
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (commandHistory.isNotEmpty()) {
-                                    Row {
-                                        // History UP
-                                        IconButton(
-                                            onClick = {
-                                                if (commandHistory.isNotEmpty()) {
-                                                    if (historyIndex == -1) historyIndex = commandHistory.size - 1
-                                                    else if (historyIndex > 0) historyIndex--
-                                                    inputCommand = commandHistory[historyIndex]
-                                                }
-                                            },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ArrowUpward,
-                                                contentDescription = "Prev Command",
-                                                tint = TermDim,
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                        }
+                                // Prompt label
+                                Text(
+                                    text = "$",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = TermPromptUser,
+                                    modifier = Modifier.padding(start = 4.dp, end = 8.dp)
+                                )
 
-                                        // History DOWN
-                                        IconButton(
-                                            onClick = {
-                                                if (commandHistory.isNotEmpty() && historyIndex != -1) {
-                                                    if (historyIndex < commandHistory.size - 1) {
-                                                        historyIndex++
-                                                        inputCommand = commandHistory[historyIndex]
-                                                    } else {
-                                                        historyIndex = -1
-                                                        inputCommand = ""
-                                                    }
-                                                }
-                                            },
-                                            modifier = Modifier.size(24.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.ArrowDownward,
-                                                contentDescription = "Next Command",
-                                                tint = TermDim,
-                                                modifier = Modifier.size(14.dp)
-                                            )
+                                // Command Text Field (supports multi-line paste & manual multi-line typing)
+                                OutlinedTextField(
+                                    value = inputCommand,
+                                    onValueChange = { inputCommand = it },
+                                    placeholder = {
+                                        Text(
+                                            text = "Type git command here (e.g. git status)...",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp,
+                                            color = TermDim
+                                        )
+                                    },
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFF0F6FC),
+                                        fontWeight = FontWeight.Medium,
+                                        fontSize = 13.sp
+                                    ),
+                                    trailingIcon = {
+                                        if (inputCommand.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = { inputCommand = "" },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = "Clear input",
+                                                    tint = TermDim,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         }
-                                    }
-                                }
+                                    },
+                                    maxLines = if (isFullscreen) 6 else 4,
+                                    keyboardOptions = KeyboardOptions(
+                                        imeAction = ImeAction.Send,
+                                        keyboardType = KeyboardType.Text,
+                                        autoCorrect = false
+                                    ),
+                                    keyboardActions = KeyboardActions(
+                                        onSend = {
+                                            if (inputCommand.isNotBlank() && !isExecuting) {
+                                                val cmd = inputCommand.trim()
+                                                commandHistory.add(cmd)
+                                                historyIndex = -1
+                                                onExecuteCommand(cmd)
+                                                inputCommand = ""
+                                            }
+                                        }
+                                    ),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color(0xFF0D1117),
+                                        unfocusedContainerColor = Color(0xFF0D1117),
+                                        focusedTextColor = Color(0xFFF0F6FC),
+                                        unfocusedTextColor = Color(0xFFF0F6FC),
+                                        focusedPlaceholderColor = TermDim,
+                                        unfocusedPlaceholderColor = TermDim,
+                                        cursorColor = TermPromptUser,
+                                        focusedBorderColor = TermPromptUser,
+                                        unfocusedBorderColor = TermPromptUser.copy(alpha = 0.4f)
+                                    ),
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .focusRequester(focusRequester)
+                                        .testTag("terminal_command_input")
+                                )
+
+                                Spacer(modifier = Modifier.width(6.dp))
 
                                 // Execute Button
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = if (inputCommand.isNotBlank() && !isExecuting) TermPromptUser else TermSurfaceBorder,
+                                    color = if (inputCommand.isNotBlank() && !isExecuting) TermPromptUser else TermSurface,
+                                    border = BorderStroke(1.dp, if (inputCommand.isNotBlank() && !isExecuting) TermPromptUser else TermSurfaceBorder),
                                     modifier = Modifier
-                                        .size(38.dp)
+                                        .height(44.dp)
                                         .clickable(
                                             enabled = inputCommand.isNotBlank() && !isExecuting,
                                             onClick = {
@@ -780,10 +735,13 @@ fun GitHubTerminalModal(
                                         )
                                         .testTag("terminal_execute_btn")
                                 ) {
-                                    Box(contentAlignment = Alignment.Center) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 10.dp)
+                                    ) {
                                         if (isExecuting) {
                                             CircularProgressIndicator(
-                                                color = TermText,
+                                                color = Color.White,
                                                 modifier = Modifier.size(16.dp),
                                                 strokeWidth = 2.dp
                                             )
@@ -792,7 +750,15 @@ fun GitHubTerminalModal(
                                                 imageVector = if (lineCount > 1) Icons.Default.PlayArrow else Icons.Default.Send,
                                                 contentDescription = "Execute",
                                                 tint = if (inputCommand.isNotBlank()) Color.White else TermDim,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(
+                                                text = "Run",
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (inputCommand.isNotBlank()) Color.White else TermDim
                                             )
                                         }
                                     }

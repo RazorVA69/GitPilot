@@ -280,6 +280,7 @@ fun GitExplorerApp(
                             },
                             onCutItem = { path, isDir, sha -> viewModel.cutItem(path, isDir, sha) },
                             onCopyItem = { path, isDir, sha -> viewModel.copyItem(path, isDir, sha) },
+                            onRenameItem = { path, newName, isDir, sha -> viewModel.renameItem(path, newName, isDir, sha) },
                             onCutSelection = viewModel::cutSelection,
                             onCopySelection = viewModel::copySelection,
                             onClearClipboard = viewModel::clearClipboard,

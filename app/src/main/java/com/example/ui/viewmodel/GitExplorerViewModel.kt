@@ -1343,6 +1343,145 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update { it.copy(clipboard = null) }
     }
 
+    fun renameItem(oldPath: String, newName: String, isDirectory: Boolean, sha: String = "") {
+        val repo = _uiState.value.selectedRepo ?: return
+        val branch = _uiState.value.selectedBranch
+        val cleanNewName = newName.trim().trim('/')
+        if (cleanNewName.isEmpty()) {
+            _uiState.update { it.copy(errorMessage = "Name cannot be empty") }
+            return
+        }
+
+        val parentDir = if (oldPath.contains('/')) oldPath.substringBeforeLast('/') else ""
+        val newPath = if (parentDir.isEmpty()) cleanNewName else "$parentDir/$cleanNewName"
+
+        if (oldPath == newPath) {
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isPasting = true,
+                    pasteProgress = Triple(0, 1, "Renaming to $cleanNewName...")
+                )
+            }
+
+            val token = _uiState.value.currentAccount?.token
+            val rawTree = _uiState.value.rawTreeItems
+
+            if (isDirectory) {
+                val folderPrefix = "$oldPath/"
+                val dirFiles = rawTree.filter { !it.isDirectory && it.path.startsWith(folderPrefix) }
+                var successCount = 0
+                var failCount = 0
+
+                for ((idx, df) in dirFiles.withIndex()) {
+                    val relativeSubPath = df.path.removePrefix(folderPrefix)
+                    val destFilePath = "$newPath/$relativeSubPath"
+                    _uiState.update {
+                        it.copy(pasteProgress = Triple(idx, dirFiles.size, "Moving ${df.fileName}..."))
+                    }
+
+                    val contentResult = repository.getFileContent(token, repo.owner.login, repo.name, df.path, branch)
+                    if (contentResult.isSuccess) {
+                        val (_, decoded) = contentResult.getOrNull()!!
+                        val destSha = rawTree.find { it.path == destFilePath }?.sha
+                        val commitRes = repository.commitFile(
+                            token = token,
+                            owner = repo.owner.login,
+                            repo = repo.name,
+                            path = destFilePath,
+                            content = decoded,
+                            message = "Rename $oldPath to $newPath ($relativeSubPath)",
+                            sha = destSha,
+                            branch = branch
+                        )
+                        if (commitRes.isSuccess) {
+                            repository.deleteFile(
+                                token = token,
+                                owner = repo.owner.login,
+                                repo = repo.name,
+                                path = df.path,
+                                sha = df.sha,
+                                message = "Remove old $oldPath after rename",
+                                branch = branch
+                            )
+                            successCount++
+                        } else {
+                            failCount++
+                        }
+                    } else {
+                        failCount++
+                    }
+                }
+
+                _uiState.update {
+                    it.copy(
+                        isPasting = false,
+                        pasteProgress = null,
+                        toastOrMessage = "Renamed folder to $cleanNewName" + if (failCount > 0) " ($failCount failed)" else ""
+                    )
+                }
+            } else {
+                val contentResult = repository.getFileContent(token, repo.owner.login, repo.name, oldPath, branch)
+                if (contentResult.isSuccess) {
+                    val (_, decoded) = contentResult.getOrNull()!!
+                    val fileSha = if (sha.isNotBlank()) sha else (rawTree.find { it.path == oldPath }?.sha ?: "")
+                    val destSha = rawTree.find { it.path == newPath }?.sha
+
+                    val commitRes = repository.commitFile(
+                        token = token,
+                        owner = repo.owner.login,
+                        repo = repo.name,
+                        path = newPath,
+                        content = decoded,
+                        message = "Rename $oldPath to $newPath",
+                        sha = destSha,
+                        branch = branch
+                    )
+
+                    if (commitRes.isSuccess) {
+                        repository.deleteFile(
+                            token = token,
+                            owner = repo.owner.login,
+                            repo = repo.name,
+                            path = oldPath,
+                            sha = fileSha,
+                            message = "Delete old $oldPath after rename",
+                            branch = branch
+                        )
+                        _uiState.update {
+                            it.copy(
+                                isPasting = false,
+                                pasteProgress = null,
+                                toastOrMessage = "Renamed to $cleanNewName"
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isPasting = false,
+                                pasteProgress = null,
+                                errorMessage = "Failed to rename: ${commitRes.exceptionOrNull()?.message}"
+                            )
+                        }
+                    }
+                } else {
+                    _uiState.update {
+                        it.copy(
+                            isPasting = false,
+                            pasteProgress = null,
+                            errorMessage = "Failed to fetch file content for rename"
+                        )
+                    }
+                }
+            }
+
+            syncActiveRepository(isSilent = false)
+        }
+    }
+
     fun pasteClipboard(targetDirectory: String) {
         val repo = _uiState.value.selectedRepo ?: return
         val clipboard = _uiState.value.clipboard ?: return
