@@ -15,11 +15,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -27,11 +25,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,12 +35,10 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.FitScreen
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.PlayArrow
@@ -53,20 +47,15 @@ import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,12 +67,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
@@ -93,7 +80,6 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -123,7 +109,7 @@ data class TerminalLine(
     val branch: String = ""
 )
 
-// Terminal Light Modern Beautiful color scheme (Clean modern CLI aesthetic)
+// Terminal Light Modern developer-tool aesthetic
 private val TermBg = Color(0xFFF8FAFC)
 private val TermSurface = Color(0xFFFFFFFF)
 private val TermSurface2 = Color(0xFFF1F5F9)
@@ -131,7 +117,7 @@ private val TermSurfaceBorder = Color(0xFFE2E8F0)
 private val TermPromptUser = Color(0xFF0F9D74)
 private val TermPromptBranch = Color(0xFF7C3AED)
 private val TermPromptPath = Color(0xFF0284C7)
-private val TermText = Color(0xFF0F172A)
+private val TermText = Color(0xFF14141B)
 private val TermSuccess = Color(0xFF16A34A)
 private val TermError = Color(0xFFDC2626)
 private val TermWarning = Color(0xFFD97706)
@@ -174,7 +160,7 @@ fun GitHubTerminalModal(
 
     // Auto-focus terminal input on open
     LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(200)
+        kotlinx.coroutines.delay(150)
         try {
             focusRequester.requestFocus()
             keyboardController?.show()
@@ -188,7 +174,7 @@ fun GitHubTerminalModal(
             "git branch",
             "git log --oneline -n 5",
             "git add .",
-            "git commit -m \"Update from GitExplorer\"",
+            "git commit -m \"Update\"",
             "git push",
             "git diff",
             "ls -la",
@@ -206,21 +192,31 @@ fun GitHubTerminalModal(
         )
     }
 
+    fun submitCurrentCommand() {
+        val cmd = inputCommand.trim()
+        if (cmd.isNotBlank() && !isExecuting) {
+            if (commandHistory.isEmpty() || commandHistory.last() != cmd) {
+                commandHistory.add(cmd)
+            }
+            historyIndex = -1
+            onExecuteCommand(cmd)
+            inputCommand = ""
+        }
+    }
+
     BackHandler(onBack = onDismiss)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.72f))
+            .background(Color.Black.copy(alpha = 0.65f))
             .statusBarsPadding()
-            .navigationBarsPadding()
             .imePadding()
-            .padding(if (isFullscreen) 0.dp else 10.dp)
+            .padding(if (isFullscreen) 0.dp else 8.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
             ) {
-                // Dimmed backdrop click
                 onDismiss()
             },
         contentAlignment = Alignment.Center
@@ -232,230 +228,235 @@ fun GitHubTerminalModal(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null
                 ) {
-                    // Consume click so inside of card does not dismiss
+                    // Prevent dismiss on inside click
                 }
                 .testTag("github_terminal_card"),
-            shape = RoundedCornerShape(if (isFullscreen) 0.dp else 14.dp),
+            shape = RoundedCornerShape(if (isFullscreen) 0.dp else 12.dp),
             colors = CardDefaults.cardColors(containerColor = TermBg),
             border = BorderStroke(1.dp, TermSurfaceBorder)
         ) {
-                Column(
-                    modifier = Modifier.fillMaxSize()
+            Column(
+                modifier = Modifier.fillMaxSize()
+            ) {
+                // 1. Header Bar
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = TermSurface
                 ) {
-                    // Header Bar
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = TermSurface
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            // Terminal Title & Context
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Surface(
-                                    modifier = Modifier.size(32.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = TermPromptUser.copy(alpha = 0.15f)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.Terminal,
-                                            contentDescription = "Terminal",
-                                            tint = TermPromptUser,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.width(10.dp))
-
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = repo?.name ?: "GitHub Terminal",
-                                            style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = TermText,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = TermPromptBranch.copy(alpha = 0.2f)
-                                        ) {
-                                            Text(
-                                                text = selectedBranch,
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TermPromptBranch,
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                            )
-                                        }
-                                    }
-
-                                    Text(
-                                        text = if (currentPath.isEmpty()) "~/" else "~/$currentPath",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        color = TermDim,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
-                            }
-
-                            // Header Actions
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                // Paste & Run from clipboard
-                                IconButton(
-                                    onClick = {
-                                        val clipText = clipboardManager.getText()?.text?.trim()
-                                        if (!clipText.isNullOrEmpty()) {
-                                            inputCommand = clipText
-                                        }
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentPaste,
-                                        contentDescription = "Paste Clipboard",
-                                        tint = TermDim,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                }
-
-                                // Copy Terminal Logs
-                                IconButton(
-                                    onClick = {
-                                        val allLogs = terminalLines.joinToString("\n") { it.text }
-                                        clipboardManager.setText(AnnotatedString(allLogs))
-                                    },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentCopy,
-                                        contentDescription = "Copy Logs",
-                                        tint = TermDim,
-                                        modifier = Modifier.size(17.dp)
-                                    )
-                                }
-
-                                // Clear Screen
-                                IconButton(
-                                    onClick = onClearTerminal,
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteSweep,
-                                        contentDescription = "Clear Terminal",
-                                        tint = TermDim,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                // Toggle Fullscreen
-                                IconButton(
-                                    onClick = { isFullscreen = !isFullscreen },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
-                                        contentDescription = "Fullscreen",
-                                        tint = TermDim,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-
-                                // Close Modal
-                                IconButton(
-                                    onClick = onDismiss,
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Close",
-                                        tint = TermDim,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = TermSurfaceBorder)
-
-                    // Quick Command Chips
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(TermBg)
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = "QUICK:",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TermDim
-                        )
-
-                        quickCommands.forEach { cmd ->
+                        // Terminal Title & Context
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
                             Surface(
+                                modifier = Modifier.size(30.dp),
                                 shape = RoundedCornerShape(6.dp),
-                                color = TermSurface,
-                                border = BorderStroke(1.dp, TermSurfaceBorder),
-                                modifier = Modifier.clickable {
-                                    inputCommand = cmd
-                                }
+                                color = TermPromptUser.copy(alpha = 0.12f)
                             ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Terminal,
+                                        contentDescription = "Terminal",
+                                        tint = TermPromptUser,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = repo?.name ?: "GitHub Terminal",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TermText,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = TermPromptBranch.copy(alpha = 0.12f)
+                                    ) {
+                                        Text(
+                                            text = selectedBranch,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TermPromptBranch,
+                                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                        )
+                                    }
+                                }
+
                                 Text(
-                                    text = cmd,
+                                    text = if (currentPath.isEmpty()) "~/" else "~/$currentPath",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp,
-                                    color = TermPromptUser,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    color = TermDim,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+
+                        // Header Actions
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            // Paste button in header
+                            IconButton(
+                                onClick = {
+                                    val clipText = clipboardManager.getText()?.text?.trim()
+                                    if (!clipText.isNullOrEmpty()) {
+                                        inputCommand = if (inputCommand.isEmpty()) clipText else "$inputCommand $clipText"
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    }
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentPaste,
+                                    contentDescription = "Paste Clipboard",
+                                    tint = TermDim,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            // Copy Terminal Logs
+                            IconButton(
+                                onClick = {
+                                    val allLogs = terminalLines.joinToString("\n") { it.text }
+                                    clipboardManager.setText(AnnotatedString(allLogs))
+                                },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy Logs",
+                                    tint = TermDim,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            // Clear Screen
+                            IconButton(
+                                onClick = onClearTerminal,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "Clear Terminal",
+                                    tint = TermDim,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            // Toggle Fullscreen
+                            IconButton(
+                                onClick = { isFullscreen = !isFullscreen },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (isFullscreen) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                    contentDescription = "Fullscreen",
+                                    tint = TermDim,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+
+                            // Close Modal
+                            IconButton(
+                                onClick = onDismiss,
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Close",
+                                    tint = TermDim,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
                     }
+                }
 
-                    HorizontalDivider(color = TermSurfaceBorder)
+                HorizontalDivider(color = TermSurfaceBorder)
 
-                    // Terminal Output Window
-                    SelectionContainer(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .background(TermBg)
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null
-                            ) {
+                // 2. Quick Command Chips
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(TermSurface2)
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 10.dp, vertical = 5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "QUICK:",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TermDim
+                    )
+
+                    quickCommands.forEach { cmd ->
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = TermSurface,
+                            border = BorderStroke(1.dp, TermSurfaceBorder),
+                            modifier = Modifier.clickable {
+                                inputCommand = cmd
                                 focusRequester.requestFocus()
                                 keyboardController?.show()
                             }
-                    ) {
+                        ) {
+                            Text(
+                                text = cmd,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = TermPromptUser,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = TermSurfaceBorder)
+
+                // 3. Terminal Output Window (Wrapped in Box with weight(1f) to ensure clean layout)
+                Box(
+                    modifier = Modifier
+                        .weight(1f, fill = true)
+                        .fillMaxWidth()
+                        .background(TermBg)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            focusRequester.requestFocus()
+                            keyboardController?.show()
+                        }
+                ) {
+                    SelectionContainer {
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             items(terminalLines, key = { it.id }) { line ->
@@ -470,14 +471,14 @@ fun GitHubTerminalModal(
                                     ) {
                                         CircularProgressIndicator(
                                             color = TermPromptUser,
-                                            modifier = Modifier.size(14.dp),
+                                            modifier = Modifier.size(13.dp),
                                             strokeWidth = 2.dp
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = "Running git operation...",
                                             fontFamily = FontFamily.Monospace,
-                                            fontSize = 12.sp,
+                                            fontSize = 11.sp,
                                             color = TermDim
                                         )
                                     }
@@ -485,184 +486,186 @@ fun GitHubTerminalModal(
                             }
                         }
                     }
+                }
 
-                    HorizontalDivider(color = TermSurfaceBorder)
+                HorizontalDivider(color = TermSurfaceBorder)
 
-                    // Mobile Virtual Key Shortcuts Accessory Row
+                // 4. Mobile Quick Token Shortcuts
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = TermSurface2
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        // Quick Paste Button in Shortcut Row
+                        Surface(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text
+                                if (!clip.isNullOrEmpty()) {
+                                    inputCommand = if (inputCommand.isEmpty()) clip else "$inputCommand $clip"
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                }
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            color = TermPromptUser.copy(alpha = 0.10f),
+                            border = BorderStroke(1.dp, TermPromptUser.copy(alpha = 0.3f)),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.ContentPaste,
+                                    contentDescription = "Paste",
+                                    tint = TermPromptUser,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text(
+                                    text = "Paste",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TermPromptUser
+                                )
+                            }
+                        }
+
+                        // Quick token chips
+                        mobileShortcuts.forEach { token ->
+                            Surface(
+                                onClick = {
+                                    inputCommand = if (inputCommand.isEmpty()) {
+                                        token
+                                    } else if (inputCommand.endsWith(" ") || token.startsWith("-") || token.startsWith("/") || token.startsWith("|")) {
+                                        "$inputCommand$token"
+                                    } else {
+                                        "$inputCommand $token"
+                                    }
+                                    focusRequester.requestFocus()
+                                    keyboardController?.show()
+                                },
+                                shape = RoundedCornerShape(4.dp),
+                                color = TermSurface,
+                                border = BorderStroke(1.dp, TermSurfaceBorder),
+                                modifier = Modifier.height(26.dp)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 7.dp)
+                                ) {
+                                    Text(
+                                        text = token,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = if (token == "git" || token == "push" || token == "pull") FontWeight.Bold else FontWeight.Normal,
+                                        color = if (token == "git") TermPromptUser else TermText
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = TermSurfaceBorder)
+
+                // 5. Multi-Line Notice if input has multiple lines
+                val lineCount = remember(inputCommand) {
+                    inputCommand.lines().count { it.isNotBlank() }
+                }
+
+                if (lineCount > 1) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = TermSurface
+                        color = TermSurface,
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState())
-                                .padding(horizontal = 10.dp, vertical = 5.dp),
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            // Quick Paste Button
-                            Surface(
-                                onClick = {
-                                    val clip = clipboardManager.getText()?.text
-                                    if (!clip.isNullOrEmpty()) {
-                                        inputCommand = if (inputCommand.isEmpty()) clip else "$inputCommand $clip"
-                                        focusRequester.requestFocus()
-                                        keyboardController?.show()
-                                    }
-                                },
-                                shape = RoundedCornerShape(6.dp),
-                                color = TermBg,
-                                border = BorderStroke(1.dp, TermSurfaceBorder),
-                                modifier = Modifier.height(28.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.ContentPaste,
-                                        contentDescription = "Paste",
-                                        tint = TermPromptUser,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Paste",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        color = TermText
-                                    )
-                                }
-                            }
-
-                            // Quick key tokens
-                            mobileShortcuts.forEach { token ->
-                                Surface(
-                                    onClick = {
-                                        inputCommand = if (inputCommand.isEmpty()) {
-                                            token
-                                        } else if (inputCommand.endsWith(" ") || token.startsWith("-") || token.startsWith("/") || token.startsWith("|")) {
-                                            "$inputCommand$token"
-                                        } else {
-                                            "$inputCommand $token"
-                                        }
-                                        focusRequester.requestFocus()
-                                        keyboardController?.show()
-                                    },
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = TermBg,
-                                    border = BorderStroke(1.dp, TermSurfaceBorder),
-                                    modifier = Modifier.height(28.dp)
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.padding(horizontal = 8.dp)
-                                    ) {
-                                        Text(
-                                            text = token,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.sp,
-                                            fontWeight = if (token == "git" || token == "push" || token == "pull") FontWeight.Bold else FontWeight.Normal,
-                                            color = if (token == "git") TermPromptUser else TermText
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(color = TermSurfaceBorder)
-
-                    // Multi-Line Notice if Input has multiple lines
-                    val lineCount = remember(inputCommand) {
-                        inputCommand.lines().count { it.isNotBlank() }
-                    }
-
-                    if (lineCount > 1) {
-                        Surface(
-                            color = TermSurface,
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = null,
-                                        tint = TermSuccess,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "Multi-Line Script: $lineCount commands ready to run sequentially",
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 11.sp,
-                                        color = TermSuccess,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-
-                                TextButton(
-                                    onClick = { inputCommand = "" },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                                ) {
-                                    Text("Clear All", fontSize = 11.sp, color = TermError)
-                                }
-                            }
-                        }
-                        HorizontalDivider(color = TermSurfaceBorder)
-                    }
-
-                    // Command Input Console Row
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFF161B22),
-                        border = BorderStroke(1.dp, TermSurfaceBorder)
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                // Prompt label
-                                Text(
-                                    text = "$",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = TermPromptUser,
-                                    modifier = Modifier.padding(start = 4.dp, end = 8.dp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = null,
+                                    tint = TermSuccess,
+                                    modifier = Modifier.size(14.dp)
                                 )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = "Multi-Line: $lineCount commands ready",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    color = TermSuccess,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
 
-                                // Command Text Field (supports multi-line paste & manual multi-line typing)
-                                OutlinedTextField(
-                                    value = inputCommand,
-                                    onValueChange = { inputCommand = it },
-                                    placeholder = {
-                                        Text(
-                                            text = "Type git command here (e.g. git status)...",
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 12.sp,
-                                            color = TermDim
-                                        )
-                                    },
-                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                            TextButton(
+                                onClick = { inputCommand = "" },
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                            ) {
+                                Text("Clear", fontSize = 11.sp, color = TermError)
+                            }
+                        }
+                    }
+                    HorizontalDivider(color = TermSurfaceBorder)
+                }
+
+                // 6. Command Input Console Bar (Always pinned right above the keyboard, clear high-contrast styling)
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = TermSurface
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Emerald Prompt Symbol
+                            Text(
+                                text = "$",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TermPromptUser,
+                                modifier = Modifier.padding(start = 2.dp, end = 6.dp)
+                            )
+
+                            // Command Text Field with clear high contrast text
+                            OutlinedTextField(
+                                value = inputCommand,
+                                onValueChange = { inputCommand = it },
+                                placeholder = {
+                                    Text(
+                                        text = "Type or paste command (e.g. git status)...",
                                         fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFFF0F6FC),
-                                        fontWeight = FontWeight.Medium,
-                                        fontSize = 13.sp
-                                    ),
-                                    trailingIcon = {
+                                        fontSize = 12.sp,
+                                        color = TermDim
+                                    )
+                                },
+                                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                    fontFamily = FontFamily.Monospace,
+                                    color = TermText,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp
+                                ),
+                                trailingIcon = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (inputCommand.isNotEmpty()) {
                                             IconButton(
                                                 onClick = { inputCommand = "" },
@@ -672,95 +675,144 @@ fun GitHubTerminalModal(
                                                     imageVector = Icons.Default.Close,
                                                     contentDescription = "Clear input",
                                                     tint = TermDim,
-                                                    modifier = Modifier.size(16.dp)
+                                                    modifier = Modifier.size(15.dp)
                                                 )
                                             }
                                         }
-                                    },
-                                    maxLines = if (isFullscreen) 6 else 4,
-                                    keyboardOptions = KeyboardOptions(
-                                        imeAction = ImeAction.Send,
-                                        keyboardType = KeyboardType.Text,
-                                        autoCorrect = false
-                                    ),
-                                    keyboardActions = KeyboardActions(
-                                        onSend = {
-                                            if (inputCommand.isNotBlank() && !isExecuting) {
-                                                val cmd = inputCommand.trim()
-                                                commandHistory.add(cmd)
-                                                historyIndex = -1
-                                                onExecuteCommand(cmd)
-                                                inputCommand = ""
-                                            }
+                                    }
+                                },
+                                maxLines = if (isFullscreen) 5 else 3,
+                                keyboardOptions = KeyboardOptions(
+                                    imeAction = ImeAction.Send,
+                                    keyboardType = KeyboardType.Text,
+                                    autoCorrect = false
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onSend = {
+                                        submitCurrentCommand()
+                                    }
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = TermSurface,
+                                    unfocusedContainerColor = TermBg,
+                                    focusedTextColor = TermText,
+                                    unfocusedTextColor = TermText,
+                                    focusedPlaceholderColor = TermDim,
+                                    unfocusedPlaceholderColor = TermDim,
+                                    cursorColor = TermPromptUser,
+                                    focusedBorderColor = TermPromptUser,
+                                    unfocusedBorderColor = TermSurfaceBorder
+                                ),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(focusRequester)
+                                    .testTag("terminal_command_input")
+                            )
+
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // Direct Paste Button next to input
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = TermSurface2,
+                                border = BorderStroke(1.dp, TermSurfaceBorder),
+                                modifier = Modifier
+                                    .size(width = 40.dp, height = 40.dp)
+                                    .clickable {
+                                        val clip = clipboardManager.getText()?.text
+                                        if (!clip.isNullOrEmpty()) {
+                                            inputCommand = if (inputCommand.isEmpty()) clip else "$inputCommand $clip"
+                                            focusRequester.requestFocus()
+                                            keyboardController?.show()
                                         }
-                                    ),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedContainerColor = Color(0xFF0D1117),
-                                        unfocusedContainerColor = Color(0xFF0D1117),
-                                        focusedTextColor = Color(0xFFF0F6FC),
-                                        unfocusedTextColor = Color(0xFFF0F6FC),
-                                        focusedPlaceholderColor = TermDim,
-                                        unfocusedPlaceholderColor = TermDim,
-                                        cursorColor = TermPromptUser,
-                                        focusedBorderColor = TermPromptUser,
-                                        unfocusedBorderColor = TermPromptUser.copy(alpha = 0.4f)
-                                    ),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .focusRequester(focusRequester)
-                                        .testTag("terminal_command_input")
-                                )
+                                    }
+                                    .testTag("terminal_paste_btn")
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.ContentPaste,
+                                        contentDescription = "Paste Clipboard",
+                                        tint = TermPromptUser,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
 
-                                Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
 
-                                // Execute Button
+                            // History Navigation Buttons (if history exists)
+                            if (commandHistory.isNotEmpty()) {
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
-                                    color = if (inputCommand.isNotBlank() && !isExecuting) TermPromptUser else TermSurface,
-                                    border = BorderStroke(1.dp, if (inputCommand.isNotBlank() && !isExecuting) TermPromptUser else TermSurfaceBorder),
+                                    color = TermSurface2,
+                                    border = BorderStroke(1.dp, TermSurfaceBorder),
                                     modifier = Modifier
-                                        .height(44.dp)
-                                        .clickable(
-                                            enabled = inputCommand.isNotBlank() && !isExecuting,
-                                            onClick = {
-                                                val cmd = inputCommand.trim()
-                                                if (cmd.isNotEmpty()) {
-                                                    commandHistory.add(cmd)
-                                                    historyIndex = -1
-                                                    onExecuteCommand(cmd)
-                                                    inputCommand = ""
-                                                }
+                                        .size(width = 32.dp, height = 40.dp)
+                                        .clickable {
+                                            if (historyIndex == -1) {
+                                                historyIndex = commandHistory.size - 1
+                                            } else if (historyIndex > 0) {
+                                                historyIndex--
                                             }
-                                        )
-                                        .testTag("terminal_execute_btn")
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.padding(horizontal = 10.dp)
-                                    ) {
-                                        if (isExecuting) {
-                                            CircularProgressIndicator(
-                                                color = Color.White,
-                                                modifier = Modifier.size(16.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        } else {
-                                            Icon(
-                                                imageVector = if (lineCount > 1) Icons.Default.PlayArrow else Icons.Default.Send,
-                                                contentDescription = "Execute",
-                                                tint = if (inputCommand.isNotBlank()) Color.White else TermDim,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = "Run",
-                                                fontFamily = FontFamily.Monospace,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (inputCommand.isNotBlank()) Color.White else TermDim
-                                            )
+                                            if (historyIndex in commandHistory.indices) {
+                                                inputCommand = commandHistory[historyIndex]
+                                            }
                                         }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowUpward,
+                                            contentDescription = "Previous Command",
+                                            tint = TermDim,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+
+                            // Run / Execute Button
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (inputCommand.isNotBlank() && !isExecuting) TermText else TermSurface2,
+                                border = BorderStroke(1.dp, if (inputCommand.isNotBlank() && !isExecuting) TermText else TermSurfaceBorder),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .clickable(
+                                        enabled = inputCommand.isNotBlank() && !isExecuting,
+                                        onClick = {
+                                            submitCurrentCommand()
+                                        }
+                                    )
+                                    .testTag("terminal_execute_btn")
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 10.dp)
+                                ) {
+                                    if (isExecuting) {
+                                        CircularProgressIndicator(
+                                            color = Color.White,
+                                            modifier = Modifier.size(14.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = if (lineCount > 1) Icons.Default.PlayArrow else Icons.Default.Send,
+                                            contentDescription = "Execute",
+                                            tint = if (inputCommand.isNotBlank()) Color.White else TermDim,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Run",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (inputCommand.isNotBlank()) Color.White else TermDim
+                                        )
                                     }
                                 }
                             }
@@ -770,6 +822,7 @@ fun GitHubTerminalModal(
             }
         }
     }
+}
 
 @Composable
 private fun TerminalLineItem(line: TerminalLine) {
@@ -778,7 +831,7 @@ private fun TerminalLineItem(line: TerminalLine) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 8.dp, bottom = 2.dp),
+                    .padding(top = 6.dp, bottom = 2.dp),
                 verticalAlignment = Alignment.Top
             ) {
                 val promptText = buildAnnotatedString {
@@ -904,3 +957,4 @@ private fun TerminalLineItem(line: TerminalLine) {
         }
     }
 }
+
