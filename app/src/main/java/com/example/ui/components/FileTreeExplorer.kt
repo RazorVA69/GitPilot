@@ -144,7 +144,7 @@ fun FileTreeExplorer(
     onSelectAllInDir: () -> Unit,
     onClearSelection: () -> Unit,
     onOpenBatchDeleteModal: () -> Unit,
-    onDeleteSingleFile: (path: String, sha: String) -> Unit,
+    onDeleteSingleFile: (path: String, sha: String, isDirectory: Boolean) -> Unit = { _, _, _ -> },
     onCutItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onCopyItem: (path: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _ -> },
     onRenameItem: (path: String, newName: String, isDirectory: Boolean, sha: String) -> Unit = { _, _, _, _ -> },
@@ -903,7 +903,9 @@ fun FileTreeExplorer(
                             sha = sha
                         )
                     },
-                    onDeleteSingle = onDeleteSingleFile
+                    onDeleteSingle = { path, sha ->
+                        onDeleteSingleFile(path, sha, false)
+                    }
                 )
             } else {
                 // Directory Node Children List (Files & Folders)
@@ -1026,7 +1028,7 @@ fun FileTreeExplorer(
                                 onCut = { onCutItem(childNode.path, childNode.isDirectory, childNode.sha) },
                                 onCopy = { onCopyItem(childNode.path, childNode.isDirectory, childNode.sha) },
                                 onRename = { itemToRename = childNode },
-                                onDelete = { onDeleteSingleFile(childNode.path, childNode.sha) },
+                                onDelete = { onDeleteSingleFile(childNode.path, childNode.sha, childNode.isDirectory) },
                                 onTogglePinFolder = { onTogglePinFolder(childNode.path) },
                                 modifier = Modifier.animateItem()
                             )

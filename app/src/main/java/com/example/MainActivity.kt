@@ -275,8 +275,8 @@ fun GitExplorerApp(
                             onSelectAllInDir = viewModel::selectAllInCurrentDirectory,
                             onClearSelection = viewModel::clearSelectedFiles,
                             onOpenBatchDeleteModal = { viewModel.setShowBatchDeleteDialog(true) },
-                            onDeleteSingleFile = { path, sha ->
-                                viewModel.deleteSingleFile(path, sha)
+                            onDeleteSingleFile = { path, sha, isDir ->
+                                viewModel.deleteSingleFile(path = path, sha = sha, isDirectory = isDir)
                             },
                             onCutItem = { path, isDir, sha -> viewModel.cutItem(path, isDir, sha) },
                             onCopyItem = { path, isDir, sha -> viewModel.copyItem(path, isDir, sha) },

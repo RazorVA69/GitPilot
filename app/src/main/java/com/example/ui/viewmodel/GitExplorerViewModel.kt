@@ -1087,35 +1087,155 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun deleteSingleFile(path: String, sha: String) {
+    fun deleteSingleFile(path: String, sha: String = "", isDirectory: Boolean = false) {
         val repo = _uiState.value.selectedRepo ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isBatchDeleting = true) }
             val token = _uiState.value.currentAccount?.token
-            val result = repository.deleteFile(
-                token = token,
-                owner = repo.owner.login,
-                repo = repo.name,
-                path = path,
-                sha = sha,
-                message = "Delete $path",
-                branch = _uiState.value.selectedBranch
-            )
+            val rawTree = _uiState.value.rawTreeItems
+            val cleanPath = path.trim().trim('/')
+            val displayName = cleanPath.substringAfterLast('/')
 
-            if (result.isSuccess) {
-                _uiState.update {
-                    it.copy(
-                        isBatchDeleting = false,
-                        toastOrMessage = "Deleted $path"
+            val isFolder = isDirectory || rawTree.none { it.path == cleanPath && !it.isDirectory } || rawTree.any { it.path.startsWith("$cleanPath/") }
+
+            if (isFolder) {
+                // Delete all files inside the directory
+                val folderPrefix = "$cleanPath/"
+                val filesInFolder = rawTree.filter { !it.isDirectory && (it.path == cleanPath || it.path.startsWith(folderPrefix)) }
+
+                if (filesInFolder.isNotEmpty()) {
+                    _uiState.update {
+                        it.copy(batchProgress = Triple(0, filesInFolder.size, "Deleting folder $displayName..."))
+                    }
+                    var deletedCount = 0
+                    var failedCount = 0
+                    var lastError: String? = null
+
+                    for ((index, item) in filesInFolder.withIndex()) {
+                        _uiState.update {
+                            it.copy(batchProgress = Triple(index, filesInFolder.size, "Deleting ${item.fileName}..."))
+                        }
+                        val result = repository.deleteFile(
+                            token = token,
+                            owner = repo.owner.login,
+                            repo = repo.name,
+                            path = item.path,
+                            sha = item.sha,
+                            message = "Delete ${item.path}",
+                            branch = _uiState.value.selectedBranch
+                        )
+                        if (result.isSuccess) {
+                            deletedCount++
+                        } else {
+                            failedCount++
+                            lastError = result.exceptionOrNull()?.message
+                        }
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            isBatchDeleting = false,
+                            batchProgress = null,
+                            toastOrMessage = if (failedCount == 0) "Deleted folder $displayName" else "Deleted $deletedCount file(s) in $displayName ($failedCount failed)",
+                            errorMessage = if (deletedCount == 0 && failedCount > 0) "Failed to delete folder: $lastError" else null
+                        )
+                    }
+                    syncActiveRepository(isSilent = false)
+                } else {
+                    // Try deleting placeholder .gitkeep if exists or directly
+                    val gitkeepRes = repository.deleteFile(
+                        token = token,
+                        owner = repo.owner.login,
+                        repo = repo.name,
+                        path = "$cleanPath/.gitkeep",
+                        sha = "",
+                        message = "Delete folder $displayName",
+                        branch = _uiState.value.selectedBranch
                     )
+                    if (gitkeepRes.isSuccess) {
+                        _uiState.update {
+                            it.copy(
+                                isBatchDeleting = false,
+                                batchProgress = null,
+                                toastOrMessage = "Deleted folder $displayName"
+                            )
+                        }
+                        syncActiveRepository(isSilent = false)
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isBatchDeleting = false,
+                                batchProgress = null,
+                                errorMessage = "Failed to delete folder $displayName: ${gitkeepRes.exceptionOrNull()?.message ?: "Folder is empty or already removed"}"
+                            )
+                        }
+                    }
                 }
-                syncActiveRepository(isSilent = false)
             } else {
-                _uiState.update {
-                    it.copy(
-                        isBatchDeleting = false,
-                        errorMessage = result.exceptionOrNull()?.message ?: "Failed to delete file"
-                    )
+                val fileSha = if (sha.isNotBlank()) sha else (rawTree.find { it.path == cleanPath }?.sha ?: "")
+                val result = repository.deleteFile(
+                    token = token,
+                    owner = repo.owner.login,
+                    repo = repo.name,
+                    path = cleanPath,
+                    sha = fileSha,
+                    message = "Delete $cleanPath",
+                    branch = _uiState.value.selectedBranch
+                )
+
+                if (result.isSuccess) {
+                    _uiState.update {
+                        it.copy(
+                            isBatchDeleting = false,
+                            batchProgress = null,
+                            toastOrMessage = "Deleted $displayName"
+                        )
+                    }
+                    syncActiveRepository(isSilent = false)
+                } else {
+                    val errorMsg = result.exceptionOrNull()?.message ?: ""
+                    // If GitHub returned 422 "is not a file", attempt folder deletion fallback
+                    if (errorMsg.contains("is not a file", ignoreCase = true) || errorMsg.contains("422")) {
+                        val folderPrefix = "$cleanPath/"
+                        val filesInFolder = rawTree.filter { !it.isDirectory && it.path.startsWith(folderPrefix) }
+                        if (filesInFolder.isNotEmpty()) {
+                            var delCount = 0
+                            for (item in filesInFolder) {
+                                val r = repository.deleteFile(token, repo.owner.login, repo.name, item.path, item.sha, "Delete ${item.path}", _uiState.value.selectedBranch)
+                                if (r.isSuccess) delCount++
+                            }
+                            _uiState.update {
+                                it.copy(
+                                    isBatchDeleting = false,
+                                    batchProgress = null,
+                                    toastOrMessage = "Deleted folder $displayName ($delCount items)"
+                                )
+                            }
+                            syncActiveRepository(isSilent = false)
+                            return@launch
+                        } else {
+                            val gitkeepRes = repository.deleteFile(token, repo.owner.login, repo.name, "$cleanPath/.gitkeep", "", "Delete folder $displayName", _uiState.value.selectedBranch)
+                            if (gitkeepRes.isSuccess) {
+                                _uiState.update {
+                                    it.copy(
+                                        isBatchDeleting = false,
+                                        batchProgress = null,
+                                        toastOrMessage = "Deleted folder $displayName"
+                                    )
+                                }
+                                syncActiveRepository(isSilent = false)
+                                return@launch
+                            }
+                        }
+                    }
+
+                    _uiState.update {
+                        it.copy(
+                            isBatchDeleting = false,
+                            batchProgress = null,
+                            errorMessage = result.exceptionOrNull()?.message ?: "Failed to delete file"
+                        )
+                    }
                 }
             }
         }
@@ -2423,7 +2543,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private suspend fun handleTerminalRm(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
-        val fileName = args.firstOrNull { !it.startsWith("-") }
+        val nonFlags = args.filter { !it.startsWith("-") }
+        val fileName = nonFlags.firstOrNull()?.trim('\'', '"')
         if (fileName.isNullOrBlank()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: missing operand"))
             return
@@ -2433,15 +2554,35 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
 
-        val filePath = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
-        val sha = _uiState.value.rawTreeItems.find { it.path == filePath }?.sha ?: ""
+        val rawPath = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+        val cleanPath = rawPath.trim('/')
+        val rawTree = _uiState.value.rawTreeItems
+        val dirFiles = rawTree.filter { !it.isDirectory && (it.path == cleanPath || it.path.startsWith("$cleanPath/")) }
 
-        val res = repository.deleteFile(token, repo.owner.login, repo.name, filePath, sha, "Delete $filePath via Terminal", branch)
-        if (res.isSuccess) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed: $filePath"))
+        if (dirFiles.isNotEmpty()) {
+            var delCount = 0
+            for (f in dirFiles) {
+                val res = repository.deleteFile(token, repo.owner.login, repo.name, f.path, f.sha, "Remove ${f.path} via Terminal", branch)
+                if (res.isSuccess) delCount++
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed: $cleanPath ($delCount file(s) deleted)"))
             syncActiveRepository(isSilent = true)
         } else {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: cannot remove '$fileName': ${res.exceptionOrNull()?.message}"))
+            val fileItem = rawTree.find { it.path == cleanPath }
+            val sha = fileItem?.sha ?: ""
+            val res = repository.deleteFile(token, repo.owner.login, repo.name, cleanPath, sha, "Delete $cleanPath via Terminal", branch)
+            if (res.isSuccess) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed: $cleanPath"))
+                syncActiveRepository(isSilent = true)
+            } else {
+                val gitkeepRes = repository.deleteFile(token, repo.owner.login, repo.name, "$cleanPath/.gitkeep", "", "Delete $cleanPath via Terminal", branch)
+                if (gitkeepRes.isSuccess) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed folder: $cleanPath"))
+                    syncActiveRepository(isSilent = true)
+                } else {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: cannot remove '$fileName': ${res.exceptionOrNull()?.message}"))
+                }
+            }
         }
     }
 
