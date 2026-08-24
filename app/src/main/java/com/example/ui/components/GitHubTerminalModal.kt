@@ -804,7 +804,6 @@ fun GitHubTerminalModal(
             }
         }
     }
-}
 
 @Composable
 private fun TerminalLineItem(line: TerminalLine) {

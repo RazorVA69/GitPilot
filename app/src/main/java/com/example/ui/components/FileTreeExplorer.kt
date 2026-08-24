@@ -226,7 +226,7 @@ fun FileTreeExplorer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 8.dp),
+                                    .padding(start = 7.dp, end = 4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Box(
@@ -244,12 +244,11 @@ fun FileTreeExplorer(
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.widthIn(max = 90.dp)
                                 )
-                                Spacer(modifier = Modifier.width(3.dp))
                                 Icon(
-                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Branch",
                                     tint = GitText2,
-                                    modifier = Modifier.size(13.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -267,7 +266,7 @@ fun FileTreeExplorer(
                             Row(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .padding(horizontal = 8.dp),
+                                    .padding(horizontal = 7.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 if (syncStatus == SyncStatus.SYNCING || isLoadingTree) {
