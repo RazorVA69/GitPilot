@@ -275,7 +275,7 @@ fun GitHubTerminalModal(
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = repo?.name ?: "GitHub Terminal",
+                                        text = repo?.fullName ?: (repo?.name ?: "GitHub Terminal"),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
                                         color = TermText,
@@ -299,7 +299,7 @@ fun GitHubTerminalModal(
                                 }
 
                                 Text(
-                                    text = if (currentPath.isEmpty()) "~/" else "~/$currentPath",
+                                    text = if (currentPath.isEmpty()) "workspace: ~/" else "workspace: ~/$currentPath",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp,
                                     color = TermDim,
@@ -460,7 +460,7 @@ fun GitHubTerminalModal(
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             items(terminalLines, key = { it.id }) { line ->
-                                TerminalLineItem(line = line)
+                                TerminalLineItem(line = line, username = repo?.owner?.login ?: "user")
                             }
 
                             if (isExecuting) {
@@ -825,7 +825,7 @@ fun GitHubTerminalModal(
 }
 
 @Composable
-private fun TerminalLineItem(line: TerminalLine) {
+private fun TerminalLineItem(line: TerminalLine, username: String = "user") {
     when (line.type) {
         TerminalLineType.PROMPT_COMMAND -> {
             Row(
@@ -836,7 +836,7 @@ private fun TerminalLineItem(line: TerminalLine) {
             ) {
                 val promptText = buildAnnotatedString {
                     withStyle(SpanStyle(color = TermPromptUser, fontWeight = FontWeight.Bold)) {
-                        append("user@github")
+                        append("$username@github")
                     }
                     withStyle(SpanStyle(color = TermDim)) {
                         append(":")

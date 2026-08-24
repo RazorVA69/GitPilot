@@ -1283,77 +1283,151 @@ private fun BatchActionBar(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = GitSurface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong)
+        border = BorderStroke(1.dp, GitBorder)
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            // Count pill and helper actions
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$selectedCount selected",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = GitAccent
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TextButton(
-                        onClick = onSelectAll,
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = GitAccent.copy(alpha = 0.10f),
+                    border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.25f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Select All", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = GitAccent)
-                    }
-                    TextButton(
-                        onClick = onClear,
-                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                    ) {
-                        Text("Clear", fontSize = 12.sp, color = GitText2)
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(GitAccent, CircleShape)
+                        )
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = "%02d selected".format(selectedCount),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = GitAccent
+                        )
                     }
                 }
 
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                TextButton(
+                    onClick = onSelectAll,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
                 ) {
-                    OutlinedButton(
-                        onClick = onCut,
-                        enabled = selectedCount > 0,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.ContentCut, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText1)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Cut", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GitText1)
-                    }
+                    Text("Select All", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = GitText1)
+                }
 
-                    OutlinedButton(
-                        onClick = onCopy,
-                        enabled = selectedCount > 0,
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp), tint = GitText1)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Copy", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = GitText1)
-                    }
+                TextButton(
+                    onClick = onClear,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
+                ) {
+                    Text("Clear", fontSize = 11.sp, color = GitText2)
+                }
+            }
 
-                    Button(
-                        onClick = onDelete,
-                        enabled = selectedCount > 0,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE53935),
-                            disabledContainerColor = GitBorder
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+            // Modern Action Buttons (Cut, Copy, Delete)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                // Cut
+                Surface(
+                    onClick = onCut,
+                    enabled = selectedCount > 0,
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedCount > 0) GitSurface2 else GitBg,
+                    border = BorderStroke(1.dp, if (selectedCount > 0) GitBorderStrong else GitBorder),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(
+                            imageVector = Icons.Default.ContentCut,
+                            contentDescription = "Cut",
+                            modifier = Modifier.size(13.dp),
+                            tint = if (selectedCount > 0) GitText1 else GitText3
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("Delete ($selectedCount)", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "Cut",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (selectedCount > 0) GitText1 else GitText3
+                        )
+                    }
+                }
+
+                // Copy
+                Surface(
+                    onClick = onCopy,
+                    enabled = selectedCount > 0,
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedCount > 0) GitSurface2 else GitBg,
+                    border = BorderStroke(1.dp, if (selectedCount > 0) GitBorderStrong else GitBorder),
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy",
+                            modifier = Modifier.size(13.dp),
+                            tint = if (selectedCount > 0) GitText1 else GitText3
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Copy",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (selectedCount > 0) GitText1 else GitText3
+                        )
+                    }
+                }
+
+                // Delete (Danger primary filled)
+                Surface(
+                    onClick = onDelete,
+                    enabled = selectedCount > 0,
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (selectedCount > 0) Color(0xFFDC2626) else GitBorder,
+                    modifier = Modifier.height(32.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            modifier = Modifier.size(13.dp),
+                            tint = if (selectedCount > 0) Color.White else GitText3
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (selectedCount > 0) "Delete (%02d)".format(selectedCount) else "Delete",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            color = if (selectedCount > 0) Color.White else GitText3
+                        )
                     }
                 }
             }
@@ -1508,17 +1582,17 @@ private fun ExplorerItemRow(
                 DropdownMenu(
                     expanded = showMenu,
                     onDismissRequest = { showMenu = false },
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(10.dp),
                     containerColor = GitSurface,
                     border = BorderStroke(1.dp, GitBorderStrong),
-                    shadowElevation = 8.dp
+                    shadowElevation = 6.dp
                 ) {
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text("Cut (Move)", fontSize = 13.sp, color = GitText1)
+                                Text("Cut (Move)", fontSize = 13.sp, color = GitText1, fontWeight = FontWeight.Medium)
                             }
                         },
                         onClick = {
@@ -1530,9 +1604,9 @@ private fun ExplorerItemRow(
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text("Copy", fontSize = 13.sp, color = GitText1)
+                                Text("Copy", fontSize = 13.sp, color = GitText1, fontWeight = FontWeight.Medium)
                             }
                         },
                         onClick = {
@@ -1544,9 +1618,9 @@ private fun ExplorerItemRow(
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Edit, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Edit, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text("Rename", fontSize = 13.sp, color = GitText1)
+                                Text("Rename", fontSize = 13.sp, color = GitText1, fontWeight = FontWeight.Medium)
                             }
                         },
                         onClick = {
@@ -1559,9 +1633,9 @@ private fun ExplorerItemRow(
                         DropdownMenuItem(
                             text = {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(15.dp))
                                     Spacer(modifier = Modifier.width(10.dp))
-                                    Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1)
+                                    Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1, fontWeight = FontWeight.Medium)
                                 }
                             },
                             onClick = {
@@ -1571,14 +1645,14 @@ private fun ExplorerItemRow(
                         )
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
 
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Delete, contentDescription = null, tint = Md3LightError, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(10.dp))
-                                Text(if (node.isDirectory) "Delete Folder" else "Delete File", fontSize = 13.sp, color = Md3LightError)
+                                Text(if (node.isDirectory) "Delete Folder" else "Delete File", fontSize = 13.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.SemiBold)
                             }
                         },
                         onClick = {
@@ -1770,14 +1844,18 @@ private fun SearchResultsList(
 
                             DropdownMenu(
                                 expanded = showMenu,
-                                onDismissRequest = { showMenu = false }
+                                onDismissRequest = { showMenu = false },
+                                shape = RoundedCornerShape(10.dp),
+                                containerColor = GitSurface,
+                                border = BorderStroke(1.dp, GitBorderStrong),
+                                shadowElevation = 6.dp
                             ) {
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Cut (Move)")
+                                            Icon(Icons.Default.ContentCut, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text("Cut (Move)", fontSize = 13.sp, color = GitText1, fontWeight = FontWeight.Medium)
                                         }
                                     },
                                     onClick = {
@@ -1789,9 +1867,9 @@ private fun SearchResultsList(
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Copy")
+                                            Icon(Icons.Default.ContentCopy, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text("Copy", fontSize = 13.sp, color = GitText1, fontWeight = FontWeight.Medium)
                                         }
                                     },
                                     onClick = {
@@ -1803,9 +1881,9 @@ private fun SearchResultsList(
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Edit, contentDescription = null, tint = GitText1, modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Rename")
+                                            Icon(Icons.Default.Edit, contentDescription = null, tint = GitText1, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text("Rename", fontSize = 13.sp, color = GitText1, fontWeight = FontWeight.Medium)
                                         }
                                     },
                                     onClick = {
@@ -1814,12 +1892,14 @@ private fun SearchResultsList(
                                     }
                                 )
 
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
+
                                 DropdownMenuItem(
                                     text = {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFE53935), modifier = Modifier.size(16.dp))
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text("Delete", color = Color(0xFFE53935))
+                                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Text("Delete", fontSize = 13.sp, color = Color(0xFFDC2626), fontWeight = FontWeight.SemiBold)
                                         }
                                     },
                                     onClick = {

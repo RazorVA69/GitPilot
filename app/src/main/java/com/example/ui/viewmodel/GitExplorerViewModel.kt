@@ -674,7 +674,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     pinnedFolders = savedPinnedFolders,
                     currentScreen = AppScreen.EXPLORER,
                     isLeftDrawerOpen = false,
-                    syncStatus = SyncStatus.SYNCING
+                    syncStatus = SyncStatus.SYNCING,
+                    terminalLines = emptyList(),
+                    terminalDrafts = emptyMap(),
+                    terminalStagedFiles = emptySet()
                 )
             }
             repository.saveRecentRepo(repo)
@@ -1617,6 +1620,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val branch = state.selectedBranch
         val path = workingDir ?: state.currentDirectoryPath
 
+        val repoFullName = repo?.fullName ?: (repo?.name ?: "repository")
         val initialLines = if (state.terminalLines.isEmpty()) {
             listOf(
                 TerminalLine(
@@ -1624,8 +1628,12 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     text = "GitHub Terminal CLI [Version 2.4.0-compose]"
                 ),
                 TerminalLine(
-                    type = TerminalLineType.OUTPUT_INFO,
-                    text = "Connected to @${repo?.fullName ?: "repository"} (Branch: $branch)"
+                    type = TerminalLineType.OUTPUT_SUCCESS,
+                    text = "Connected to @$repoFullName (Branch: $branch)"
+                ),
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_TEXT,
+                    text = "Workspace: /workspace/${repo?.name ?: "repo"}${if (path.isNotEmpty()) "/$path" else ""}"
                 ),
                 TerminalLine(
                     type = TerminalLineType.OUTPUT_TEXT,
@@ -1757,6 +1765,14 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 handleTerminalRm(args, workingDir, repo, branch, token)
             }
 
+            "mv" -> {
+                handleGitMv(args, workingDir, repo, branch, token)
+            }
+
+            "cp" -> {
+                handleGitCp(args, workingDir, repo, branch, token)
+            }
+
             "git" -> {
                 handleGitCommand(args, command, repo, branch, workingDir, token)
             }
@@ -1863,6 +1879,18 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "user.email=$user@users.noreply.github.com"))
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "init.defaultBranch=main"))
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "remote.origin.url=https://github.com/${repo?.fullName ?: ""}.git"))
+            }
+
+            "mv", "rename" -> {
+                handleGitMv(subArgs, workingDir, repo, branch, token)
+            }
+
+            "rm" -> {
+                handleTerminalRm(subArgs, workingDir, repo, branch, token)
+            }
+
+            "cp" -> {
+                handleGitCp(subArgs, workingDir, repo, branch, token)
             }
 
             else -> {
@@ -2417,6 +2445,142 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private suspend fun handleGitMv(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val nonFlags = args.filter { !it.startsWith("-") }
+        if (nonFlags.size < 2) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: destination operand missing\nusage: git mv <source> <destination>"))
+            return
+        }
+
+        val srcRaw = nonFlags[0].trim('\'', '"')
+        val destRaw = nonFlags[1].trim('\'', '"')
+
+        val srcPath = if (workingDir.isEmpty() || srcRaw.startsWith("/")) srcRaw.removePrefix("/") else "$workingDir/$srcRaw"
+        val destPath = if (workingDir.isEmpty() || destRaw.startsWith("/")) destRaw.removePrefix("/") else "$workingDir/$destRaw"
+
+        val state = _uiState.value
+        val drafts = state.terminalDrafts
+        val rawTree = state.rawTreeItems
+
+        val inDrafts = drafts.containsKey(srcPath)
+        val inTree = rawTree.find { it.path == srcPath }
+
+        if (!inDrafts && inTree == null) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: bad source, source='$srcRaw', destination='$destRaw' (No such file or directory)"))
+            return
+        }
+
+        if (inDrafts) {
+            val content = drafts[srcPath] ?: ""
+            _uiState.update {
+                it.copy(
+                    terminalDrafts = (it.terminalDrafts - srcPath) + (destPath to content),
+                    terminalStagedFiles = (it.terminalStagedFiles - srcPath) + destPath
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Renamed '$srcRaw' -> '$destRaw' (staged in drafts)"))
+            return
+        }
+
+        if (token.isNullOrBlank() || repo == null) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication token required to rename remote files"))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Renaming '$srcRaw' to '$destRaw' on branch '$branch'..."))
+
+        val contentRes = repository.getFileContent(token, repo.owner.login, repo.name, srcPath, branch)
+        if (contentRes.isSuccess) {
+            val (_, decoded) = contentRes.getOrNull()!!
+            val destSha = rawTree.find { it.path == destPath }?.sha
+
+            val commitRes = repository.commitFile(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                path = destPath,
+                content = decoded,
+                message = "Rename $srcPath to $destPath via git mv",
+                sha = destSha,
+                branch = branch
+            )
+
+            if (commitRes.isSuccess) {
+                repository.deleteFile(
+                    token = token,
+                    owner = repo.owner.login,
+                    repo = repo.name,
+                    path = srcPath,
+                    sha = inTree?.sha ?: "",
+                    message = "Remove old $srcPath after rename",
+                    branch = branch
+                )
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Renamed '$srcRaw' to '$destRaw' successfully."))
+                syncActiveRepository(isSilent = true)
+            } else {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit '$destRaw': ${commitRes.exceptionOrNull()?.message}"))
+            }
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: could not read '$srcRaw' on branch '$branch'"))
+        }
+    }
+
+    private suspend fun handleGitCp(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val nonFlags = args.filter { !it.startsWith("-") }
+        if (nonFlags.size < 2) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cp: missing destination operand\nusage: cp <source> <destination>"))
+            return
+        }
+        val srcRaw = nonFlags[0].trim('\'', '"')
+        val destRaw = nonFlags[1].trim('\'', '"')
+
+        val srcPath = if (workingDir.isEmpty() || srcRaw.startsWith("/")) srcRaw.removePrefix("/") else "$workingDir/$srcRaw"
+        val destPath = if (workingDir.isEmpty() || destRaw.startsWith("/")) destRaw.removePrefix("/") else "$workingDir/$destRaw"
+
+        val state = _uiState.value
+        val drafts = state.terminalDrafts
+        val rawTree = state.rawTreeItems
+
+        if (drafts.containsKey(srcPath)) {
+            val content = drafts[srcPath] ?: ""
+            _uiState.update {
+                it.copy(terminalDrafts = it.terminalDrafts + (destPath to content))
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Copied '$srcRaw' -> '$destRaw' (draft)"))
+            return
+        }
+
+        if (token.isNullOrBlank() || repo == null) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication token required to copy files"))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Copying '$srcRaw' to '$destRaw'..."))
+        val contentRes = repository.getFileContent(token, repo.owner.login, repo.name, srcPath, branch)
+        if (contentRes.isSuccess) {
+            val (_, decoded) = contentRes.getOrNull()!!
+            val destSha = rawTree.find { it.path == destPath }?.sha
+            val commitRes = repository.commitFile(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                path = destPath,
+                content = decoded,
+                message = "Copy $srcPath to $destPath",
+                sha = destSha,
+                branch = branch
+            )
+            if (commitRes.isSuccess) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Copied '$srcRaw' to '$destRaw' successfully."))
+                syncActiveRepository(isSilent = true)
+            } else {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit copied file: ${commitRes.exceptionOrNull()?.message}"))
+            }
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cp: cannot stat '$srcRaw': No such file or directory"))
+        }
+    }
+
     private fun printTerminalHelp() {
         val helpLines = listOf(
             "GitHub Terminal Command Reference:",
@@ -2431,6 +2595,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             "  git commit -m \"message\"      Commit staged files to GitHub remote",
             "  git push [origin <branch>]   Push branch commits to GitHub",
             "  git pull | git fetch         Fetch latest updates and branches",
+            "  git mv <src> <dest>          Rename or move file on branch",
+            "  git rm <file>                Remove file from repository branch",
+            "  git cp <src> <dest>          Copy file contents to new destination",
             "  git diff [<b1> <b2>]         Show unified file or branch diff",
             "  git show <sha|branch>        Display commit metadata and info",
             "  git remote [-v]              List configured remote repositories",
@@ -2441,6 +2608,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             "  cd <dir> | cd .. | cd ~      Navigate folder structure",
             "  pwd                          Print absolute working path",
             "  cat <file>                   View file contents",
+            "  mv <src> <dest>              Move or rename file",
+            "  cp <src> <dest>              Copy file",
             "  touch <file>                 Create empty file",
             "  echo \"text\" > <file>         Write text into file",
             "  rm <file>                    Delete file from repository",
