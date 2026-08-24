@@ -211,6 +211,7 @@ fun GitHubTerminalModal(
             .fillMaxSize()
             .background(Color.Black.copy(alpha = 0.65f))
             .statusBarsPadding()
+            .navigationBarsPadding()
             .imePadding()
             .padding(if (isFullscreen) 0.dp else 8.dp)
             .clickable(

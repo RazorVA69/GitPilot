@@ -1589,6 +1589,23 @@ private fun ExplorerItemRow(
                     border = BorderStroke(1.dp, GitBorderStrong),
                     shadowElevation = 6.dp
                 ) {
+                    if (node.isDirectory) {
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(15.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1, fontWeight = FontWeight.Medium)
+                                }
+                            },
+                            onClick = {
+                                onTogglePinFolder()
+                                showMenu = false
+                            }
+                        )
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
+                    }
+
                     DropdownMenuItem(
                         text = {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1630,22 +1647,6 @@ private fun ExplorerItemRow(
                             showMenu = false
                         }
                     )
-
-                    if (node.isDirectory) {
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1, fontWeight = FontWeight.Medium)
-                                }
-                            },
-                            onClick = {
-                                onTogglePinFolder()
-                                showMenu = false
-                            }
-                        )
-                    }
 
                     HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
 
