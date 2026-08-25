@@ -368,19 +368,19 @@ fun RepoListScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GitSurface,
+                    containerColor = GitAppBg,
                     titleContentColor = GitText1
                 )
             )
         },
-        containerColor = GitSurface,
+        containerColor = GitAppBg,
         modifier = modifier
     ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(GitSurface)
+                .background(GitAppBg)
         ) {
             // Instant Search Field
             AnimatedVisibility(visible = isSearchVisible || searchQuery.isNotEmpty()) {
@@ -681,7 +681,7 @@ fun RepositoryRowItem(
                 onLongClick = onLongClick
             )
             .testTag("repo_row_${repo.name}"),
-        color = GitSurface
+        color = GitAppBg
     ) {
         Column(
             modifier = Modifier

@@ -136,13 +136,25 @@ fun GitExplorerApp(
 
     // Predictive Back Handling
     BackHandler(
-        enabled = uiState.isLeftDrawerOpen ||
+        enabled = uiState.showSettingsDialog ||
+                uiState.showAccountSwitcherDialog ||
+                uiState.showTerminal ||
+                uiState.showCreateUploadDialog ||
+                uiState.showBatchDeleteDialog ||
+                uiState.showBranchSelector ||
+                uiState.isLeftDrawerOpen ||
                 uiState.activeFile != null ||
                 uiState.isBatchMode ||
                 uiState.selectedFilePaths.isNotEmpty() ||
                 (uiState.currentScreen == AppScreen.EXPLORER)
     ) {
         when {
+            uiState.showSettingsDialog -> viewModel.setShowSettings(false)
+            uiState.showAccountSwitcherDialog -> viewModel.setShowAccountSwitcher(false)
+            uiState.showTerminal -> viewModel.closeTerminal()
+            uiState.showCreateUploadDialog -> viewModel.setShowCreateUploadDialog(false)
+            uiState.showBatchDeleteDialog -> viewModel.setShowBatchDeleteDialog(false)
+            uiState.showBranchSelector -> viewModel.setShowBranchSelector(false)
             uiState.isLeftDrawerOpen -> viewModel.setLeftDrawerOpen(false)
             uiState.activeFile != null -> viewModel.closeFile()
             uiState.isBatchMode || uiState.selectedFilePaths.isNotEmpty() -> viewModel.clearSelectionAndBatchMode()

@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -104,6 +105,7 @@ fun AccountSwitcherModal(
 ) {
     val context = LocalContext.current
     val currentTheme = GitTheme.current
+    BackHandler(onBack = onDismiss)
 
     var isAddingAccount by remember { mutableStateOf(false) }
     var tokenInput by remember { mutableStateOf("") }

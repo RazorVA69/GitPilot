@@ -1,5 +1,7 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 
 // GitPilot Light Modern Palette
@@ -14,34 +16,86 @@ val GitText1 = Color(0xFF14141B) // Primary text
 val GitText2 = Color(0xFF63636F) // Secondary text
 val GitText3 = Color(0xFF98979F) // Tertiary / Muted text
 val GitButtonPrimary = Color(0xFF14141B) // Solid near-black primary button fill
-val GitTopBarButtonBg = Color(0xFFEEF1F5) // Soft circular action button fill matching SS 1
+val GitTopBarButtonBg = Color(0xFFEEF1F5) // Soft circular action button fill
 
-val GitAccent = Color(0xFF0F9D74) // Deep Emerald accent
-val GitAccentDeep = Color(0xFF0C7D5C) // Darker emerald for pressed / focused
-val GitAccentSoft = Color(0xFFE7F6F1) // Soft emerald tint (rgba(15,157,116,.10))
+// Dynamic Accent & Background according to the selected Theme
+val GitAccent: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitTheme.current.primary
+
+val GitAccentDeep: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitTheme.current.deep
+
+val GitAccentSoft: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitTheme.current.soft
+
+val GitAccentSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitTheme.current.secondaryAccent ?: GitTheme.current.primary
+
+val GitAppBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = if (GitTheme.isBgTintEnabled) GitTheme.current.bgTint else GitBg
+
 val GitYellow = Color(0xFFD4A017)
 
 val GitSyntaxBool = Color(0xFFB5701F)
 val GitSyntaxProp = Color(0xFF3A6FB0)
-val GitSyntaxFn = Color(0xFF0F9D74)
+val GitSyntaxFn: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitTheme.current.primary
 val GitSyntaxKw = Color(0xFF63636F)
 val GitSyntaxComment = Color(0xFF98979F)
 
 // Backwards-compatible MD3 tokens
-val Md3LightBackground = GitBg
+val Md3LightBackground: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAppBg
+
 val Md3LightSurface = GitSurface
 val Md3LightSurfaceVariant = GitSurface2
 val Md3LightSurfaceContainerHigh = GitSurface3
 val Md3LightOutline = GitBorderStrong
 val Md3LightOutlineVariant = GitBorder
 
-val Md3LightPrimary = GitAccent
-val Md3LightPrimaryContainer = GitAccentSoft
-val Md3LightOnPrimaryContainer = GitAccentDeep
+val Md3LightPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAccent
 
-val Md3LightSecondary = GitAccentDeep
-val Md3LightSecondaryContainer = GitAccentSoft
-val Md3LightOnSecondaryContainer = GitAccentDeep
+val Md3LightPrimaryContainer: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAccentSoft
+
+val Md3LightOnPrimaryContainer: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAccentDeep
+
+val Md3LightSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAccentDeep
+
+val Md3LightSecondaryContainer: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAccentSoft
+
+val Md3LightOnSecondaryContainer: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = GitAccentDeep
 
 val Md3LightTertiary = Color(0xFF3A6FB0)
 val Md3LightTertiaryContainer = Color(0xFFE6F0FA)
@@ -68,4 +122,5 @@ val GitHubOrange = Color(0xFFD97706)
 val GitHubYellow = Color(0xFFD4A017)
 val GitHubRed = Color(0xFFDC2626)
 val GitHubTeal = Color(0xFF0F9D74)
+
 

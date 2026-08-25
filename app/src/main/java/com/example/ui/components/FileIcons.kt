@@ -23,6 +23,7 @@ data class FileTypeMeta(
 )
 
 object FileIcons {
+    @Composable
     fun getMeta(fileName: String, isDirectory: Boolean): FileTypeMeta {
         if (isDirectory) {
             return FileTypeMeta(

@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -75,6 +76,7 @@ fun SettingsModal(
     modifier: Modifier = Modifier
 ) {
     val currentTheme = GitTheme.current
+    BackHandler(onBack = onDismiss)
 
     Box(
         modifier = modifier

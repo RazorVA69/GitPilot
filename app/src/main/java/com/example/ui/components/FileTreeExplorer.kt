@@ -204,7 +204,7 @@ fun FileTreeExplorer(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(GitSurface)
+            .background(GitAppBg)
     ) {
         // Main Top Bar
         TopAppBar(
@@ -619,7 +619,7 @@ fun FileTreeExplorer(
             }
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = GitSurface,
+            containerColor = GitAppBg,
             titleContentColor = GitText1
         )
     )
