@@ -206,13 +206,18 @@ fun CodeEditorView(
         }
     }
 
-    // Undo / Redo History Stacks
-    val undoStack = remember { mutableStateListOf<String>() }
-    val redoStack = remember { mutableStateListOf<String>() }
+    // Undo / Redo History Stacks with cursor position preservation
+    data class EditorHistoryItem(
+        val text: String,
+        val selection: TextRange
+    )
 
-    fun handleTextChange(newText: String) {
+    val undoStack = remember { mutableStateListOf<EditorHistoryItem>() }
+    val redoStack = remember { mutableStateListOf<EditorHistoryItem>() }
+
+    fun handleTextChange(newText: String, previousSelection: TextRange = textFieldValue.selection) {
         if (newText != content) {
-            undoStack.add(content)
+            undoStack.add(EditorHistoryItem(content, previousSelection))
             redoStack.clear()
             onContentChange(newText)
         }
@@ -221,18 +226,44 @@ fun CodeEditorView(
     fun performUndo() {
         if (undoStack.isNotEmpty()) {
             val previous = undoStack.removeAt(undoStack.lastIndex)
-            redoStack.add(content)
-            textFieldValue = TextFieldValue(text = previous, selection = TextRange(previous.length))
-            onContentChange(previous)
+            redoStack.add(EditorHistoryItem(content, textFieldValue.selection))
+            val safeSelection = TextRange(
+                previous.selection.start.coerceIn(0, previous.text.length),
+                previous.selection.end.coerceIn(0, previous.text.length)
+            )
+            textFieldValue = TextFieldValue(text = previous.text, selection = safeSelection)
+            onContentChange(previous.text)
+
+            // Scroll editor to where the undo action was applied
+            val targetChar = safeSelection.start
+            val targetLine = previous.text.take(targetChar).count { it == '\n' }
+            coroutineScope.launch {
+                val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
+                val targetScroll = (targetLine * approximateLineHeightPx - 100).coerceAtLeast(0)
+                verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+            }
         }
     }
 
     fun performRedo() {
         if (redoStack.isNotEmpty()) {
             val next = redoStack.removeAt(redoStack.lastIndex)
-            undoStack.add(content)
-            textFieldValue = TextFieldValue(text = next, selection = TextRange(next.length))
-            onContentChange(next)
+            undoStack.add(EditorHistoryItem(content, textFieldValue.selection))
+            val safeSelection = TextRange(
+                next.selection.start.coerceIn(0, next.text.length),
+                next.selection.end.coerceIn(0, next.text.length)
+            )
+            textFieldValue = TextFieldValue(text = next.text, selection = safeSelection)
+            onContentChange(next.text)
+
+            // Scroll editor to where the redo action was applied
+            val targetChar = safeSelection.start
+            val targetLine = next.text.take(targetChar).count { it == '\n' }
+            coroutineScope.launch {
+                val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
+                val targetScroll = (targetLine * approximateLineHeightPx - 100).coerceAtLeast(0)
+                verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+            }
         }
     }
 
@@ -277,18 +308,20 @@ fun CodeEditorView(
             clipboardManager.setText(AnnotatedString(selectedText))
             val start = textFieldValue.selection.min
             val end = textFieldValue.selection.max
+            val prevSelection = textFieldValue.selection
             val newText = textFieldValue.text.removeRange(start, end)
             textFieldValue = textFieldValue.copy(
                 text = newText,
                 selection = TextRange(start)
             )
-            handleTextChange(newText)
+            handleTextChange(newText, prevSelection)
         }
     }
 
     fun pasteText() {
         val clip = clipboardManager.getText()?.text
         if (!clip.isNullOrEmpty()) {
+            val prevSelection = textFieldValue.selection
             if (hasSelection) {
                 val start = textFieldValue.selection.min
                 val end = textFieldValue.selection.max
@@ -297,7 +330,7 @@ fun CodeEditorView(
                     text = newText,
                     selection = TextRange(start + clip.length)
                 )
-                handleTextChange(newText)
+                handleTextChange(newText, prevSelection)
             } else {
                 val cursor = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
                 val newText = textFieldValue.text.substring(0, cursor) + clip + textFieldValue.text.substring(cursor)
@@ -305,12 +338,13 @@ fun CodeEditorView(
                     text = newText,
                     selection = TextRange(cursor + clip.length)
                 )
-                handleTextChange(newText)
+                handleTextChange(newText, prevSelection)
             }
         }
     }
 
     fun clearText() {
+        val prevSelection = textFieldValue.selection
         if (hasSelection) {
             val start = textFieldValue.selection.min
             val end = textFieldValue.selection.max
@@ -319,10 +353,10 @@ fun CodeEditorView(
                 text = newText,
                 selection = TextRange(start)
             )
-            handleTextChange(newText)
+            handleTextChange(newText, prevSelection)
         } else {
             textFieldValue = textFieldValue.copy(text = "", selection = TextRange.Zero)
-            handleTextChange("")
+            handleTextChange("", prevSelection)
         }
     }
 
@@ -369,18 +403,41 @@ fun CodeEditorView(
         }
     }
 
+    LaunchedEffect(searchQuery, currentMatchIndex, matches, isSearchVisible) {
+        if (isSearchVisible && searchQuery.isNotEmpty() && matches.isNotEmpty()) {
+            val safeIndex = currentMatchIndex.coerceIn(0, matches.size - 1)
+            val matchPos = matches[safeIndex]
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(matchPos, matchPos + searchQuery.length)
+            )
+            // Scroll to the matched line
+            val line = content.take(matchPos).count { it == '\n' }
+            val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
+            val targetScroll = (line * approximateLineHeightPx - 100).coerceAtLeast(0)
+            verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+        } else if (searchQuery.isEmpty() || !isSearchVisible) {
+            if (!textFieldValue.selection.collapsed) {
+                textFieldValue = textFieldValue.copy(
+                    selection = TextRange(textFieldValue.selection.start)
+                )
+            }
+        }
+    }
+
     fun replaceCurrentMatch() {
         if (matches.isNotEmpty() && searchQuery.isNotEmpty()) {
+            val prevSelection = textFieldValue.selection
             val matchPos = matches.getOrElse(currentMatchIndex.coerceIn(0, matches.size - 1)) { 0 }
             val newContent = content.substring(0, matchPos) + replaceQuery + content.substring(matchPos + searchQuery.length)
-            handleTextChange(newContent)
+            handleTextChange(newContent, prevSelection)
         }
     }
 
     fun replaceAllMatches() {
         if (searchQuery.isNotEmpty()) {
+            val prevSelection = textFieldValue.selection
             val newContent = content.replace(searchQuery, replaceQuery, ignoreCase = true)
-            handleTextChange(newContent)
+            handleTextChange(newContent, prevSelection)
         }
     }
 
@@ -536,27 +593,7 @@ fun CodeEditorView(
                 ) {
                     if (hasSelection) {
                         // CONTEXTUAL ACTIONS WHEN TEXT IS SELECTED (via Select All or touch selection)
-                        // 1. CLEAR / DELETE SELECTION
-                        Surface(
-                            onClick = { clearText() },
-                            shape = CircleShape,
-                            color = GitTopBarButtonBg,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .testTag("editor_clear_selection_btn")
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Delete,
-                                    contentDescription = "Clear Selection",
-                                    tint = Md3LightError,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            }
-                        }
-
-                        // 2. CUT
+                        // 1. CUT
                         Surface(
                             onClick = { cutText() },
                             shape = CircleShape,
@@ -576,7 +613,7 @@ fun CodeEditorView(
                             }
                         }
 
-                        // 3. COPY SELECTION
+                        // 2. COPY SELECTION
                         Surface(
                             onClick = { copyText() },
                             shape = CircleShape,
@@ -597,7 +634,7 @@ fun CodeEditorView(
                             }
                         }
 
-                        // 4. PASTE OVER SELECTION
+                        // 3. PASTE OVER SELECTION
                         Surface(
                             onClick = { pasteText() },
                             shape = CircleShape,
@@ -617,7 +654,7 @@ fun CodeEditorView(
                             }
                         }
 
-                        // 5. DESELECT BUTTON
+                        // 4. DESELECT BUTTON
                         Surface(
                             onClick = { deselectText() },
                             shape = CircleShape,
@@ -1057,6 +1094,11 @@ fun CodeEditorView(
                             onValueChange = {
                                 searchQuery = it
                                 currentMatchIndex = 0
+                                if (it.isEmpty() && !textFieldValue.selection.collapsed) {
+                                    textFieldValue = textFieldValue.copy(
+                                        selection = TextRange(textFieldValue.selection.start)
+                                    )
+                                }
                             },
                             modifier = Modifier
                                 .weight(1f)
@@ -1120,6 +1162,11 @@ fun CodeEditorView(
                                 isSearchVisible = false
                                 searchQuery = ""
                                 replaceQuery = ""
+                                if (!textFieldValue.selection.collapsed) {
+                                    textFieldValue = textFieldValue.copy(
+                                        selection = TextRange(textFieldValue.selection.start)
+                                    )
+                                }
                             },
                             modifier = Modifier.size(36.dp)
                         ) {
@@ -1351,9 +1398,10 @@ fun CodeEditorView(
                         BasicTextField(
                             value = textFieldValue,
                             onValueChange = { newTfv ->
+                                val oldSelection = textFieldValue.selection
                                 textFieldValue = newTfv
                                 if (newTfv.text != content) {
-                                    handleTextChange(newTfv.text)
+                                    handleTextChange(newTfv.text, oldSelection)
                                 }
                             },
                             modifier = textModifier.testTag("code_editor_textarea"),
