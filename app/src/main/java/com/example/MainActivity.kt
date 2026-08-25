@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.components.AccountSwitcherModal
 import com.example.ui.components.BatchActionsModal
 import com.example.ui.components.BranchSelectorSheet
 import com.example.ui.components.CodeEditorView
@@ -50,6 +51,7 @@ import com.example.ui.components.CreateOrUploadModal
 import com.example.ui.components.FileTreeExplorer
 import com.example.ui.components.GitHubTerminalModal
 import com.example.ui.components.RepoSidebarDrawer
+import com.example.ui.components.SettingsModal
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RepoListScreen
 import com.example.ui.theme.MyApplicationTheme
@@ -61,9 +63,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MyApplicationTheme {
-                GitExplorerApp()
-            }
+            GitExplorerApp()
         }
     }
 }
@@ -75,6 +75,10 @@ fun GitExplorerApp(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    MyApplicationTheme(
+        themeId = uiState.selectedThemeId,
+        isBgTintEnabled = uiState.isThemeBgTintEnabled
+    ) {
     val context = androidx.compose.ui.platform.LocalContext.current
 
     // Request Storage Permission for Android 10 and below, or All Files Access for Android 11+
@@ -222,6 +226,8 @@ fun GitExplorerApp(
                         onSelectRepo = viewModel::selectRepository,
                         onRefresh = viewModel::loadRepositories,
                         onOpenLeftDrawer = { viewModel.setLeftDrawerOpen(true) },
+                        onOpenSettings = { viewModel.setShowSettings(true) },
+                        onOpenAccountSwitcher = { viewModel.setShowAccountSwitcher(true) },
                         onLogout = viewModel::logout
                     )
                 }
@@ -289,7 +295,8 @@ fun GitExplorerApp(
                             onFileTreeSortChange = viewModel::setFileTreeSortOption,
                             onToggleFileTreeSortReverse = viewModel::toggleFileTreeSortReverse,
                             onToggleLeftDrawer = { viewModel.setLeftDrawerOpen(!uiState.isLeftDrawerOpen) },
-                            onOpenTerminal = { viewModel.openTerminal() }
+                            onOpenTerminal = { viewModel.openTerminal() },
+                            onOpenSettings = { viewModel.setShowSettings(true) }
                         )
                     }
                 }
@@ -411,5 +418,37 @@ fun GitExplorerApp(
             onExecuteCommand = viewModel::executeTerminalCommand,
             onClearTerminal = viewModel::clearTerminal
         )
+    }
+
+    if (uiState.showSettingsDialog) {
+        SettingsModal(
+            selectedThemeId = uiState.selectedThemeId,
+            isBgTintEnabled = uiState.isThemeBgTintEnabled,
+            onSelectTheme = viewModel::setTheme,
+            onToggleBgTint = viewModel::setThemeBgTintEnabled,
+            onDismiss = { viewModel.setShowSettings(false) }
+        )
+    }
+
+    if (uiState.showAccountSwitcherDialog) {
+        AccountSwitcherModal(
+            currentAccount = uiState.currentAccount,
+            savedAccounts = uiState.accounts,
+            isAuthenticating = uiState.isAuthenticating,
+            authError = uiState.authError,
+            onSwitchAccount = viewModel::switchAccount,
+            onRemoveAccount = viewModel::removeAccount,
+            onAddNewAccountWithToken = viewModel::addNewAccountWithToken,
+            onStartOAuthFlow = {
+                viewModel.setShowAccountSwitcher(false)
+                viewModel.startGitHubOAuthLogin()
+            },
+            onExplorePublicUser = { user ->
+                viewModel.setShowAccountSwitcher(false)
+                viewModel.explorePublicUser(user)
+            },
+            onDismiss = { viewModel.setShowAccountSwitcher(false) }
+        )
+    }
     }
 }

@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Sync
@@ -157,6 +158,7 @@ fun FileTreeExplorer(
     onToggleFileTreeSortReverse: () -> Unit = {},
     onToggleLeftDrawer: () -> Unit,
     onOpenTerminal: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isSearchExpanded by remember { mutableStateOf(false) }
@@ -582,6 +584,22 @@ fun FileTreeExplorer(
                                 showOverflowMenu = false
                             },
                             modifier = Modifier.testTag("menu_item_github_terminal")
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
+
+                        DropdownMenuItem(
+                            text = {
+                                Text("Settings", fontSize = 13.sp, color = GitText1)
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Settings, contentDescription = "Settings", tint = GitText2, modifier = Modifier.size(18.dp))
+                            },
+                            onClick = {
+                                onOpenSettings()
+                                showOverflowMenu = false
+                            },
+                            modifier = Modifier.testTag("menu_item_settings")
                         )
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)

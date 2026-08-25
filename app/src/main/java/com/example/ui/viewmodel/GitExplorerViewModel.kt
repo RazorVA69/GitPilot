@@ -139,7 +139,13 @@ data class GitExplorerUiState(
     val showCreateUploadDialog: Boolean = false,
     val showBatchDeleteDialog: Boolean = false,
     val showBranchSelector: Boolean = false,
+    val showSettingsDialog: Boolean = false,
+    val showAccountSwitcherDialog: Boolean = false,
     val isCommitting: Boolean = false,
+
+    // Theme & Appearance Preferences
+    val selectedThemeId: String = "EMERALD",
+    val isThemeBgTintEnabled: Boolean = false,
 
     // GitHub Terminal
     val showTerminal: Boolean = false,
@@ -177,12 +183,16 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         } catch (e: Exception) {
             RepoSortOption.LAST_ACTIVITY
         }
+        val savedThemeId = prefs.getString("selected_theme_id", "EMERALD") ?: "EMERALD"
+        val savedBgTint = prefs.getBoolean("theme_bg_tint_enabled", false)
 
         _uiState.update {
             it.copy(
                 pinnedRepoIds = savedPinnedRepos,
                 workingRepoId = savedWorkingRepoId,
-                repoSortOption = savedSort
+                repoSortOption = savedSort,
+                selectedThemeId = savedThemeId,
+                isThemeBgTintEnabled = savedBgTint
             )
         }
 
@@ -469,6 +479,56 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             repository.removeAccount(id)
             _uiState.update { it.copy(toastOrMessage = "Account removed") }
         }
+    }
+
+    fun addNewAccountWithToken(token: String) {
+        viewModelScope.launch {
+            val cleanToken = token.trim()
+            if (cleanToken.isBlank()) {
+                _uiState.update { it.copy(authError = "Token cannot be empty") }
+                return@launch
+            }
+            _uiState.update { it.copy(isAuthenticating = true, authError = null) }
+            val result = repository.validateAndSaveToken(cleanToken)
+            result.onSuccess { account ->
+                _uiState.update {
+                    it.copy(
+                        isAuthenticating = false,
+                        authError = null,
+                        currentAccount = account,
+                        currentScreen = AppScreen.REPO_LIST,
+                        showAccountSwitcherDialog = false,
+                        toastOrMessage = "Connected as @${account.username}"
+                    )
+                }
+                loadRepositories()
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isAuthenticating = false,
+                        authError = error.message ?: "Failed to validate token"
+                    )
+                }
+            }
+        }
+    }
+
+    fun setShowSettings(show: Boolean) {
+        _uiState.update { it.copy(showSettingsDialog = show) }
+    }
+
+    fun setShowAccountSwitcher(show: Boolean) {
+        _uiState.update { it.copy(showAccountSwitcherDialog = show, authError = null) }
+    }
+
+    fun setTheme(themeId: String) {
+        prefs.edit().putString("selected_theme_id", themeId).apply()
+        _uiState.update { it.copy(selectedThemeId = themeId) }
+    }
+
+    fun setThemeBgTintEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("theme_bg_tint_enabled", enabled).apply()
+        _uiState.update { it.copy(isThemeBgTintEnabled = enabled) }
     }
 
     fun logout() {

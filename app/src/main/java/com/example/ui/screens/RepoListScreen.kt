@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
@@ -103,6 +104,8 @@ fun RepoListScreen(
     onSelectRepo: (GitHubRepository) -> Unit,
     onRefresh: () -> Unit,
     onOpenLeftDrawer: () -> Unit,
+    onOpenSettings: () -> Unit = {},
+    onOpenAccountSwitcher: () -> Unit = {},
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -314,12 +317,33 @@ fun RepoListScreen(
                             }
                         }
 
-                        // User Profile Picture Avatar
+                        // Settings Button
+                        Surface(
+                            onClick = onOpenSettings,
+                            shape = CircleShape,
+                            color = GitTopBarButtonBg,
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .testTag("repo_list_settings_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Settings",
+                                    tint = GitText1,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                        }
+
+                        // User Profile Picture Avatar (Tapping opens Account Switcher)
                         Surface(
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
-                                .clickable(onClick = onOpenLeftDrawer),
+                                .clickable(onClick = onOpenAccountSwitcher)
+                                .testTag("repo_list_avatar_btn"),
                             shape = CircleShape,
                             border = BorderStroke(1.5.dp, GitAccent.copy(alpha = 0.5f)),
                             color = GitAccent
@@ -327,7 +351,7 @@ fun RepoListScreen(
                             if (account?.avatarUrl != null) {
                                 AsyncImage(
                                     model = account.avatarUrl,
-                                    contentDescription = "Profile picture",
+                                    contentDescription = "Profile picture - Switch account",
                                     modifier = Modifier.fillMaxSize()
                                 )
                             } else {
