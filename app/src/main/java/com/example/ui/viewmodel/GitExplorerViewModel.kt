@@ -14,9 +14,11 @@ import com.example.data.model.FileContentResponse
 import com.example.data.model.GitHubBranch
 import com.example.data.model.GitHubRepository
 import com.example.data.model.GitTreeItem
+import com.example.data.model.RepoFileSearchMatch
 import com.example.data.repository.GitHubRepository as GitHubRepoRepository
 import com.example.ui.components.TerminalLine
 import com.example.ui.components.TerminalLineType
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -157,7 +159,17 @@ data class GitExplorerUiState(
 
     // Feedback
     val toastOrMessage: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+
+    // Search Across All Files
+    val showSearchAcrossFiles: Boolean = false,
+    val searchAcrossFilesQuery: String = "",
+    val searchAcrossFilesPath: String = "",
+    val isSearchingAcrossFiles: Boolean = false,
+    val searchAcrossFilesProgress: Pair<Int, Int>? = null,
+    val searchAcrossFilesResults: List<RepoFileSearchMatch> = emptyList(),
+    val editorOpenedFromSearchResults: Boolean = false,
+    val initialEditorLine: Int? = null
 )
 
 class GitExplorerViewModel(application: Application) : AndroidViewModel(application) {
@@ -231,9 +243,49 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 val state = _uiState.value
                 if (state.currentScreen == AppScreen.EXPLORER && state.selectedRepo != null && !state.isFileDirty && !state.isLoadingTree) {
                     syncActiveRepository(isSilent = true)
+                    prefetchRepoCache()
                 }
             }
         }
+    }
+
+    private fun prefetchRepoCache() {
+        val repo = _uiState.value.selectedRepo ?: return
+        val branch = _uiState.value.selectedBranch
+        val rawItems = _uiState.value.rawTreeItems
+        val token = _uiState.value.currentAccount?.token
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val cachedList = repository.getCachedFilesForRepo(repo.owner.login, repo.name, branch)
+                val cacheMap = cachedList.associateBy { it.path }
+
+                val uncachedTextFiles = rawItems.filter { item ->
+                    !item.isDirectory &&
+                    isLikelyTextFile(item.fileName) &&
+                    (item.size == null || item.size < 300_000) &&
+                    (cacheMap[item.path] == null || cacheMap[item.path]?.sha != item.sha)
+                }.take(25)
+
+                for (fileItem in uncachedTextFiles) {
+                    if (!isActive) break
+                    repository.getFileContent(token, repo.owner.login, repo.name, fileItem.path, branch)
+                    delay(80L)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun isLikelyTextFile(fileName: String): Boolean {
+        val nonTextExtensions = setOf(
+            "png", "jpg", "jpeg", "gif", "webp", "bmp", "ico", "svg",
+            "mp4", "mp3", "wav", "avi", "mov", "webm", "ogg",
+            "zip", "tar", "gz", "rar", "7z", "apk", "jar", "class", "dex",
+            "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+            "exe", "dll", "so", "dylib", "bin", "iso"
+        )
+        val ext = fileName.substringAfterLast('.', "").lowercase()
+        return ext.isNotEmpty() && ext !in nonTextExtensions
     }
 
     // ==========================================
@@ -979,6 +1031,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun closeFile() {
+        val wasFromSearch = _uiState.value.editorOpenedFromSearchResults
         _uiState.update {
             it.copy(
                 activeFile = null,
@@ -987,8 +1040,187 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 activeFileContent = "",
                 activeFileOriginalContent = "",
                 isFileDirty = false,
-                isLoadingFile = false
+                isLoadingFile = false,
+                initialEditorLine = null,
+                editorOpenedFromSearchResults = false,
+                showSearchAcrossFiles = wasFromSearch
             )
+        }
+    }
+
+    // ==========================================
+    // SEARCH ACROSS ALL FILES
+    // ==========================================
+
+    private var searchAcrossFilesJob: Job? = null
+
+    fun openSearchAcrossFiles(initialPath: String = "") {
+        _uiState.update {
+            it.copy(
+                showSearchAcrossFiles = true,
+                searchAcrossFilesPath = initialPath,
+                searchAcrossFilesQuery = "",
+                searchAcrossFilesResults = emptyList(),
+                isSearchingAcrossFiles = false,
+                searchAcrossFilesProgress = null
+            )
+        }
+    }
+
+    fun closeSearchAcrossFiles() {
+        searchAcrossFilesJob?.cancel()
+        _uiState.update {
+            it.copy(
+                showSearchAcrossFiles = false,
+                isSearchingAcrossFiles = false,
+                searchAcrossFilesResults = emptyList(),
+                searchAcrossFilesProgress = null,
+                editorOpenedFromSearchResults = false
+            )
+        }
+    }
+
+    fun setSearchAcrossFilesPath(path: String) {
+        _uiState.update { it.copy(searchAcrossFilesPath = path) }
+        val query = _uiState.value.searchAcrossFilesQuery
+        if (query.isNotBlank() && query.length >= 2) {
+            executeSearchAcrossFiles(query, path)
+        }
+    }
+
+    fun setSearchAcrossFilesQuery(query: String) {
+        _uiState.update { it.copy(searchAcrossFilesQuery = query) }
+        executeSearchAcrossFiles(query, _uiState.value.searchAcrossFilesPath)
+    }
+
+    fun refreshSearchAcrossFiles() {
+        val query = _uiState.value.searchAcrossFilesQuery
+        val path = _uiState.value.searchAcrossFilesPath
+        executeSearchAcrossFiles(query, path)
+    }
+
+    fun openFileAtLine(path: String, line: Int) {
+        val treeItem = _uiState.value.rawTreeItems.find { it.path == path }
+            ?: GitTreeItem(path = path, type = "blob", sha = "")
+
+        _uiState.update {
+            it.copy(
+                editorOpenedFromSearchResults = true,
+                initialEditorLine = line,
+                showSearchAcrossFiles = false
+            )
+        }
+        openFile(treeItem)
+    }
+
+    fun executeSearchAcrossFiles(query: String, pathScope: String) {
+        searchAcrossFilesJob?.cancel()
+        val cleanQuery = query.trim()
+        if (cleanQuery.isEmpty() || cleanQuery.length < 2) {
+            _uiState.update {
+                it.copy(
+                    isSearchingAcrossFiles = false,
+                    searchAcrossFilesResults = emptyList(),
+                    searchAcrossFilesProgress = null
+                )
+            }
+            return
+        }
+
+        val repo = _uiState.value.selectedRepo ?: return
+        val branch = _uiState.value.selectedBranch
+        val rawItems = _uiState.value.rawTreeItems
+        val token = _uiState.value.currentAccount?.token
+
+        val normalizedPath = pathScope.trim().trim('/')
+        val candidateFiles = rawItems.filter { item ->
+            !item.isDirectory && (normalizedPath.isEmpty() || item.path == normalizedPath || item.path.startsWith("$normalizedPath/"))
+        }
+
+        if (candidateFiles.isEmpty()) {
+            _uiState.update {
+                it.copy(
+                    isSearchingAcrossFiles = false,
+                    searchAcrossFilesResults = emptyList(),
+                    searchAcrossFilesProgress = Pair(0, 0)
+                )
+            }
+            return
+        }
+
+        searchAcrossFilesJob = viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update {
+                it.copy(
+                    isSearchingAcrossFiles = true,
+                    searchAcrossFilesResults = emptyList(),
+                    searchAcrossFilesProgress = Pair(0, candidateFiles.size)
+                )
+            }
+
+            val cachedList = repository.getCachedFilesForRepo(repo.owner.login, repo.name, branch)
+            val cacheMap = cachedList.associateBy { it.path }
+
+            val accumulatedMatches = mutableListOf<RepoFileSearchMatch>()
+            var scannedCount = 0
+
+            fun searchContent(filePath: String, content: String) {
+                val lines = content.lines()
+                for ((lineIdx, lineText) in lines.withIndex()) {
+                    val lineNum = lineIdx + 1
+                    var startIndex = 0
+                    while (startIndex < lineText.length) {
+                        val matchIndex = lineText.indexOf(cleanQuery, startIndex, ignoreCase = true)
+                        if (matchIndex == -1) break
+
+                        val match = RepoFileSearchMatch(
+                            path = filePath,
+                            fileName = filePath.substringAfterLast('/'),
+                            lineNumber = lineNum,
+                            lineContent = lineText,
+                            matchStartIndex = matchIndex,
+                            matchLength = cleanQuery.length
+                        )
+                        accumulatedMatches.add(match)
+                        val snapshot = accumulatedMatches.toList()
+                        _uiState.update { state ->
+                            state.copy(
+                                searchAcrossFilesResults = snapshot,
+                                searchAcrossFilesProgress = Pair(scannedCount, candidateFiles.size)
+                            )
+                        }
+                        startIndex = matchIndex + cleanQuery.length
+                    }
+                }
+            }
+
+            candidateFiles.chunked(6).forEach { chunk ->
+                if (!isActive) return@launch
+                for (fileItem in chunk) {
+                    if (!isActive) return@launch
+                    val cached = cacheMap[fileItem.path]
+                    if (cached != null && cached.sha == fileItem.sha) {
+                        searchContent(fileItem.path, cached.content)
+                    } else {
+                        val isTextExt = isLikelyTextFile(fileItem.fileName)
+                        if (isTextExt && (fileItem.size == null || fileItem.size < 500_000)) {
+                            val res = repository.getFileContent(token, repo.owner.login, repo.name, fileItem.path, branch)
+                            if (res.isSuccess) {
+                                val (_, decoded) = res.getOrNull()!!
+                                searchContent(fileItem.path, decoded)
+                            }
+                        }
+                    }
+                    scannedCount++
+                    _uiState.update { it.copy(searchAcrossFilesProgress = Pair(scannedCount, candidateFiles.size)) }
+                }
+            }
+
+            _uiState.update {
+                it.copy(
+                    isSearchingAcrossFiles = false,
+                    searchAcrossFilesProgress = Pair(candidateFiles.size, candidateFiles.size)
+                )
+            }
         }
     }
 

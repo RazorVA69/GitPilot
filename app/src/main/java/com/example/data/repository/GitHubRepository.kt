@@ -6,6 +6,7 @@ import com.example.data.api.GitHubApiService
 import com.example.data.api.GitHubAuthService
 import com.example.data.local.AccountEntity
 import com.example.data.local.AppDao
+import com.example.data.local.CachedFileBlobEntity
 import com.example.data.local.FileDraftEntity
 import com.example.data.local.SavedRepoEntity
 import com.example.data.model.CommitResultResponse
@@ -331,6 +332,20 @@ class GitHubRepository(
             if (response.isSuccessful && response.body() != null) {
                 val file = response.body()!!
                 val decoded = decodeFileContent(file.content, file.encoding)
+                if (branch != null) {
+                    appDao.insertCachedFile(
+                        CachedFileBlobEntity(
+                            id = "$owner/$repo:$branch:$path",
+                            repoFullName = "$owner/$repo",
+                            branch = branch,
+                            path = path,
+                            sha = file.sha,
+                            content = decoded,
+                            size = file.size,
+                            lastSyncedAt = System.currentTimeMillis()
+                        )
+                    )
+                }
                 Result.success(Pair(file, decoded))
             } else {
                 Result.failure(Exception("Failed to fetch file: HTTP ${response.code()}"))
@@ -338,6 +353,37 @@ class GitHubRepository(
         } catch (e: Exception) {
             Result.failure(Exception(friendlyErrorMessage(null, e)))
         }
+    }
+
+    suspend fun getCachedFilesForRepo(owner: String, repo: String, branch: String): List<CachedFileBlobEntity> = withContext(Dispatchers.IO) {
+        appDao.getCachedFilesForRepo("$owner/$repo", branch)
+    }
+
+    suspend fun getCachedFile(owner: String, repo: String, branch: String, path: String): CachedFileBlobEntity? = withContext(Dispatchers.IO) {
+        appDao.getCachedFile("$owner/$repo:$branch:$path")
+    }
+
+    suspend fun cacheFileBlob(
+        owner: String,
+        repo: String,
+        branch: String,
+        path: String,
+        sha: String,
+        content: String,
+        size: Long = 0L
+    ) = withContext(Dispatchers.IO) {
+        appDao.insertCachedFile(
+            CachedFileBlobEntity(
+                id = "$owner/$repo:$branch:$path",
+                repoFullName = "$owner/$repo",
+                branch = branch,
+                path = path,
+                sha = sha,
+                content = content,
+                size = size,
+                lastSyncedAt = System.currentTimeMillis()
+            )
+        )
     }
 
     suspend fun commitFile(

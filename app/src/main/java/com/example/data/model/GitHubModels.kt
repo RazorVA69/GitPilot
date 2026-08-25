@@ -201,3 +201,19 @@ data class ExplorerNode(
     val fileCount: Int get() = if (isDirectory) children.sumOf { if (it.isDirectory) it.fileCount else 1 } else 0
     val totalSize: Long get() = if (isDirectory) children.sumOf { it.totalSize } else (size ?: 0L)
 }
+
+// Search Across All Files Result Models
+data class RepoFileSearchMatch(
+    val path: String,
+    val fileName: String,
+    val lineNumber: Int,
+    val lineContent: String,
+    val matchStartIndex: Int,
+    val matchLength: Int
+)
+
+data class RepoFileGroupedMatches(
+    val path: String,
+    val fileName: String,
+    val matches: List<RepoFileSearchMatch>
+)

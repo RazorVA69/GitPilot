@@ -62,4 +62,23 @@ interface AppDao {
 
     @Query("DELETE FROM file_drafts WHERE id = :id")
     suspend fun deleteDraft(id: String)
+
+    // Cached File Blobs
+    @Query("SELECT * FROM cached_file_blobs WHERE repoFullName = :repoFullName AND branch = :branch")
+    suspend fun getCachedFilesForRepo(repoFullName: String, branch: String): List<CachedFileBlobEntity>
+
+    @Query("SELECT * FROM cached_file_blobs WHERE id = :id")
+    suspend fun getCachedFile(id: String): CachedFileBlobEntity?
+
+    @Query("SELECT * FROM cached_file_blobs WHERE repoFullName = :repoFullName AND branch = :branch AND path LIKE :pathPrefix || '%'")
+    suspend fun getCachedFilesUnderPath(repoFullName: String, branch: String, pathPrefix: String): List<CachedFileBlobEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCachedFiles(files: List<CachedFileBlobEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertCachedFile(file: CachedFileBlobEntity)
+
+    @Query("DELETE FROM cached_file_blobs WHERE repoFullName = :repoFullName")
+    suspend fun deleteCachedRepoFiles(repoFullName: String)
 }

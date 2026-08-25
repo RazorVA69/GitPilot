@@ -35,3 +35,15 @@ data class FileDraftEntity(
     val originalSha: String?,
     val lastUpdated: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "cached_file_blobs")
+data class CachedFileBlobEntity(
+    @PrimaryKey val id: String, // format: "owner/repo:branch:path"
+    val repoFullName: String,
+    val branch: String,
+    val path: String,
+    val sha: String,
+    val content: String,
+    val size: Long = 0L,
+    val lastSyncedAt: Long = System.currentTimeMillis()
+)

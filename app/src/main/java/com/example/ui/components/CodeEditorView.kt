@@ -112,9 +112,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import com.example.data.model.FileContentResponse
 import com.example.ui.theme.GitAccent
 import com.example.ui.theme.GitAccentSoft
+import com.example.ui.theme.GitAppBg
 import com.example.ui.theme.GitBg
 import com.example.ui.theme.GitBorder
 import com.example.ui.theme.GitBorderStrong
@@ -140,6 +143,7 @@ fun CodeEditorView(
     isDirty: Boolean,
     isMarkdownPreviewMode: Boolean,
     selectedBranch: String,
+    initialLine: Int? = null,
     onContentChange: (String) -> Unit,
     onToggleMarkdownPreview: () -> Unit,
     onOpenCommitDialog: () -> Unit,
@@ -177,6 +181,28 @@ fun CodeEditorView(
     LaunchedEffect(content) {
         if (textFieldValue.text != content) {
             textFieldValue = textFieldValue.copy(text = content)
+        }
+    }
+
+    LaunchedEffect(initialLine, content) {
+        if (initialLine != null && initialLine > 0 && content.isNotEmpty()) {
+            val lines = content.lines()
+            val targetIdx = (initialLine - 1).coerceIn(0, (lines.size - 1).coerceAtLeast(0))
+            var charOffset = 0
+            for (i in 0 until targetIdx) {
+                charOffset += lines[i].length + 1
+            }
+            val lineEnd = charOffset + (lines.getOrNull(targetIdx)?.length ?: 0)
+            textFieldValue = textFieldValue.copy(
+                selection = TextRange(charOffset, lineEnd)
+            )
+            // Scroll to the target line smoothly
+            val targetLine = targetIdx
+            coroutineScope.launch {
+                val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
+                val targetScroll = (targetLine * approximateLineHeightPx - 100).coerceAtLeast(0)
+                verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+            }
         }
     }
 
@@ -447,7 +473,7 @@ fun CodeEditorView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(GitSurface)
+            .background(GitAppBg)
             .imePadding()
     ) {
         // TOP APP BAR
@@ -1002,7 +1028,7 @@ fun CodeEditorView(
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = GitSurface,
+                containerColor = GitAppBg,
                 titleContentColor = GitText1
             )
         )
@@ -1188,7 +1214,7 @@ fun CodeEditorView(
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(GitSurface)
+                        .background(GitAppBg)
                         .verticalScroll(rememberScrollState())
                         .padding(horizontal = 20.dp, vertical = 16.dp)
                         .padding(bottom = 120.dp)
@@ -1232,7 +1258,14 @@ fun CodeEditorView(
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(GitSurface)
+                        .background(GitAppBg)
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, _, zoom, _ ->
+                                if (zoom != 1f) {
+                                    fontSize = (fontSize * zoom).coerceIn(8.5f, 32f)
+                                }
+                            }
+                        }
                 ) {
                     val containerHeight = maxHeight
                     val containerWidth = maxWidth
@@ -1277,7 +1310,7 @@ fun CodeEditorView(
                                 modifier = Modifier
                                     .fillMaxHeight()
                                     .width(gutterWidth)
-                                    .background(GitSurface)
+                                    .background(GitAppBg)
                                     .verticalScroll(verticalScrollState)
                                     .padding(top = 12.dp, bottom = 360.dp, start = 4.dp, end = 6.dp)
                             ) {

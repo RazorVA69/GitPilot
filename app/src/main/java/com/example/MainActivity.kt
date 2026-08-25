@@ -51,6 +51,7 @@ import com.example.ui.components.CreateOrUploadModal
 import com.example.ui.components.FileTreeExplorer
 import com.example.ui.components.GitHubTerminalModal
 import com.example.ui.components.RepoSidebarDrawer
+import com.example.ui.components.SearchAcrossFilesView
 import com.example.ui.components.SettingsModal
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RepoListScreen
@@ -144,6 +145,8 @@ fun GitExplorerApp(
                 uiState.showBranchSelector ||
                 uiState.isLeftDrawerOpen ||
                 uiState.activeFile != null ||
+                uiState.activeFilePath != null ||
+                uiState.showSearchAcrossFiles ||
                 uiState.isBatchMode ||
                 uiState.selectedFilePaths.isNotEmpty() ||
                 (uiState.currentScreen == AppScreen.EXPLORER)
@@ -156,7 +159,8 @@ fun GitExplorerApp(
             uiState.showBatchDeleteDialog -> viewModel.setShowBatchDeleteDialog(false)
             uiState.showBranchSelector -> viewModel.setShowBranchSelector(false)
             uiState.isLeftDrawerOpen -> viewModel.setLeftDrawerOpen(false)
-            uiState.activeFile != null -> viewModel.closeFile()
+            uiState.activeFile != null || uiState.activeFilePath != null -> viewModel.closeFile()
+            uiState.showSearchAcrossFiles -> viewModel.closeSearchAcrossFiles()
             uiState.isBatchMode || uiState.selectedFilePaths.isNotEmpty() -> viewModel.clearSelectionAndBatchMode()
             uiState.currentDirectoryPath.isNotEmpty() -> viewModel.navigateUp()
             uiState.currentScreen == AppScreen.EXPLORER -> viewModel.navigateToRepoList()
@@ -255,10 +259,30 @@ fun GitExplorerApp(
                             isDirty = uiState.isFileDirty,
                             isMarkdownPreviewMode = uiState.isMarkdownPreviewMode,
                             selectedBranch = uiState.selectedBranch,
+                            initialLine = uiState.initialEditorLine,
                             onContentChange = viewModel::updateEditorContent,
                             onToggleMarkdownPreview = viewModel::toggleMarkdownPreview,
                             onOpenCommitDialog = { viewModel.setShowCommitDialog(true) },
                             onClose = viewModel::closeFile
+                        )
+                    } else if (uiState.showSearchAcrossFiles) {
+                        SearchAcrossFilesView(
+                            repoName = uiState.selectedRepo?.name ?: "",
+                            branch = uiState.selectedBranch,
+                            searchQuery = uiState.searchAcrossFilesQuery,
+                            selectedPath = uiState.searchAcrossFilesPath,
+                            pinnedFolders = uiState.pinnedFolders,
+                            allTreeItems = uiState.rawTreeItems,
+                            isSearching = uiState.isSearchingAcrossFiles,
+                            progress = uiState.searchAcrossFilesProgress,
+                            results = uiState.searchAcrossFilesResults,
+                            onSearchQueryChange = viewModel::setSearchAcrossFilesQuery,
+                            onPathSelected = viewModel::setSearchAcrossFilesPath,
+                            onSelectMatch = { path, line ->
+                                viewModel.openFileAtLine(path, line)
+                            },
+                            onRefreshSearch = viewModel::refreshSearchAcrossFiles,
+                            onClose = viewModel::closeSearchAcrossFiles
                         )
                     } else {
                         FileTreeExplorer(
@@ -307,6 +331,7 @@ fun GitExplorerApp(
                             onFileTreeSortChange = viewModel::setFileTreeSortOption,
                             onToggleFileTreeSortReverse = viewModel::toggleFileTreeSortReverse,
                             onToggleLeftDrawer = { viewModel.setLeftDrawerOpen(!uiState.isLeftDrawerOpen) },
+                            onOpenSearchAcrossFiles = { viewModel.openSearchAcrossFiles(uiState.currentDirectoryPath) },
                             onOpenTerminal = { viewModel.openTerminal() },
                             onOpenSettings = { viewModel.setShowSettings(true) }
                         )

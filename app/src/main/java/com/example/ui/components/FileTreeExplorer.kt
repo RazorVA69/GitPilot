@@ -157,6 +157,7 @@ fun FileTreeExplorer(
     onFileTreeSortChange: (FileTreeSortOption) -> Unit = {},
     onToggleFileTreeSortReverse: () -> Unit = {},
     onToggleLeftDrawer: () -> Unit,
+    onOpenSearchAcrossFiles: () -> Unit = {},
     onOpenTerminal: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -562,6 +563,22 @@ fun FileTreeExplorer(
                                 onToggleFileTreeSortReverse()
                                 showOverflowMenu = false
                             }
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
+
+                        DropdownMenuItem(
+                            text = {
+                                Text("Search across all files", fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = GitText1)
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Search, contentDescription = "Search across all files", tint = GitAccent, modifier = Modifier.size(18.dp))
+                            },
+                            onClick = {
+                                onOpenSearchAcrossFiles()
+                                showOverflowMenu = false
+                            },
+                            modifier = Modifier.testTag("menu_item_search_across_all_files")
                         )
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = GitBorder)
