@@ -248,38 +248,45 @@ fun CodeEditorView(
     // Three-dot Menu State
     var showMoreMenu by remember { mutableStateOf(false) }
 
-    // Tab Position and View State Cache across tabs for instant zero-lag tab switching
+    // Tab Position, Selection, and Scroll State Cache across tabs for instant differential tab switching
     val tabPositionCache = remember { mutableMapOf<String, Triple<Int, Int, TextRange>>() }
 
-    // Text Field Value State (Keyed to filePath for instantaneous tab switching with preserved selection)
-    var textFieldValue by remember(filePath) {
+    // Text Field Value State (Preserved across tab switches and updated differentially)
+    var textFieldValue by remember {
+        mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
+    }
+
+    // Previous active file path tracker for differential tab switching
+    var previousFilePath by remember { mutableStateOf(filePath) }
+
+    // Differential tab switching: When switching tabs, update textFieldValue and scroll positions immediately without recreating state
+    LaunchedEffect(filePath) {
+        if (previousFilePath != filePath) {
+            // Save state of previous tab into cache
+            tabPositionCache[previousFilePath] = Triple(
+                verticalScrollState.value,
+                horizontalScrollState.value,
+                textFieldValue.selection
+            )
+            previousFilePath = filePath
+        }
+
+        // Restore target tab state from cache or tab info
         val saved = tabPositionCache[filePath] ?: openTabs.find { it.path == filePath }?.let {
             Triple(it.scrollY, it.scrollX, TextRange(it.selectionStart, it.selectionEnd))
         }
-        val sel = if (saved != null && saved.third.end <= content.length) {
+
+        val targetSelection = if (saved != null && saved.third.end <= content.length) {
             saved.third
         } else {
             TextRange(content.length)
         }
-        mutableStateOf(TextFieldValue(text = content, selection = sel))
-    }
 
-    LaunchedEffect(content) {
-        if (textFieldValue.text != content) {
-            textFieldValue = textFieldValue.copy(text = content)
+        if (textFieldValue.text != content || textFieldValue.selection != targetSelection) {
+            textFieldValue = TextFieldValue(text = content, selection = targetSelection)
         }
-    }
 
-    // Restore exact line and scroll position for this tab without lag
-    LaunchedEffect(filePath) {
-        val saved = tabPositionCache[filePath] ?: openTabs.find { it.path == filePath }?.let {
-            Triple(it.scrollY, it.scrollX, TextRange(it.selectionStart, it.selectionEnd))
-        }
         if (saved != null) {
-            val safeSel = if (saved.third.end <= content.length) saved.third else TextRange(content.length)
-            if (textFieldValue.selection != safeSel) {
-                textFieldValue = textFieldValue.copy(selection = safeSel)
-            }
             verticalScrollState.scrollTo(saved.first.coerceIn(0, verticalScrollState.maxValue))
             horizontalScrollState.scrollTo(saved.second.coerceIn(0, horizontalScrollState.maxValue))
         } else if (initialLine != null && initialLine > 0 && content.isNotEmpty()) {
@@ -296,6 +303,16 @@ fun CodeEditorView(
             val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
             val targetScroll = (targetIdx * approximateLineHeightPx - 100).coerceAtLeast(0)
             verticalScrollState.scrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+        }
+    }
+
+    // Keep textFieldValue in sync if external content changes (e.g. discard changes, git pull, reload)
+    LaunchedEffect(content) {
+        if (textFieldValue.text != content) {
+            textFieldValue = textFieldValue.copy(
+                text = content,
+                selection = TextRange(textFieldValue.selection.start.coerceIn(0, content.length), textFieldValue.selection.end.coerceIn(0, content.length))
+            )
         }
     }
 
