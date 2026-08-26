@@ -276,12 +276,21 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                     } else if (end < len && text[end] == '(') {
                         // Function Call or definition
                         addStyle(SpanStyle(color = SyntaxColors.FunctionName), i, end)
-                    } else if (language == SupportedLanguage.JSON && end < len && text.substring(end).trimStart().startsWith(":")) {
-                        // JSON Key
-                        addStyle(SpanStyle(color = SyntaxColors.Property, fontWeight = FontWeight.Medium), i, end)
-                    } else if (language == SupportedLanguage.YAML && end < len && text.substring(end).trimStart().startsWith(":")) {
-                        // YAML Key
-                        addStyle(SpanStyle(color = SyntaxColors.Property, fontWeight = FontWeight.Bold), i, end)
+                    } else if ((language == SupportedLanguage.JSON || language == SupportedLanguage.YAML) && end < len) {
+                        var checkPos = end
+                        while (checkPos < len && (text[checkPos] == ' ' || text[checkPos] == '\t')) {
+                            checkPos++
+                        }
+                        if (checkPos < len && text[checkPos] == ':') {
+                            val isYaml = language == SupportedLanguage.YAML
+                            addStyle(
+                                SpanStyle(
+                                    color = SyntaxColors.Property,
+                                    fontWeight = if (isYaml) FontWeight.Bold else FontWeight.Medium
+                                ),
+                                i, end
+                            )
+                        }
                     }
 
                     i = end
@@ -337,9 +346,38 @@ class CodeSyntaxVisualTransformation(
 ) : VisualTransformation {
     private val highlighter = SyntaxHighlighter(language)
 
+    companion object {
+        // High performance memory cache so scrolling never re-parses text
+        private var lastInputText: String? = null
+        private var lastLanguage: SupportedLanguage? = null
+        private var lastBracketIndices: Pair<Int, Int>? = null
+        private var lastTransformedText: TransformedText? = null
+    }
+
     override fun filter(text: AnnotatedString): TransformedText {
-        val highlighted = highlighter.highlight(text.text, matchingBracketIndices)
-        return TransformedText(highlighted, OffsetMapping.Identity)
+        val raw = text.text
+
+        // Fast path: if raw string, language, and brackets match cache, return in O(1) time
+        val cached = lastTransformedText
+        if (cached != null &&
+            lastLanguage == language &&
+            lastBracketIndices == matchingBracketIndices &&
+            (lastInputText === raw || (lastInputText?.length == raw.length && lastInputText == raw))
+        ) {
+            return cached
+        }
+
+        // Compute highlighting
+        val highlighted = highlighter.highlight(raw, matchingBracketIndices)
+        val result = TransformedText(highlighted, OffsetMapping.Identity)
+
+        // Update cache
+        lastInputText = raw
+        lastLanguage = language
+        lastBracketIndices = matchingBracketIndices
+        lastTransformedText = result
+
+        return result
     }
 }
 

@@ -127,141 +127,160 @@ fun FolderFilesDrawer(
         )
     }
 
-    // Left Drawer Panel
-    AnimatedVisibility(
-        visible = isOpen,
-        enter = slideInHorizontally(initialOffsetX = { -it }),
-        exit = slideOutHorizontally(targetOffsetX = { -it }),
-        modifier = modifier
+    // Right Drawer Panel (Slides smoothly from right side)
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.CenterEnd
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxHeight()
-                .widthIn(min = 280.dp, max = 340.dp)
-                .background(GitSurface),
-            color = GitSurface,
-            border = BorderStroke(1.dp, GitBorderStrong),
-            shadowElevation = 16.dp
+        AnimatedVisibility(
+            visible = isOpen,
+            enter = slideInHorizontally(initialOffsetX = { it }),
+            exit = slideOutHorizontally(targetOffsetX = { it }),
+            modifier = modifier
         ) {
-            Column(
+            Surface(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(vertical = 12.dp)
+                    .fillMaxHeight()
+                    .widthIn(min = 280.dp, max = 340.dp)
+                    .background(GitSurface),
+                color = GitSurface,
+                border = BorderStroke(1.dp, GitBorderStrong),
+                shadowElevation = 16.dp
             ) {
-                // Header
-                Row(
+                Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .fillMaxSize()
+                        .padding(vertical = 12.dp)
                 ) {
+                    // Header
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .background(GitAccentSoft, CircleShape),
-                            contentAlignment = Alignment.Center
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.FolderOpen,
-                                contentDescription = null,
-                                tint = GitAccent,
-                                modifier = Modifier.size(17.dp)
-                            )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = if (currentFolder.isEmpty()) "Root Directory" else currentFolder.substringAfterLast('/'),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = GitText1,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = if (currentFolder.isEmpty()) "/" else "/$currentFolder",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = FontFamily.Monospace,
-                                color = GitText2,
-                                fontSize = 10.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                    }
-
-                    IconButton(
-                        onClick = onClose,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Close",
-                            tint = GitText2,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Search Filter Box
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = "Filter files in folder...",
-                            color = GitText3,
-                            fontSize = 12.sp
-                        )
-                    },
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = null,
-                            tint = GitText2,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(
-                                onClick = { searchQuery = "" },
-                                modifier = Modifier.size(20.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(GitAccentSoft, CircleShape),
+                                contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Clear",
-                                    tint = GitText2,
-                                    modifier = Modifier.size(14.dp)
+                                    imageVector = Icons.Default.FolderOpen,
+                                    contentDescription = null,
+                                    tint = GitAccent,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = if (currentFolder.isEmpty()) "Root Directory" else currentFolder.substringAfterLast('/'),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GitText1,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (currentFolder.isEmpty()) "/" else "/$currentFolder",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = GitText2,
+                                    fontSize = 10.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                    },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp)
-                        .height(44.dp)
-                        .testTag("folder_drawer_search_input"),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = GitAppBg,
-                        unfocusedContainerColor = GitAppBg,
-                        focusedBorderColor = GitAccent,
-                        unfocusedBorderColor = GitBorder
-                    )
-                )
 
-                Spacer(modifier = Modifier.height(10.dp))
-                HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
+                        IconButton(
+                            onClick = onClose,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = GitText2,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Search Filter Box (Perfect vertical alignment and zero clipping)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = GitAppBg,
+                        border = BorderStroke(1.dp, if (searchQuery.isNotEmpty()) GitAccent else GitBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 10.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = if (searchQuery.isNotEmpty()) GitAccent else GitText2,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier.weight(1f),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (searchQuery.isEmpty()) {
+                                    Text(
+                                        text = "Filter files in folder...",
+                                        color = GitText3,
+                                        fontSize = 12.5.sp
+                                    )
+                                }
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                    textStyle = androidx.compose.ui.text.TextStyle(
+                                        color = GitText1,
+                                        fontSize = 12.5.sp
+                                    ),
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(GitAccent),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("folder_drawer_search_input")
+                                )
+                            }
+                            if (searchQuery.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(4.dp))
+                                IconButton(
+                                    onClick = { searchQuery = "" },
+                                    modifier = Modifier.size(18.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = GitText2,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
                 // Files List
                 LazyColumn(
@@ -391,6 +410,7 @@ fun FolderFilesDrawer(
             }
         }
     }
+}
 }
 
 @Composable

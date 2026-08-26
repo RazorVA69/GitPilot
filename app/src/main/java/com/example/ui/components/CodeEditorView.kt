@@ -1489,8 +1489,10 @@ fun CodeEditorView(
                     Row(modifier = Modifier.fillMaxSize()) {
                         // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
                         if (showLineNumbers) {
-                            val digits = remember(lineCount) { lineCount.toString().length }
-                            val gutterWidth = (digits * 9 + 22).dp.coerceAtLeast(40.dp)
+                            val digits = remember(lineCount) { maxOf(2, lineCount.toString().length) }
+                            val gutterWidth = remember(digits, fontSize) {
+                                (digits * (fontSize * 0.62f) + 8f).dp
+                            }
 
                             Box(
                                 modifier = Modifier
@@ -1498,7 +1500,7 @@ fun CodeEditorView(
                                     .width(gutterWidth)
                                     .background(GitAppBg)
                                     .verticalScroll(verticalScrollState)
-                                    .padding(top = 12.dp, bottom = 360.dp, start = 4.dp, end = 6.dp)
+                                    .padding(top = 12.dp, bottom = 360.dp, start = 2.dp, end = 3.dp)
                             ) {
                                 Text(
                                     text = lineNumbersText,
@@ -1515,7 +1517,7 @@ fun CodeEditorView(
                             Box(
                                 modifier = Modifier
                                     .fillMaxHeight()
-                                    .width(1.dp)
+                                    .width(0.8.dp)
                                     .background(GitBorder)
                             )
                         }
@@ -1525,13 +1527,13 @@ fun CodeEditorView(
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
-                                .padding(top = 12.dp, bottom = 360.dp, start = 12.dp, end = 18.dp)
+                                .padding(top = 12.dp, bottom = 360.dp, start = 6.dp, end = 16.dp)
                         } else {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
                                 .horizontalScroll(horizontalScrollState)
-                                .padding(top = 12.dp, bottom = 360.dp, start = 12.dp, end = 24.dp)
+                                .padding(top = 12.dp, bottom = 360.dp, start = 6.dp, end = 24.dp)
                         }
 
                         BasicTextField(
@@ -1548,6 +1550,22 @@ fun CodeEditorView(
                             cursorBrush = SolidColor(GitAccent)
                         )
                     }
+
+                    // Right Edge Gesture Area: swiping from right side opens files drawer
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(32.dp)
+                            .pointerInput(Unit) {
+                                detectHorizontalDragGestures { change, dragAmount ->
+                                    if (dragAmount < -10f) {
+                                        change.consume()
+                                        isFolderDrawerOpen = true
+                                    }
+                                }
+                            }
+                    )
 
                     // Vertical Right Scrollbar
                     val vMax = verticalScrollState.maxValue
