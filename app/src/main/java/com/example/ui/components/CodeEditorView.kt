@@ -626,7 +626,6 @@ fun CodeEditorView(
         modifier = modifier
             .fillMaxSize()
             .background(GitAppBg)
-            .imePadding()
     ) {
         // TOP APP BAR
         TopAppBar(
@@ -1419,8 +1418,7 @@ fun CodeEditorView(
             } else {
                 // Code Editor with High Performance Synchronized Gutter & Custom Scrollbars
                 val density = LocalDensity.current
-                val imeInsets = WindowInsets.ime
-                val imeBottom = imeInsets.getBottom(density)
+                val isImeVisible = WindowInsets.ime.getBottom(density) > 0
 
                 // Sync search match selection into textFieldValue
                 LaunchedEffect(matches, currentMatchIndex) {
@@ -1445,7 +1443,37 @@ fun CodeEditorView(
                     line
                 }
 
-                BoxWithConstraints(
+                // Ensure active cursor line is automatically scrolled into view when cursor line moves
+                LaunchedEffect(cursorLine) {
+                    val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
+                    val topPaddingPx = with(density) { 12.dp.toPx() }
+                    val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
+                    val currentScroll = verticalScrollState.value
+                    val topComfortMargin = with(density) { 36.dp.toPx() }.toInt()
+                    val bottomComfortMargin = with(density) { 140.dp.toPx() }.toInt()
+
+                    if (cursorY < currentScroll + topComfortMargin) {
+                        val target = (cursorY - topComfortMargin).coerceAtLeast(0)
+                        verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                    } else if (cursorY > currentScroll + 650 - bottomComfortMargin) {
+                        val target = (cursorY - 200).coerceAtLeast(0)
+                        verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                    }
+                }
+
+                // When keyboard appears, scroll the active cursor line above the keyboard
+                LaunchedEffect(isImeVisible) {
+                    if (isImeVisible) {
+                        kotlinx.coroutines.delay(120)
+                        val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
+                        val topPaddingPx = with(density) { 12.dp.toPx() }
+                        val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
+                        val target = (cursorY - 140).coerceAtLeast(0)
+                        verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                    }
+                }
+
+                Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(GitAppBg)
@@ -1457,36 +1485,6 @@ fun CodeEditorView(
                             }
                         }
                 ) {
-                    val containerHeight = maxHeight
-                    val containerWidth = maxWidth
-
-                    // Ensure active cursor line is automatically scrolled into view when cursor line moves or keyboard resizes
-                    LaunchedEffect(cursorLine, containerHeight) {
-                        val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
-                        val topPaddingPx = with(density) { 12.dp.toPx() }
-                        val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
-                        val cursorHeightPx = lineHeightPx.toInt()
-                        val viewportHeightPx = with(density) { containerHeight.toPx() }.toInt()
-
-                        if (viewportHeightPx > 0) {
-                            val currentScroll = verticalScrollState.value
-                            val visibleTop = currentScroll
-                            val visibleBottom = currentScroll + viewportHeightPx
-
-                            val topMarginPx = with(density) { 32.dp.toPx() }.toInt()
-                            val bottomMarginPx = with(density) { 72.dp.toPx() }.toInt()
-
-                            if (cursorY < visibleTop + topMarginPx) {
-                                val target = (cursorY - topMarginPx).coerceAtLeast(0)
-                                verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
-                            } else if (cursorY + cursorHeightPx > visibleBottom - bottomMarginPx) {
-                                // Scroll up so the cursor is placed in the upper-middle of the visible screen above keyboard
-                                val target = (cursorY - (viewportHeightPx / 3)).coerceAtLeast(0)
-                                verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
-                            }
-                        }
-                    }
-
                     Row(modifier = Modifier.fillMaxSize()) {
                         // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
                         if (showLineNumbers) {
@@ -1501,7 +1499,7 @@ fun CodeEditorView(
                                     .width(gutterWidth)
                                     .background(GitAppBg)
                                     .verticalScroll(verticalScrollState)
-                                    .padding(top = 12.dp, bottom = 360.dp, start = 2.dp, end = 3.dp)
+                                    .padding(top = 12.dp, bottom = 520.dp, start = 2.dp, end = 3.dp)
                             ) {
                                 Text(
                                     text = lineNumbersText,
@@ -1523,18 +1521,18 @@ fun CodeEditorView(
                             )
                         }
 
-                        // Text Editor Field with generous bottom padding (360dp) so IME keyboard never hides the end of file
+                        // Text Editor Field with generous bottom padding (520dp) so IME keyboard never hides the end of file
                         val textModifier = if (isWordWrapEnabled) {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
-                                .padding(top = 12.dp, bottom = 360.dp, start = 6.dp, end = 16.dp)
+                                .padding(top = 12.dp, bottom = 520.dp, start = 6.dp, end = 16.dp)
                         } else {
                             Modifier
                                 .fillMaxSize()
                                 .verticalScroll(verticalScrollState)
                                 .horizontalScroll(horizontalScrollState)
-                                .padding(top = 12.dp, bottom = 360.dp, start = 6.dp, end = 24.dp)
+                                .padding(top = 12.dp, bottom = 520.dp, start = 6.dp, end = 24.dp)
                         }
 
                         BasicTextField(
@@ -1570,15 +1568,13 @@ fun CodeEditorView(
 
                     // Vertical Right Scrollbar (Zero Recomposition via graphicsLayer)
                     EditorVerticalScrollbar(
-                        scrollState = verticalScrollState,
-                        containerHeight = containerHeight
+                        scrollState = verticalScrollState
                     )
 
                     // Horizontal Bottom Scrollbar (Zero Recomposition via graphicsLayer)
                     if (!isWordWrapEnabled) {
                         EditorHorizontalScrollbar(
-                            scrollState = horizontalScrollState,
-                            containerWidth = containerWidth
+                            scrollState = horizontalScrollState
                         )
                     }
                 }
@@ -1684,20 +1680,20 @@ fun CodeEditorView(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
-    scrollState: androidx.compose.foundation.ScrollState,
-    containerHeight: androidx.compose.ui.unit.Dp
+    scrollState: androidx.compose.foundation.ScrollState
 ) {
     if (scrollState.maxValue <= 0) return
 
-    val thumbHeight = (containerHeight * 0.25f).coerceIn(40.dp, 120.dp)
-
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .align(Alignment.CenterEnd)
             .fillMaxHeight()
             .width(8.dp)
             .padding(vertical = 4.dp, horizontal = 1.dp)
     ) {
+        val trackHeight = maxHeight
+        val thumbHeight = (trackHeight * 0.22f).coerceIn(36.dp, 100.dp)
+
         // Track background
         Box(
             modifier = Modifier
@@ -1714,10 +1710,10 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
                     val maxVal = scrollState.maxValue
                     if (maxVal > 0) {
                         val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
-                        val containerHeightPx = containerHeight.toPx()
+                        val trackHeightPx = trackHeight.toPx()
                         val thumbHeightPx = thumbHeight.toPx()
-                        val availableTrack = containerHeightPx - thumbHeightPx - 12.dp.toPx()
-                        translationY = (availableTrack * fraction).coerceAtLeast(0f)
+                        val availableTrack = (trackHeightPx - thumbHeightPx - 8.dp.toPx()).coerceAtLeast(0f)
+                        translationY = availableTrack * fraction
                     }
                 }
                 .clip(RoundedCornerShape(4.dp))
@@ -1728,20 +1724,20 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
 
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollbar(
-    scrollState: androidx.compose.foundation.ScrollState,
-    containerWidth: androidx.compose.ui.unit.Dp
+    scrollState: androidx.compose.foundation.ScrollState
 ) {
     if (scrollState.maxValue <= 0) return
 
-    val thumbWidth = (containerWidth * 0.3f).coerceIn(48.dp, 140.dp)
-
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
             .height(8.dp)
             .padding(horizontal = 4.dp, vertical = 1.dp)
     ) {
+        val trackWidth = maxWidth
+        val thumbWidth = (trackWidth * 0.25f).coerceIn(40.dp, 120.dp)
+
         // Track background
         Box(
             modifier = Modifier
@@ -1758,10 +1754,10 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
                     val maxVal = scrollState.maxValue
                     if (maxVal > 0) {
                         val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
-                        val containerWidthPx = containerWidth.toPx()
+                        val trackWidthPx = trackWidth.toPx()
                         val thumbWidthPx = thumbWidth.toPx()
-                        val availableTrack = containerWidthPx - thumbWidthPx - 12.dp.toPx()
-                        translationX = (availableTrack * fraction).coerceAtLeast(0f)
+                        val availableTrack = (trackWidthPx - thumbWidthPx - 8.dp.toPx()).coerceAtLeast(0f)
+                        translationX = availableTrack * fraction
                     }
                 }
                 .clip(RoundedCornerShape(4.dp))
