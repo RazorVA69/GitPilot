@@ -127,15 +127,15 @@ fun FolderFilesDrawer(
         )
     }
 
-    // Right Drawer Panel (Slides smoothly from right side)
+    // Left Drawer Panel (Slides smoothly from left side)
     Box(
         modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.CenterEnd
+        contentAlignment = Alignment.CenterStart
     ) {
         AnimatedVisibility(
             visible = isOpen,
-            enter = slideInHorizontally(initialOffsetX = { it }),
-            exit = slideOutHorizontally(targetOffsetX = { it }),
+            enter = slideInHorizontally(initialOffsetX = { -it }),
+            exit = slideOutHorizontally(targetOffsetX = { -it }),
             modifier = modifier
         ) {
             Surface(

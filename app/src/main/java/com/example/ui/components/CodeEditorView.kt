@@ -240,7 +240,11 @@ fun CodeEditorView(
     }
 
     val visualTransformation = remember(language, matchingBracketIndices) {
-        CodeSyntaxVisualTransformation(language, matchingBracketIndices)
+        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) {
+            androidx.compose.ui.text.input.VisualTransformation.None
+        } else {
+            CodeSyntaxVisualTransformation(language, matchingBracketIndices)
+        }
     }
 
     // Undo / Redo History Stacks with cursor position preservation
@@ -1456,11 +1460,8 @@ fun CodeEditorView(
                     val containerHeight = maxHeight
                     val containerWidth = maxWidth
 
-                    // Ensure active cursor line is automatically scrolled into view whenever:
-                    // 1. Cursor line moves (user taps or types)
-                    // 2. Container height changes (keyboard opens, closes, or resizes)
-                    // 3. Selection changes
-                    LaunchedEffect(cursorLine, containerHeight, textFieldValue.selection) {
+                    // Ensure active cursor line is automatically scrolled into view when cursor line moves or keyboard resizes
+                    LaunchedEffect(cursorLine, containerHeight) {
                         val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                         val topPaddingPx = with(density) { 12.dp.toPx() }
                         val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
@@ -1551,15 +1552,15 @@ fun CodeEditorView(
                         )
                     }
 
-                    // Right Edge Gesture Area: swiping from right side opens files drawer
+                    // Left Edge Gesture Area: swiping from left side opens files drawer
                     Box(
                         modifier = Modifier
-                            .align(Alignment.CenterEnd)
+                            .align(Alignment.CenterStart)
                             .fillMaxHeight()
-                            .width(32.dp)
+                            .width(36.dp)
                             .pointerInput(Unit) {
                                 detectHorizontalDragGestures { change, dragAmount ->
-                                    if (dragAmount < -10f) {
+                                    if (dragAmount > 12f) {
                                         change.consume()
                                         isFolderDrawerOpen = true
                                     }
@@ -1567,72 +1568,18 @@ fun CodeEditorView(
                             }
                     )
 
-                    // Vertical Right Scrollbar
-                    val vMax = verticalScrollState.maxValue
-                    if (vMax > 0) {
-                        val verticalFraction = (verticalScrollState.value.toFloat() / vMax.toFloat()).coerceIn(0f, 1f)
-                        val thumbHeight = (containerHeight * 0.25f).coerceIn(40.dp, 120.dp)
-                        val availableTrack = containerHeight - thumbHeight - 12.dp
-                        val offsetY = (availableTrack * verticalFraction).coerceAtLeast(0.dp)
+                    // Vertical Right Scrollbar (Zero Recomposition via graphicsLayer)
+                    EditorVerticalScrollbar(
+                        scrollState = verticalScrollState,
+                        containerHeight = containerHeight
+                    )
 
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.CenterEnd)
-                                .fillMaxHeight()
-                                .width(8.dp)
-                                .padding(vertical = 4.dp, horizontal = 1.dp)
-                        ) {
-                            // Track background
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.Black.copy(alpha = 0.04f))
-                            )
-                            // Scrollbar Thumb
-                            Box(
-                                modifier = Modifier
-                                    .offset(y = offsetY)
-                                    .fillMaxWidth()
-                                    .height(thumbHeight)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(GitText3.copy(alpha = 0.6f))
-                            )
-                        }
-                    }
-
-                    // Horizontal Bottom Scrollbar (Hidden if word wrapping is enabled or max scroll <= 0)
-                    val hMax = horizontalScrollState.maxValue
-                    if (!isWordWrapEnabled && hMax > 0) {
-                        val horizontalFraction = (horizontalScrollState.value.toFloat() / hMax.toFloat()).coerceIn(0f, 1f)
-                        val thumbWidth = (containerWidth * 0.3f).coerceIn(48.dp, 140.dp)
-                        val availableTrack = containerWidth - thumbWidth - 12.dp
-                        val offsetX = (availableTrack * horizontalFraction).coerceAtLeast(0.dp)
-
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .height(8.dp)
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                        ) {
-                            // Track background
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(Color.Black.copy(alpha = 0.04f))
-                            )
-                            // Scrollbar Thumb
-                            Box(
-                                modifier = Modifier
-                                    .offset(x = offsetX)
-                                    .fillMaxHeight()
-                                    .width(thumbWidth)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(GitText3.copy(alpha = 0.6f))
-                            )
-                        }
+                    // Horizontal Bottom Scrollbar (Zero Recomposition via graphicsLayer)
+                    if (!isWordWrapEnabled) {
+                        EditorHorizontalScrollbar(
+                            scrollState = horizontalScrollState,
+                            containerWidth = containerWidth
+                        )
                     }
                 }
             }
@@ -1731,6 +1678,94 @@ fun CodeEditorView(
             onFontSizeChange = { fontSize = it },
             onFontFamilyChange = { selectedFontFamily = it },
             onDismiss = { showTypographyModal = false }
+        )
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
+    scrollState: androidx.compose.foundation.ScrollState,
+    containerHeight: androidx.compose.ui.unit.Dp
+) {
+    if (scrollState.maxValue <= 0) return
+
+    val thumbHeight = (containerHeight * 0.25f).coerceIn(40.dp, 120.dp)
+
+    Box(
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .fillMaxHeight()
+            .width(8.dp)
+            .padding(vertical = 4.dp, horizontal = 1.dp)
+    ) {
+        // Track background
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color.Black.copy(alpha = 0.04f))
+        )
+        // Scrollbar Thumb: translated via graphicsLayer so NO recompositions happen on scroll!
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(thumbHeight)
+                .graphicsLayer {
+                    val maxVal = scrollState.maxValue
+                    if (maxVal > 0) {
+                        val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+                        val containerHeightPx = containerHeight.toPx()
+                        val thumbHeightPx = thumbHeight.toPx()
+                        val availableTrack = containerHeightPx - thumbHeightPx - 12.dp.toPx()
+                        translationY = (availableTrack * fraction).coerceAtLeast(0f)
+                    }
+                }
+                .clip(RoundedCornerShape(4.dp))
+                .background(GitText3.copy(alpha = 0.6f))
+        )
+    }
+}
+
+@Composable
+private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollbar(
+    scrollState: androidx.compose.foundation.ScrollState,
+    containerWidth: androidx.compose.ui.unit.Dp
+) {
+    if (scrollState.maxValue <= 0) return
+
+    val thumbWidth = (containerWidth * 0.3f).coerceIn(48.dp, 140.dp)
+
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(8.dp)
+            .padding(horizontal = 4.dp, vertical = 1.dp)
+    ) {
+        // Track background
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(4.dp))
+                .background(Color.Black.copy(alpha = 0.04f))
+        )
+        // Scrollbar Thumb: translated via graphicsLayer so NO recompositions happen on scroll!
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(thumbWidth)
+                .graphicsLayer {
+                    val maxVal = scrollState.maxValue
+                    if (maxVal > 0) {
+                        val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+                        val containerWidthPx = containerWidth.toPx()
+                        val thumbWidthPx = thumbWidth.toPx()
+                        val availableTrack = containerWidthPx - thumbWidthPx - 12.dp.toPx()
+                        translationX = (availableTrack * fraction).coerceAtLeast(0f)
+                    }
+                }
+                .clip(RoundedCornerShape(4.dp))
+                .background(GitText3.copy(alpha = 0.6f))
         )
     }
 }
