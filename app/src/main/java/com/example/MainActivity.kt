@@ -186,7 +186,7 @@ fun GitExplorerApp(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .pointerInput(uiState.isLeftDrawerOpen, uiState.currentScreen) {
-                    if (uiState.currentScreen != AppScreen.LOGIN) {
+                    if (uiState.currentScreen == AppScreen.REPO_LIST) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             if (!uiState.isLeftDrawerOpen) {
                                 // Swipe from left edge (within 120dp/px) towards right opens drawer

@@ -77,7 +77,11 @@ data class EditorTabInfo(
     val isDirty: Boolean = false,
     val isPinned: Boolean = false,
     val isMarkdownPreview: Boolean = false,
-    val initialLine: Int? = null
+    val initialLine: Int? = null,
+    val scrollY: Int = 0,
+    val scrollX: Int = 0,
+    val selectionStart: Int = 0,
+    val selectionEnd: Int = 0
 )
 
 data class GitExplorerUiState(
@@ -1067,7 +1071,13 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun switchEditorTab(path: String) {
+    fun switchEditorTab(
+        path: String,
+        currentScrollY: Int = 0,
+        currentScrollX: Int = 0,
+        currentSelectionStart: Int = 0,
+        currentSelectionEnd: Int = 0
+    ) {
         val currentPath = _uiState.value.activeFilePath
         if (currentPath == path) return
 
@@ -1079,7 +1089,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 tab.copy(
                     content = _uiState.value.activeFileContent,
                     isDirty = _uiState.value.isFileDirty,
-                    isMarkdownPreview = _uiState.value.isMarkdownPreviewMode
+                    isMarkdownPreview = _uiState.value.isMarkdownPreviewMode,
+                    scrollY = currentScrollY,
+                    scrollX = currentScrollX,
+                    selectionStart = currentSelectionStart,
+                    selectionEnd = currentSelectionEnd
                 )
             } else tab
         }
@@ -1097,6 +1111,28 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 isLoadingFile = false
             )
         }
+    }
+
+    fun updateTabPosition(
+        path: String,
+        scrollY: Int,
+        scrollX: Int,
+        selectionStart: Int,
+        selectionEnd: Int
+    ) {
+        val currentTabs = _uiState.value.openEditorTabs
+        if (currentTabs.none { it.path == path }) return
+        val updatedTabs = currentTabs.map { tab ->
+            if (tab.path == path) {
+                tab.copy(
+                    scrollY = scrollY,
+                    scrollX = scrollX,
+                    selectionStart = selectionStart,
+                    selectionEnd = selectionEnd
+                )
+            } else tab
+        }
+        _uiState.update { it.copy(openEditorTabs = updatedTabs) }
     }
 
     fun closeEditorTab(path: String) {
