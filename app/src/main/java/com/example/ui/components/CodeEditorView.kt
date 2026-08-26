@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Deselect
 import androidx.compose.material.icons.filled.FindReplace
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.FormatListNumbered
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -54,6 +56,7 @@ import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.WrapText
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -92,6 +95,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -113,8 +117,15 @@ import androidx.compose.ui.window.Dialog
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.ui.input.pointer.pointerInput
 import com.example.data.model.FileContentResponse
+import com.example.data.model.GitTreeItem
+import com.example.ui.components.editor.BracketMatcher
+import com.example.ui.components.editor.CodeSyntaxVisualTransformation
+import com.example.ui.components.editor.EditorFontFamily
+import com.example.ui.components.editor.EditorTabsRow
+import com.example.ui.components.editor.EditorTypographyModal
+import com.example.ui.components.editor.FolderFilesDrawer
+import com.example.ui.components.editor.SupportedLanguage
 import com.example.ui.theme.GitAccent
 import com.example.ui.theme.GitAccentSoft
 import com.example.ui.theme.GitAppBg
@@ -131,6 +142,7 @@ import com.example.ui.theme.GitText3
 import com.example.ui.theme.GitYellow
 import com.example.ui.theme.GitHubOrange
 import com.example.ui.theme.Md3LightError
+import com.example.ui.viewmodel.EditorTabInfo
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -144,10 +156,18 @@ fun CodeEditorView(
     isMarkdownPreviewMode: Boolean,
     selectedBranch: String,
     initialLine: Int? = null,
+    openTabs: List<EditorTabInfo> = emptyList(),
+    pinnedFiles: Set<String> = emptySet(),
+    allTreeItems: List<GitTreeItem> = emptyList(),
     onContentChange: (String) -> Unit,
     onToggleMarkdownPreview: () -> Unit,
     onOpenCommitDialog: () -> Unit,
     onClose: () -> Unit,
+    onSelectTab: (String) -> Unit = {},
+    onCloseTab: (String) -> Unit = {},
+    onTogglePinTab: (String) -> Unit = {},
+    onTogglePinFile: (String) -> Unit = {},
+    onOpenFileFromFolder: (GitTreeItem) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -156,6 +176,10 @@ fun CodeEditorView(
     val horizontalScrollState = rememberScrollState()
 
     var fontSize by remember { mutableFloatStateOf(13.5f) }
+    var selectedFontFamily by remember { mutableStateOf(EditorFontFamily.JETBRAINS_MONO) }
+    var showTypographyModal by remember { mutableStateOf(false) }
+    var isFolderDrawerOpen by remember { mutableStateOf(false) }
+
     var isWordWrapEnabled by remember { mutableStateOf(false) }
     var showLineNumbers by remember { mutableStateOf(true) }
 
@@ -204,6 +228,19 @@ fun CodeEditorView(
                 verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
             }
         }
+    }
+
+    // Language-aware Syntax Highlighting & Bracket Matching
+    val language = remember(filePath) {
+        SupportedLanguage.fromFileName(filePath.substringAfterLast('/'))
+    }
+
+    val matchingBracketIndices = remember(textFieldValue.text, textFieldValue.selection) {
+        BracketMatcher.findMatchingBracket(textFieldValue.text, textFieldValue.selection.start)
+    }
+
+    val visualTransformation = remember(language, matchingBracketIndices) {
+        CodeSyntaxVisualTransformation(language, matchingBracketIndices)
     }
 
     // Undo / Redo History Stacks with cursor position preservation
@@ -264,6 +301,60 @@ fun CodeEditorView(
                 val targetScroll = (targetLine * approximateLineHeightPx - 100).coerceAtLeast(0)
                 verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
             }
+        }
+    }
+
+    fun handleEditorValueChange(newTfv: TextFieldValue) {
+        val oldText = textFieldValue.text
+        val newText = newTfv.text
+        val oldSelection = textFieldValue.selection
+        var adjustedTfv = newTfv
+
+        // If a single character was typed
+        if (newText.length == oldText.length + 1 && newTfv.selection.collapsed) {
+            val cursor = newTfv.selection.start
+            val insertedChar = newText.getOrNull(cursor - 1)
+
+            if (insertedChar == '\n') {
+                val indent = BracketMatcher.computeAutoIndent(oldText, oldSelection.start)
+                if (indent.isNotEmpty()) {
+                    val withIndent = newText.substring(0, cursor) + indent + newText.substring(cursor)
+                    adjustedTfv = TextFieldValue(
+                        text = withIndent,
+                        selection = TextRange(cursor + indent.length)
+                    )
+                }
+            } else if (insertedChar in listOf('(', '[', '{', '"', '\'', '`')) {
+                val closer = when (insertedChar) {
+                    '(' -> ")"
+                    '[' -> "]"
+                    '{' -> "}"
+                    '"' -> "\""
+                    '\'' -> "\'"
+                    '`' -> "`"
+                    else -> ""
+                }
+                if (closer.isNotEmpty()) {
+                    val paired = newText.substring(0, cursor) + closer + newText.substring(cursor)
+                    adjustedTfv = TextFieldValue(
+                        text = paired,
+                        selection = TextRange(cursor)
+                    )
+                }
+            } else if (insertedChar in listOf(')', ']', '}', '"', '\'', '`')) {
+                val nextCharInOld = oldText.getOrNull(oldSelection.start)
+                if (nextCharInOld == insertedChar) {
+                    adjustedTfv = TextFieldValue(
+                        text = oldText,
+                        selection = TextRange(oldSelection.start + 1)
+                    )
+                }
+            }
+        }
+
+        textFieldValue = adjustedTfv
+        if (adjustedTfv.text != content) {
+            handleTextChange(adjustedTfv.text, oldSelection)
         }
     }
 
@@ -895,6 +986,42 @@ fun CodeEditorView(
 
                             HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
 
+                            // Typography & Fonts
+                            DropdownMenuItem(
+                                text = { Text("Typography & Font...", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.TextFields,
+                                        contentDescription = null,
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showTypographyModal = true
+                                }
+                            )
+
+                            // Open Folder Files Drawer
+                            DropdownMenuItem(
+                                text = { Text("Browse Folder Files...", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.FolderOpen,
+                                        contentDescription = null,
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    isFolderDrawerOpen = true
+                                }
+                            )
+
+                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
                             // Zoom In
                             DropdownMenuItem(
                                 text = { Text("Zoom In (A+)", color = GitText1, fontSize = 13.sp) },
@@ -1069,6 +1196,18 @@ fun CodeEditorView(
                 titleContentColor = GitText1
             )
         )
+
+        // MULTI-FILE EDITOR TABS ROW
+        if (openTabs.isNotEmpty()) {
+            EditorTabsRow(
+                tabs = openTabs,
+                activeFilePath = filePath,
+                onSelectTab = onSelectTab,
+                onCloseTab = onCloseTab,
+                onTogglePinTab = onTogglePinTab,
+                onOpenFolderDrawer = { isFolderDrawerOpen = true }
+            )
+        }
 
         HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
 
@@ -1364,7 +1503,7 @@ fun CodeEditorView(
                                 Text(
                                     text = lineNumbersText,
                                     fontSize = fontSize.sp,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = selectedFontFamily.fontFamily,
                                     color = GitText3,
                                     textAlign = TextAlign.End,
                                     lineHeight = (fontSize * 1.5).sp,
@@ -1397,20 +1536,15 @@ fun CodeEditorView(
 
                         BasicTextField(
                             value = textFieldValue,
-                            onValueChange = { newTfv ->
-                                val oldSelection = textFieldValue.selection
-                                textFieldValue = newTfv
-                                if (newTfv.text != content) {
-                                    handleTextChange(newTfv.text, oldSelection)
-                                }
-                            },
+                            onValueChange = { handleEditorValueChange(it) },
                             modifier = textModifier.testTag("code_editor_textarea"),
                             textStyle = TextStyle(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = selectedFontFamily.fontFamily,
                                 fontSize = fontSize.sp,
                                 color = GitText1,
                                 lineHeight = (fontSize * 1.5).sp
                             ),
+                            visualTransformation = visualTransformation,
                             cursorBrush = SolidColor(GitAccent)
                         )
                     }
@@ -1557,5 +1691,28 @@ fun CodeEditorView(
                 }
             }
         }
+    }
+
+    // FOLDER FILES QUICK SWITCHER DRAWER
+    FolderFilesDrawer(
+        isOpen = isFolderDrawerOpen,
+        currentFilePath = filePath,
+        allTreeItems = allTreeItems,
+        openTabs = openTabs,
+        pinnedFiles = pinnedFiles,
+        onSelectFile = onOpenFileFromFolder,
+        onTogglePinFile = onTogglePinFile,
+        onClose = { isFolderDrawerOpen = false }
+    )
+
+    // TYPOGRAPHY & FONT CONFIGURATION MODAL
+    if (showTypographyModal) {
+        EditorTypographyModal(
+            currentFontSize = fontSize,
+            currentFontFamily = selectedFontFamily,
+            onFontSizeChange = { fontSize = it },
+            onFontFamilyChange = { selectedFontFamily = it },
+            onDismiss = { showTypographyModal = false }
+        )
     }
 }

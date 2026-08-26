@@ -68,6 +68,18 @@ data class ClipboardState(
     val sourceBranch: String
 )
 
+data class EditorTabInfo(
+    val path: String,
+    val fileName: String,
+    val sha: String,
+    val content: String,
+    val originalContent: String,
+    val isDirty: Boolean = false,
+    val isPinned: Boolean = false,
+    val isMarkdownPreview: Boolean = false,
+    val initialLine: Int? = null
+)
+
 data class GitExplorerUiState(
     val currentScreen: AppScreen = AppScreen.LOGIN,
     val currentAccount: AccountEntity? = null,
@@ -124,6 +136,8 @@ data class GitExplorerUiState(
     val isLoadingFile: Boolean = false,
     val isFileDirty: Boolean = false,
     val isMarkdownPreviewMode: Boolean = false,
+    val openEditorTabs: List<EditorTabInfo> = emptyList(),
+    val pinnedFiles: Set<String> = emptySet(),
 
     // Batch operations
     val isBatchMode: Boolean = false,
@@ -967,11 +981,31 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     // ==========================================
-    // FILE VIEWER & EDITOR (FRESH SYNC ON EVERY OPEN)
+    // FILE VIEWER & EDITOR (FRESH SYNC ON EVERY OPEN + MULTI-FILE TABS)
     // ==========================================
 
     fun openFile(item: GitTreeItem) {
         val repo = _uiState.value.selectedRepo ?: return
+        val currentTabs = _uiState.value.openEditorTabs.toMutableList()
+        val existingTabIndex = currentTabs.indexOfFirst { it.path == item.path }
+
+        if (existingTabIndex != -1) {
+            // Tab already open, switch to it
+            val tab = currentTabs[existingTabIndex]
+            _uiState.update {
+                it.copy(
+                    activeFilePath = tab.path,
+                    activeFileSha = tab.sha,
+                    activeFileContent = tab.content,
+                    activeFileOriginalContent = tab.originalContent,
+                    isFileDirty = tab.isDirty,
+                    isMarkdownPreviewMode = tab.isMarkdownPreview,
+                    isLoadingFile = false
+                )
+            }
+            return
+        }
+
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -996,14 +1030,30 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
             if (result.isSuccess) {
                 val (fileResp, decodedContent) = result.getOrNull()!!
-                _uiState.update {
-                    it.copy(
+                val fileName = item.path.substringAfterLast('/')
+                val isPinned = _uiState.value.pinnedFiles.contains(item.path)
+                val newTab = EditorTabInfo(
+                    path = item.path,
+                    fileName = fileName,
+                    sha = fileResp.sha,
+                    content = decodedContent,
+                    originalContent = decodedContent,
+                    isDirty = false,
+                    isPinned = isPinned,
+                    isMarkdownPreview = false,
+                    initialLine = _uiState.value.initialEditorLine
+                )
+
+                _uiState.update { state ->
+                    val updatedTabs = state.openEditorTabs.filter { it.path != item.path } + newTab
+                    state.copy(
                         isLoadingFile = false,
                         activeFile = fileResp,
                         activeFileSha = fileResp.sha,
                         activeFileContent = decodedContent,
                         activeFileOriginalContent = decodedContent,
-                        isFileDirty = false
+                        isFileDirty = false,
+                        openEditorTabs = updatedTabs
                     )
                 }
             } else {
@@ -1017,17 +1067,134 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun switchEditorTab(path: String) {
+        val currentTabs = _uiState.value.openEditorTabs
+        val targetTab = currentTabs.find { it.path == path } ?: return
+        val currentPath = _uiState.value.activeFilePath
+
+        val updatedTabs = currentTabs.map { tab ->
+            if (tab.path == currentPath) {
+                tab.copy(
+                    content = _uiState.value.activeFileContent,
+                    isDirty = _uiState.value.isFileDirty,
+                    isMarkdownPreview = _uiState.value.isMarkdownPreviewMode
+                )
+            } else tab
+        }
+
+        _uiState.update {
+            it.copy(
+                openEditorTabs = updatedTabs,
+                activeFilePath = targetTab.path,
+                activeFileSha = targetTab.sha,
+                activeFileContent = targetTab.content,
+                activeFileOriginalContent = targetTab.originalContent,
+                isFileDirty = targetTab.isDirty,
+                isMarkdownPreviewMode = targetTab.isMarkdownPreview,
+                initialEditorLine = targetTab.initialLine,
+                isLoadingFile = false
+            )
+        }
+    }
+
+    fun closeEditorTab(path: String) {
+        val currentTabs = _uiState.value.openEditorTabs
+        val tabToCloseIndex = currentTabs.indexOfFirst { it.path == path }
+        if (tabToCloseIndex == -1) return
+
+        val newTabs = currentTabs.filter { it.path != path }
+
+        if (newTabs.isEmpty()) {
+            _uiState.update { it.copy(openEditorTabs = emptyList()) }
+            closeFile()
+            return
+        }
+
+        if (_uiState.value.activeFilePath == path) {
+            val nextIndex = tabToCloseIndex.coerceAtMost(newTabs.size - 1)
+            val nextTab = newTabs[nextIndex]
+            _uiState.update {
+                it.copy(
+                    openEditorTabs = newTabs,
+                    activeFilePath = nextTab.path,
+                    activeFileSha = nextTab.sha,
+                    activeFileContent = nextTab.content,
+                    activeFileOriginalContent = nextTab.originalContent,
+                    isFileDirty = nextTab.isDirty,
+                    isMarkdownPreviewMode = nextTab.isMarkdownPreview,
+                    isLoadingFile = false
+                )
+            }
+        } else {
+            _uiState.update { it.copy(openEditorTabs = newTabs) }
+        }
+    }
+
+    fun togglePinEditorTab(path: String) {
+        val currentPinned = _uiState.value.pinnedFiles
+        val isNowPinned = !currentPinned.contains(path)
+        val newPinned = if (isNowPinned) currentPinned + path else currentPinned - path
+
+        val updatedTabs = _uiState.value.openEditorTabs.map {
+            if (it.path == path) it.copy(isPinned = isNowPinned) else it
+        }
+
+        _uiState.update {
+            it.copy(
+                pinnedFiles = newPinned,
+                openEditorTabs = updatedTabs
+            )
+        }
+    }
+
+    fun togglePinFile(path: String) {
+        val currentPinned = _uiState.value.pinnedFiles
+        val isNowPinned = !currentPinned.contains(path)
+        val newPinned = if (isNowPinned) currentPinned + path else currentPinned - path
+
+        val updatedTabs = _uiState.value.openEditorTabs.map {
+            if (it.path == path) it.copy(isPinned = isNowPinned) else it
+        }
+
+        _uiState.update {
+            it.copy(
+                pinnedFiles = newPinned,
+                openEditorTabs = updatedTabs
+            )
+        }
+    }
+
     fun updateEditorContent(newContent: String) {
+        val isDirty = newContent != _uiState.value.activeFileOriginalContent
+        val activePath = _uiState.value.activeFilePath
+
+        val updatedTabs = _uiState.value.openEditorTabs.map {
+            if (it.path == activePath) {
+                it.copy(content = newContent, isDirty = isDirty)
+            } else it
+        }
+
         _uiState.update {
             it.copy(
                 activeFileContent = newContent,
-                isFileDirty = newContent != it.activeFileOriginalContent
+                isFileDirty = isDirty,
+                openEditorTabs = updatedTabs
             )
         }
     }
 
     fun toggleMarkdownPreview() {
-        _uiState.update { it.copy(isMarkdownPreviewMode = !it.isMarkdownPreviewMode) }
+        val newMode = !_uiState.value.isMarkdownPreviewMode
+        val activePath = _uiState.value.activeFilePath
+        val updatedTabs = _uiState.value.openEditorTabs.map {
+            if (it.path == activePath) it.copy(isMarkdownPreview = newMode) else it
+        }
+        _uiState.update {
+            it.copy(
+                isMarkdownPreviewMode = newMode,
+                openEditorTabs = updatedTabs
+            )
+        }
     }
 
     fun closeFile() {
@@ -1043,7 +1210,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 isLoadingFile = false,
                 initialEditorLine = null,
                 editorOpenedFromSearchResults = false,
-                showSearchAcrossFiles = wasFromSearch
+                showSearchAcrossFiles = wasFromSearch,
+                openEditorTabs = emptyList()
             )
         }
     }
@@ -1251,13 +1419,25 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
             if (result.isSuccess) {
                 val commitResp = result.getOrNull()
+                val newSha = commitResp?.content?.sha ?: _uiState.value.activeFileSha ?: ""
+                val updatedTabs = _uiState.value.openEditorTabs.map {
+                    if (it.path == path) {
+                        it.copy(
+                            content = content,
+                            originalContent = content,
+                            isDirty = false,
+                            sha = newSha
+                        )
+                    } else it
+                }
                 _uiState.update {
                     it.copy(
                         isCommitting = false,
                         showCommitDialog = false,
                         isFileDirty = false,
                         activeFileOriginalContent = content,
-                        activeFileSha = commitResp?.content?.sha ?: it.activeFileSha,
+                        activeFileSha = newSha,
+                        openEditorTabs = updatedTabs,
                         toastOrMessage = "Committed successfully to $branch!"
                     )
                 }

@@ -260,10 +260,18 @@ fun GitExplorerApp(
                             isMarkdownPreviewMode = uiState.isMarkdownPreviewMode,
                             selectedBranch = uiState.selectedBranch,
                             initialLine = uiState.initialEditorLine,
+                            openTabs = uiState.openEditorTabs,
+                            pinnedFiles = uiState.pinnedFiles,
+                            allTreeItems = uiState.rawTreeItems,
                             onContentChange = viewModel::updateEditorContent,
                             onToggleMarkdownPreview = viewModel::toggleMarkdownPreview,
                             onOpenCommitDialog = { viewModel.setShowCommitDialog(true) },
-                            onClose = viewModel::closeFile
+                            onClose = viewModel::closeFile,
+                            onSelectTab = viewModel::switchEditorTab,
+                            onCloseTab = viewModel::closeEditorTab,
+                            onTogglePinTab = viewModel::togglePinEditorTab,
+                            onTogglePinFile = viewModel::togglePinFile,
+                            onOpenFileFromFolder = viewModel::openFile
                         )
                     } else if (uiState.showSearchAcrossFiles) {
                         SearchAcrossFilesView(
