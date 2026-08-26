@@ -57,6 +57,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.data.model.GitTreeItem
 import com.example.ui.components.FileIconForExtension
 import com.example.ui.components.FileIcons
@@ -113,23 +114,31 @@ fun FolderFilesDrawer(
         else pinnedTreeItems.filter { it.fileName.contains(searchQuery, ignoreCase = true) }
     }
 
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+
     // Scrim overlay
     AnimatedVisibility(
         visible = isOpen,
         enter = fadeIn(),
-        exit = fadeOut()
+        exit = fadeOut(),
+        modifier = Modifier.zIndex(99f)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.45f))
-                .clickable { onClose() }
+                .background(Color.Black.copy(alpha = 0.50f))
+                .clickable {
+                    focusManager.clearFocus(force = true)
+                    onClose()
+                }
         )
     }
 
     // Left Drawer Panel (Slides smoothly from left side)
     Box(
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(100f),
         contentAlignment = Alignment.CenterStart
     ) {
         AnimatedVisibility(

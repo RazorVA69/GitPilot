@@ -146,9 +146,26 @@ import com.example.ui.theme.GitHubOrange
 import com.example.ui.theme.Md3LightError
 import com.example.ui.viewmodel.EditorTabInfo
 
-// High performance object cache for line number strings across tabs
+// High performance object cache for line count and line number strings across tabs
+private object FileLineCountCache {
+    private val cache = androidx.collection.LruCache<Int, Int>(64)
+
+    fun getLineCount(text: String): Int {
+        if (text.isEmpty()) return 1
+        val hash = text.hashCode()
+        val cached = cache.get(hash)
+        if (cached != null) return cached
+        var count = 1
+        for (i in 0 until text.length) {
+            if (text[i] == '\n') count++
+        }
+        cache.put(hash, count)
+        return count
+    }
+}
+
 private object LineNumbersCache {
-    private val cache = androidx.collection.LruCache<Int, String>(30)
+    private val cache = androidx.collection.LruCache<Int, String>(64)
 
     fun getLineNumbers(count: Int): String {
         val safeCount = count.coerceAtLeast(1)
@@ -193,6 +210,8 @@ fun CodeEditorView(
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
+    val keyboardController = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val coroutineScope = rememberCoroutineScope()
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
@@ -201,6 +220,14 @@ fun CodeEditorView(
     var selectedFontFamily by remember { mutableStateOf(EditorFontFamily.JETBRAINS_MONO) }
     var showTypographyModal by remember { mutableStateOf(false) }
     var isFolderDrawerOpen by remember { mutableStateOf(false) }
+
+    // Clear focus and hide IME whenever the drawer or modals open so cursors never leak through
+    LaunchedEffect(isFolderDrawerOpen, showTypographyModal) {
+        if (isFolderDrawerOpen || showTypographyModal) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+    }
 
     var isWordWrapEnabled by remember { mutableStateOf(false) }
     var showLineNumbers by remember { mutableStateOf(true) }
@@ -424,7 +451,7 @@ fun CodeEditorView(
     }
 
     // High performance single-string line number generation with LRU cache
-    val lineCount = remember(content) { content.count { it == '\n' } + 1 }
+    val lineCount = remember(content) { FileLineCountCache.getLineCount(content) }
     val lineNumbersText = remember(lineCount) {
         LineNumbersCache.getLineNumbers(lineCount)
     }
@@ -1504,12 +1531,16 @@ fun CodeEditorView(
                             if (viewportHeightPx > 0) {
                                 val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
                                 val curScroll = verticalScrollState.value
-                                val bottomMargin = with(density) { (if (isImeVisible) 96.dp else 48.dp).toPx() }.toInt()
-                                val topMargin = with(density) { 24.dp.toPx() }.toInt()
+                                val bottomMargin = with(density) { (if (isImeVisible) 180.dp else 56.dp).toPx() }.toInt()
+                                val topMargin = with(density) { 32.dp.toPx() }.toInt()
                                 val maxScroll = verticalScrollState.maxValue
 
                                 if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeightPx - bottomMargin) {
-                                    val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeightPx).coerceIn(0, maxScroll)
+                                    val target = if (isImeVisible) {
+                                        (cursorY - (viewportHeightPx / 3)).coerceIn(0, maxScroll)
+                                    } else {
+                                        (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeightPx).coerceIn(0, maxScroll)
+                                    }
                                     verticalScrollState.animateScrollTo(target)
                                 } else if (cursorY < curScroll + topMargin) {
                                     val target = (cursorY - topMargin).coerceIn(0, maxScroll)
@@ -1523,7 +1554,7 @@ fun CodeEditorView(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(verticalScrollState)
-                            .padding(bottom = 500.dp)
+                            .padding(bottom = 600.dp)
                     ) {
                         // Line numbers column rendered in 1 single Text pass for instant 120 FPS scrolling
                         if (showLineNumbers) {
@@ -1574,6 +1605,8 @@ fun CodeEditorView(
                             value = textFieldValue,
                             onValueChange = { handleEditorValueChange(it) },
                             modifier = textModifier.testTag("code_editor_textarea"),
+                            readOnly = isFolderDrawerOpen,
+                            enabled = !isFolderDrawerOpen,
                             textStyle = TextStyle(
                                 fontFamily = selectedFontFamily.fontFamily,
                                 fontSize = fontSize.sp,
@@ -1581,7 +1614,7 @@ fun CodeEditorView(
                                 lineHeight = (fontSize * 1.5).sp
                             ),
                             visualTransformation = visualTransformation,
-                            cursorBrush = SolidColor(GitAccent)
+                            cursorBrush = if (isFolderDrawerOpen) SolidColor(Color.Transparent) else SolidColor(GitAccent)
                         )
                     }
 
@@ -1707,69 +1740,80 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
     if (scrollState.maxValue <= 0) return
 
     var isDragging by remember { mutableStateOf(false) }
+    var dragAccumulator by remember { mutableFloatStateOf(0f) }
 
     BoxWithConstraints(
         modifier = Modifier
             .align(Alignment.CenterEnd)
             .fillMaxHeight()
-            .width(36.dp)
-            .pointerInput(scrollState.maxValue) {
-                detectVerticalDragGestures(
-                    onDragStart = { isDragging = true },
-                    onDragEnd = { isDragging = false },
-                    onDragCancel = { isDragging = false },
-                    onVerticalDrag = { change, dragAmount ->
-                        change.consume()
-                        val trackHeightPx = size.height.toFloat()
-                        if (trackHeightPx > 0f) {
-                            val fractionDelta = dragAmount / trackHeightPx
-                            val scrollDelta = (fractionDelta * scrollState.maxValue).toInt()
-                            val target = (scrollState.value + scrollDelta).coerceIn(0, scrollState.maxValue)
-                            coroutineScope.launch {
-                                scrollState.scrollTo(target)
-                            }
-                        }
-                    }
-                )
-            }
-            .pointerInput(scrollState.maxValue) {
-                detectTapGestures { offset ->
-                    val trackHeightPx = size.height.toFloat()
-                    if (trackHeightPx > 0f) {
-                        val fraction = (offset.y / trackHeightPx).coerceIn(0f, 1f)
-                        val target = (fraction * scrollState.maxValue).toInt()
-                        coroutineScope.launch {
-                            scrollState.scrollTo(target)
-                        }
-                    }
-                }
-            }
+            .width(44.dp)
             .padding(top = 4.dp, bottom = 4.dp, end = 2.dp)
     ) {
-        val trackHeight = maxHeight
-        val thumbHeight = (trackHeight * 0.18f).coerceIn(36.dp, 120.dp)
+        val density = LocalDensity.current
+        val trackHeightPx = constraints.maxHeight.toFloat()
+        if (trackHeightPx <= 0f) return@BoxWithConstraints
+
+        // Dynamically proportional thumb height based on actual file lines (min 44dp, max 140dp)
+        val viewportHeightPx = trackHeightPx
+        val totalContentHeightPx = (scrollState.maxValue + viewportHeightPx).coerceAtLeast(1f)
+        val thumbRatio = (viewportHeightPx / totalContentHeightPx).coerceIn(0.06f, 0.40f)
+        val thumbHeightPx = (trackHeightPx * thumbRatio).coerceIn(
+            with(density) { 44.dp.toPx() },
+            with(density) { 140.dp.toPx() }
+        )
+        val availableTrackPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
 
         Box(
             modifier = Modifier
-                .align(Alignment.CenterEnd)
-                .width(if (isDragging) 8.dp else 5.dp)
-                .height(thumbHeight)
-                .graphicsLayer {
-                    val maxVal = scrollState.maxValue
-                    if (maxVal > 0) {
-                        val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
-                        val trackHeightPx = trackHeight.toPx()
-                        val thumbHeightPx = thumbHeight.toPx()
-                        val availableTrack = (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
-                        translationY = availableTrack * fraction
+                .fillMaxSize()
+                .pointerInput(scrollState.maxValue, availableTrackPx) {
+                    detectVerticalDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            dragAccumulator = scrollState.value.toFloat()
+                        },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
+                        onVerticalDrag = { change, dragAmount ->
+                            change.consume()
+                            val scrollDelta = (dragAmount / availableTrackPx) * scrollState.maxValue.toFloat()
+                            dragAccumulator = (dragAccumulator + scrollDelta).coerceIn(0f, scrollState.maxValue.toFloat())
+                            coroutineScope.launch {
+                                scrollState.scrollTo(dragAccumulator.toInt())
+                            }
+                        }
+                    )
+                }
+                .pointerInput(scrollState.maxValue, availableTrackPx, thumbHeightPx) {
+                    detectTapGestures { offset ->
+                        val targetCenterY = offset.y - (thumbHeightPx / 2f)
+                        val fraction = (targetCenterY / availableTrackPx).coerceIn(0f, 1f)
+                        val target = (fraction * scrollState.maxValue.toFloat()).toInt()
+                        coroutineScope.launch {
+                            scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                        }
                     }
                 }
-                .clip(RoundedCornerShape(4.dp))
-                .background(
-                    if (isDragging) GitAccent.copy(alpha = 0.85f)
-                    else GitText3.copy(alpha = 0.55f)
-                )
-        )
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .width(if (isDragging) 8.dp else 5.dp)
+                    .height(with(density) { thumbHeightPx.toDp() })
+                    .graphicsLayer {
+                        val maxVal = scrollState.maxValue
+                        if (maxVal > 0) {
+                            val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+                            translationY = availableTrackPx * fraction
+                        }
+                    }
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        if (isDragging) GitAccent.copy(alpha = 0.9f)
+                        else GitText3.copy(alpha = 0.55f)
+                    )
+            )
+        }
     }
 }
 
@@ -1781,68 +1825,78 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
     if (scrollState.maxValue <= 0) return
 
     var isDragging by remember { mutableStateOf(false) }
+    var dragAccumulator by remember { mutableFloatStateOf(0f) }
 
     BoxWithConstraints(
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
-            .height(28.dp)
-            .pointerInput(scrollState.maxValue) {
-                detectHorizontalDragGestures(
-                    onDragStart = { isDragging = true },
-                    onDragEnd = { isDragging = false },
-                    onDragCancel = { isDragging = false },
-                    onHorizontalDrag = { change, dragAmount ->
-                        change.consume()
-                        val trackWidthPx = size.width.toFloat()
-                        if (trackWidthPx > 0f) {
-                            val fractionDelta = dragAmount / trackWidthPx
-                            val scrollDelta = (fractionDelta * scrollState.maxValue).toInt()
-                            val target = (scrollState.value + scrollDelta).coerceIn(0, scrollState.maxValue)
-                            coroutineScope.launch {
-                                scrollState.scrollTo(target)
-                            }
-                        }
-                    }
-                )
-            }
-            .pointerInput(scrollState.maxValue) {
-                detectTapGestures { offset ->
-                    val trackWidthPx = size.width.toFloat()
-                    if (trackWidthPx > 0f) {
-                        val fraction = (offset.x / trackWidthPx).coerceIn(0f, 1f)
-                        val target = (fraction * scrollState.maxValue).toInt()
-                        coroutineScope.launch {
-                            scrollState.scrollTo(target)
-                        }
-                    }
-                }
-            }
+            .height(36.dp)
             .padding(start = 4.dp, end = 4.dp, bottom = 2.dp)
     ) {
-        val trackWidth = maxWidth
-        val thumbWidth = (trackWidth * 0.22f).coerceIn(36.dp, 120.dp)
+        val density = LocalDensity.current
+        val trackWidthPx = constraints.maxWidth.toFloat()
+        if (trackWidthPx <= 0f) return@BoxWithConstraints
+
+        val viewportWidthPx = trackWidthPx
+        val totalContentWidthPx = (scrollState.maxValue + viewportWidthPx).coerceAtLeast(1f)
+        val thumbRatio = (viewportWidthPx / totalContentWidthPx).coerceIn(0.08f, 0.40f)
+        val thumbWidthPx = (trackWidthPx * thumbRatio).coerceIn(
+            with(density) { 44.dp.toPx() },
+            with(density) { 140.dp.toPx() }
+        )
+        val availableTrackPx = (trackWidthPx - thumbWidthPx).coerceAtLeast(1f)
 
         Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .height(if (isDragging) 8.dp else 5.dp)
-                .width(thumbWidth)
-                .graphicsLayer {
-                    val maxVal = scrollState.maxValue
-                    if (maxVal > 0) {
-                        val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
-                        val trackWidthPx = trackWidth.toPx()
-                        val thumbWidthPx = thumbWidth.toPx()
-                        val availableTrack = (trackWidthPx - thumbWidthPx).coerceAtLeast(0f)
-                        translationX = availableTrack * fraction
+                .fillMaxSize()
+                .pointerInput(scrollState.maxValue, availableTrackPx) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            isDragging = true
+                            dragAccumulator = scrollState.value.toFloat()
+                        },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false },
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            val scrollDelta = (dragAmount / availableTrackPx) * scrollState.maxValue.toFloat()
+                            dragAccumulator = (dragAccumulator + scrollDelta).coerceIn(0f, scrollState.maxValue.toFloat())
+                            coroutineScope.launch {
+                                scrollState.scrollTo(dragAccumulator.toInt())
+                            }
+                        }
+                    )
+                }
+                .pointerInput(scrollState.maxValue, availableTrackPx, thumbWidthPx) {
+                    detectTapGestures { offset ->
+                        val targetCenterX = offset.x - (thumbWidthPx / 2f)
+                        val fraction = (targetCenterX / availableTrackPx).coerceIn(0f, 1f)
+                        val target = (fraction * scrollState.maxValue.toFloat()).toInt()
+                        coroutineScope.launch {
+                            scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                        }
                     }
                 }
-                .clip(RoundedCornerShape(4.dp))
-                .background(
-                    if (isDragging) GitAccent.copy(alpha = 0.85f)
-                    else GitText3.copy(alpha = 0.55f)
-                )
-        )
+        ) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .height(if (isDragging) 8.dp else 5.dp)
+                    .width(with(density) { thumbWidthPx.toDp() })
+                    .graphicsLayer {
+                        val maxVal = scrollState.maxValue
+                        if (maxVal > 0) {
+                            val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+                            translationX = availableTrackPx * fraction
+                        }
+                    }
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(
+                        if (isDragging) GitAccent.copy(alpha = 0.9f)
+                        else GitText3.copy(alpha = 0.55f)
+                    )
+            )
+        }
     }
 }
