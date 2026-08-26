@@ -1513,7 +1513,7 @@ fun CodeEditorView(
                 val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                 val topPaddingPx = with(density) { 12.dp.toPx() }
 
-                // Keep cursor line comfortably visible above the keyboard and status bar smoothly
+                // Keep cursor comfortably in view ONLY when it would otherwise be occluded below the keyboard or above the top bar
                 LaunchedEffect(filePath, textFieldValue.selection, isImeActive, viewportHeightPx) {
                     if (viewportHeightPx <= 0) return@LaunchedEffect
                     val sel = textFieldValue.selection
@@ -1527,23 +1527,18 @@ fun CodeEditorView(
                     val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
                     val curScroll = verticalScrollState.value
                     val maxScroll = verticalScrollState.maxValue
-                    val bottomMargin = with(density) { (if (isImeActive) 140.dp else 48.dp).toPx() }.toInt()
-                    val topMargin = with(density) { 32.dp.toPx() }.toInt()
+                    val bottomMargin = with(density) { (if (isImeActive) 56.dp else 40.dp).toPx() }.toInt()
+                    val topMargin = with(density) { 24.dp.toPx() }.toInt()
 
-                    if (isImeActive) {
-                        // When keyboard is visible, center the cursor line in the upper 35% of the visible viewport
-                        if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeightPx - bottomMargin || cursorY < curScroll + topMargin) {
-                            val target = (cursorY - (viewportHeightPx * 0.35f).toInt()).coerceIn(0, maxScroll)
-                            verticalScrollState.animateScrollTo(target)
-                        }
-                    } else {
-                        if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeightPx - bottomMargin) {
-                            val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeightPx).coerceIn(0, maxScroll)
-                            verticalScrollState.animateScrollTo(target)
-                        } else if (cursorY < curScroll + topMargin) {
-                            val target = (cursorY - topMargin).coerceIn(0, maxScroll)
-                            verticalScrollState.animateScrollTo(target)
-                        }
+                    // Only scroll if the cursor line is actually hidden below the visible viewport or scrolled above the top
+                    if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeightPx - bottomMargin) {
+                        // Scroll down just enough to bring the active line into clear view with headroom
+                        val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeightPx).coerceIn(0, maxScroll)
+                        verticalScrollState.animateScrollTo(target)
+                    } else if (cursorY < curScroll + topMargin) {
+                        // Scroll up just enough to reveal the line below the top bar
+                        val target = (cursorY - topMargin).coerceIn(0, maxScroll)
+                        verticalScrollState.animateScrollTo(target)
                     }
                 }
 
