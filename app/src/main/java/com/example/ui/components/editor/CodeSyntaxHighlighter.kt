@@ -57,6 +57,72 @@ object SyntaxColors {
     val BracketMatchBg = Color(0x330F9D74)  // Soft Emerald highlight box
 }
 
+// Pre-allocated static SpanStyles to avoid high-volume allocations during scrolling/tab switching
+private object SyntaxStyles {
+    val Keyword = SpanStyle(color = SyntaxColors.Keyword, fontWeight = FontWeight.Bold)
+    val TypeName = SpanStyle(color = SyntaxColors.TypeName, fontWeight = FontWeight.SemiBold)
+    val FunctionName = SpanStyle(color = SyntaxColors.FunctionName)
+    val StringLiteral = SpanStyle(color = SyntaxColors.StringLiteral)
+    val NumberLiteral = SpanStyle(color = SyntaxColors.NumberLiteral, fontWeight = FontWeight.Medium)
+    val Comment = SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic)
+    val Annotation = SpanStyle(color = SyntaxColors.Annotation, fontWeight = FontWeight.SemiBold)
+    val Property = SpanStyle(color = SyntaxColors.Property, fontWeight = FontWeight.Medium)
+    val Punctuation = SpanStyle(color = SyntaxColors.Punctuation)
+    val BracketHighlight = SpanStyle(
+        color = SyntaxColors.BracketHighlight,
+        background = SyntaxColors.BracketMatchBg,
+        fontWeight = FontWeight.ExtraBold
+    )
+}
+
+// High-speed Global Base Syntax Cache across all files and editor tabs
+object BaseSyntaxCache {
+    private const val MAX_ENTRIES = 32
+
+    private data class CacheKey(
+        val language: SupportedLanguage,
+        val textLength: Int,
+        val sampleHash: Int
+    )
+
+    private val cache = object : LinkedHashMap<CacheKey, AnnotatedString>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, AnnotatedString>?): Boolean {
+            return size > MAX_ENTRIES
+        }
+    }
+
+    private fun computeSampleHash(text: String): Int {
+        val len = text.length
+        if (len == 0) return 0
+        var h = len
+        h = 31 * h + text[0].code
+        h = 31 * h + text[len / 2].code
+        h = 31 * h + text[len - 1].code
+        if (len > 80) {
+            h = 31 * h + text[40].code
+            h = 31 * h + text[len - 40].code
+        }
+        return h
+    }
+
+    @Synchronized
+    fun getOrCreate(
+        language: SupportedLanguage,
+        text: String,
+        highlighter: SyntaxHighlighter
+    ): AnnotatedString {
+        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN || text.isEmpty()) {
+            return AnnotatedString(text)
+        }
+        val key = CacheKey(language, text.length, computeSampleHash(text))
+        cache[key]?.let { return it }
+
+        val highlighted = highlighter.highlightBase(text)
+        cache[key] = highlighted
+        return highlighted
+    }
+}
+
 class SyntaxHighlighter(private val language: SupportedLanguage) {
 
     private val keywords: Set<String> = when (language) {
@@ -130,70 +196,60 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
         SupportedLanguage.MARKDOWN, SupportedLanguage.PLAIN_TEXT -> emptySet()
     }
 
-    fun highlight(
-        text: String,
-        matchingBracketIndices: Pair<Int, Int>? = null
-    ): AnnotatedString {
+    fun highlight(text: String): AnnotatedString = highlightBase(text)
+
+    fun highlightBase(text: String): AnnotatedString {
         if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN || text.isEmpty()) {
-            return buildAnnotatedString {
-                append(text)
-                applyBracketHighlight(this, text, matchingBracketIndices)
-            }
+            return AnnotatedString(text)
         }
 
-        // For large files (> 200KB), skip detailed token styling for lightning performance
-        if (text.length > 200_000) {
-            return buildAnnotatedString {
-                append(text)
-                applyBracketHighlight(this, text, matchingBracketIndices)
-            }
-        }
+        // Bound scanning to 120,000 characters for instant sub-millisecond execution even on huge files
+        val scanLimit = text.length.coerceAtMost(120_000)
 
         return buildAnnotatedString {
             append(text)
 
             var i = 0
-            val len = text.length
 
-            while (i < len) {
+            while (i < scanLimit) {
                 val c = text[i]
 
                 // Line comment (//)
-                if (c == '/' && i + 1 < len && text[i + 1] == '/' && language != SupportedLanguage.CSS) {
-                    val end = text.indexOf('\n', i).let { if (it == -1) len else it }
-                    addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
+                if (c == '/' && i + 1 < scanLimit && text[i + 1] == '/' && language != SupportedLanguage.CSS) {
+                    val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
+                    addStyle(SyntaxStyles.Comment, i, end)
                     i = end
                     continue
                 }
 
                 // Hash comment (#) for Python, Shell, YAML
                 if (c == '#' && (language == SupportedLanguage.PYTHON || language == SupportedLanguage.SHELL || language == SupportedLanguage.YAML)) {
-                    val end = text.indexOf('\n', i).let { if (it == -1) len else it }
-                    addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
+                    val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
+                    addStyle(SyntaxStyles.Comment, i, end)
                     i = end
                     continue
                 }
 
                 // SQL comment (--)
-                if (c == '-' && i + 1 < len && text[i + 1] == '-' && language == SupportedLanguage.SQL) {
-                    val end = text.indexOf('\n', i).let { if (it == -1) len else it }
-                    addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
+                if (c == '-' && i + 1 < scanLimit && text[i + 1] == '-' && language == SupportedLanguage.SQL) {
+                    val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
+                    addStyle(SyntaxStyles.Comment, i, end)
                     i = end
                     continue
                 }
 
                 // Block comment (/* ... */)
-                if (c == '/' && i + 1 < len && text[i + 1] == '*') {
-                    val end = text.indexOf("*/", i + 2).let { if (it == -1) len else it + 2 }
-                    addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
+                if (c == '/' && i + 1 < scanLimit && text[i + 1] == '*') {
+                    val end = text.indexOf("*/", i + 2).let { if (it == -1 || it + 2 > scanLimit) scanLimit else it + 2 }
+                    addStyle(SyntaxStyles.Comment, i, end)
                     i = end
                     continue
                 }
 
                 // XML/HTML Comment (<!-- ... -->)
-                if (c == '<' && i + 3 < len && text.startsWith("<!--", i)) {
-                    val end = text.indexOf("-->", i + 4).let { if (it == -1) len else it + 3 }
-                    addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
+                if (c == '<' && i + 3 < scanLimit && text.startsWith("<!--", i)) {
+                    val end = text.indexOf("-->", i + 4).let { if (it == -1 || it + 3 > scanLimit) scanLimit else it + 3 }
+                    addStyle(SyntaxStyles.Comment, i, end)
                     i = end
                     continue
                 }
@@ -201,8 +257,8 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                 // XML / HTML Tags (<tag ... > or </tag>)
                 if ((language == SupportedLanguage.XML_HTML) && (c == '<')) {
                     val tagEnd = text.indexOf('>', i)
-                    if (tagEnd != -1) {
-                        addStyle(SpanStyle(color = SyntaxColors.TypeName, fontWeight = FontWeight.Bold), i, tagEnd + 1)
+                    if (tagEnd != -1 && tagEnd < scanLimit) {
+                        addStyle(SyntaxStyles.TypeName, i, tagEnd + 1)
                         i = tagEnd + 1
                         continue
                     }
@@ -211,11 +267,11 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                 // Annotations (@Something)
                 if (c == '@' && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.PYTHON)) {
                     var end = i + 1
-                    while (end < len && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
+                    while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
                         end++
                     }
                     if (end > i + 1) {
-                        addStyle(SpanStyle(color = SyntaxColors.Annotation, fontWeight = FontWeight.SemiBold), i, end)
+                        addStyle(SyntaxStyles.Annotation, i, end)
                         i = end
                         continue
                     }
@@ -224,19 +280,18 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                 // Strings ("..." or '...' or `...`)
                 if (c == '"' || c == '\'' || c == '`') {
                     val quote = c
-                    // Check for multi-line string in Kotlin / Python
-                    val isTriple = i + 2 < len && text[i + 1] == quote && text[i + 2] == quote
+                    val isTriple = i + 2 < scanLimit && text[i + 1] == quote && text[i + 2] == quote
                     if (isTriple) {
                         val triple = "$quote$quote$quote"
-                        val end = text.indexOf(triple, i + 3).let { if (it == -1) len else it + 3 }
-                        addStyle(SpanStyle(color = SyntaxColors.StringLiteral), i, end)
+                        val end = text.indexOf(triple, i + 3).let { if (it == -1 || it + 3 > scanLimit) scanLimit else it + 3 }
+                        addStyle(SyntaxStyles.StringLiteral, i, end)
                         i = end
                         continue
                     } else {
                         var end = i + 1
-                        while (end < len) {
+                        while (end < scanLimit) {
                             if (text[end] == '\\') {
-                                end += 2 // Skip escaped character
+                                end += 2
                                 continue
                             }
                             if (text[end] == quote || text[end] == '\n') {
@@ -245,7 +300,7 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                             }
                             end++
                         }
-                        addStyle(SpanStyle(color = SyntaxColors.StringLiteral), i, end.coerceAtMost(len))
+                        addStyle(SyntaxStyles.StringLiteral, i, end.coerceAtMost(scanLimit))
                         i = end
                         continue
                     }
@@ -254,10 +309,10 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                 // Numbers (0-9)
                 if (c.isDigit() && (i == 0 || !text[i - 1].isLetterOrDigit() && text[i - 1] != '_')) {
                     var end = i + 1
-                    while (end < len && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
+                    while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
                         end++
                     }
-                    addStyle(SpanStyle(color = SyntaxColors.NumberLiteral, fontWeight = FontWeight.Medium), i, end)
+                    addStyle(SyntaxStyles.NumberLiteral, i, end)
                     i = end
                     continue
                 }
@@ -265,34 +320,31 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                 // Words / Identifiers / Keywords
                 if (c.isLetter() || c == '_') {
                     var end = i + 1
-                    while (end < len && (text[end].isLetterOrDigit() || text[end] == '_')) {
+                    while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '_')) {
                         end++
                     }
-                    val word = text.substring(i, end)
+                    val wordLength = end - i
 
-                    if (keywords.contains(word) || (language == SupportedLanguage.SQL && keywords.contains(word.lowercase()))) {
-                        addStyle(SpanStyle(color = SyntaxColors.Keyword, fontWeight = FontWeight.Bold), i, end)
-                    } else if (word[0].isUpperCase() && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.RUST)) {
-                        // Class/Type Name convention (PascalCase)
-                        addStyle(SpanStyle(color = SyntaxColors.TypeName, fontWeight = FontWeight.SemiBold), i, end)
-                    } else if (end < len && text[end] == '(') {
-                        // Function Call or definition
-                        addStyle(SpanStyle(color = SyntaxColors.FunctionName), i, end)
-                    } else if ((language == SupportedLanguage.JSON || language == SupportedLanguage.YAML) && end < len) {
-                        var checkPos = end
-                        while (checkPos < len && (text[checkPos] == ' ' || text[checkPos] == '\t')) {
-                            checkPos++
+                    // Quick length check to prevent useless string allocations
+                    if (wordLength in 2..18) {
+                        val word = text.substring(i, end)
+                        if (keywords.contains(word) || (language == SupportedLanguage.SQL && keywords.contains(word.lowercase()))) {
+                            addStyle(SyntaxStyles.Keyword, i, end)
+                        } else if (word[0].isUpperCase() && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.RUST)) {
+                            addStyle(SyntaxStyles.TypeName, i, end)
+                        } else if (end < scanLimit && text[end] == '(') {
+                            addStyle(SyntaxStyles.FunctionName, i, end)
+                        } else if ((language == SupportedLanguage.JSON || language == SupportedLanguage.YAML) && end < scanLimit) {
+                            var checkPos = end
+                            while (checkPos < scanLimit && (text[checkPos] == ' ' || text[checkPos] == '\t')) {
+                                checkPos++
+                            }
+                            if (checkPos < scanLimit && text[checkPos] == ':') {
+                                addStyle(SyntaxStyles.Property, i, end)
+                            }
                         }
-                        if (checkPos < len && text[checkPos] == ':') {
-                            val isYaml = language == SupportedLanguage.YAML
-                            addStyle(
-                                SpanStyle(
-                                    color = SyntaxColors.Property,
-                                    fontWeight = if (isYaml) FontWeight.Bold else FontWeight.Medium
-                                ),
-                                i, end
-                            )
-                        }
+                    } else if (end < scanLimit && text[end] == '(') {
+                        addStyle(SyntaxStyles.FunctionName, i, end)
                     }
 
                     i = end
@@ -301,42 +353,10 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
 
                 // Brackets & Punctuation
                 if (c in "{}[],();:") {
-                    addStyle(SpanStyle(color = SyntaxColors.Punctuation), i, i + 1)
+                    addStyle(SyntaxStyles.Punctuation, i, i + 1)
                 }
 
                 i++
-            }
-
-            // Highlight bracket pair matching under cursor
-            applyBracketHighlight(this, text, matchingBracketIndices)
-        }
-    }
-
-    private fun applyBracketHighlight(
-        builder: AnnotatedString.Builder,
-        text: String,
-        matchingBracketIndices: Pair<Int, Int>?
-    ) {
-        matchingBracketIndices?.let { (first, second) ->
-            if (first in text.indices) {
-                builder.addStyle(
-                    SpanStyle(
-                        color = SyntaxColors.BracketHighlight,
-                        background = SyntaxColors.BracketMatchBg,
-                        fontWeight = FontWeight.ExtraBold
-                    ),
-                    first, first + 1
-                )
-            }
-            if (second in text.indices) {
-                builder.addStyle(
-                    SpanStyle(
-                        color = SyntaxColors.BracketHighlight,
-                        background = SyntaxColors.BracketMatchBg,
-                        fontWeight = FontWeight.ExtraBold
-                    ),
-                    second, second + 1
-                )
             }
         }
     }
@@ -348,46 +368,29 @@ class CodeSyntaxVisualTransformation(
 ) : VisualTransformation {
     private val highlighter = SyntaxHighlighter(language)
 
-    private data class CacheKey(
-        val language: SupportedLanguage,
-        val textHashCode: Int,
-        val textLength: Int,
-        val bracketIndices: Pair<Int, Int>?
-    )
-
-    companion object {
-        // Multi-entry LRU Cache (stores up to 24 tabs/files) so tab switching is instantaneous with 0ms delay!
-        private const val MAX_CACHE_SIZE = 24
-        private val transformationCache = object : java.util.LinkedHashMap<CacheKey, TransformedText>(MAX_CACHE_SIZE, 0.75f, true) {
-            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, TransformedText>?): Boolean {
-                return size > MAX_CACHE_SIZE
-            }
-        }
-    }
-
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
-        val key = CacheKey(
-            language = language,
-            textHashCode = raw.hashCode(),
-            textLength = raw.length,
-            bracketIndices = matchingBracketIndices
-        )
+        val base = BaseSyntaxCache.getOrCreate(language, raw, highlighter)
 
-        // Instantaneous O(1) retrieval from multi-tab cache
-        val cached = transformationCache[key]
-        if (cached != null) {
-            return cached
+        if (matchingBracketIndices == null) {
+            return TransformedText(base, OffsetMapping.Identity)
         }
 
-        // Compute highlighting
-        val highlighted = highlighter.highlight(raw, matchingBracketIndices)
-        val result = TransformedText(highlighted, OffsetMapping.Identity)
+        val (first, second) = matchingBracketIndices
+        val hasFirst = first in raw.indices
+        val hasSecond = second in raw.indices
+        if (!hasFirst && !hasSecond) {
+            return TransformedText(base, OffsetMapping.Identity)
+        }
 
-        // Store into LRU cache
-        transformationCache[key] = result
-
-        return result
+        val builder = AnnotatedString.Builder(base)
+        if (hasFirst) {
+            builder.addStyle(SyntaxStyles.BracketHighlight, first, first + 1)
+        }
+        if (hasSecond) {
+            builder.addStyle(SyntaxStyles.BracketHighlight, second, second + 1)
+        }
+        return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
     }
 }
 
@@ -400,7 +403,6 @@ object BracketMatcher {
     fun findMatchingBracket(text: String, cursorPosition: Int): Pair<Int, Int>? {
         if (text.isEmpty()) return null
 
-        // Check if cursor is on or adjacent to a bracket
         val candidates = listOf(cursorPosition, cursorPosition - 1).filter { it in text.indices }
 
         for (pos in candidates) {
@@ -439,11 +441,9 @@ object BracketMatcher {
         val textBeforeCursor = currentText.substring(0, cursorPosition)
         val lastLine = textBeforeCursor.substringAfterLast('\n', "")
 
-        // Extract whitespace prefix of previous line
         val indentPrefix = lastLine.takeWhile { it == ' ' || it == '\t' }
         val trimmed = lastLine.trimEnd()
 
-        // If line ends with block openers, increase indent by 2 spaces
         val extraIndent = if (trimmed.endsWith("{") || trimmed.endsWith("(") || trimmed.endsWith("[") || trimmed.endsWith(":")) {
             "  "
         } else {

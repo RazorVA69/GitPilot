@@ -270,13 +270,18 @@ fun CodeEditorView(
         }
     }
 
-    // Persist position changes for active file tab
-    LaunchedEffect(verticalScrollState.value, horizontalScrollState.value, textFieldValue.selection) {
-        tabPositionCache[filePath] = Triple(
-            verticalScrollState.value,
-            horizontalScrollState.value,
-            textFieldValue.selection
-        )
+    // Persist position changes for active file tab in background without triggering recompositions on scroll
+    LaunchedEffect(filePath) {
+        androidx.compose.runtime.snapshotFlow {
+            Triple(
+                verticalScrollState.value,
+                horizontalScrollState.value,
+                textFieldValue.selection
+            )
+        }
+        .collect { pos ->
+            tabPositionCache[filePath] = pos
+        }
     }
 
     // Language-aware Syntax Highlighting & Bracket Matching
@@ -1474,20 +1479,6 @@ fun CodeEditorView(
                     }
                 }
 
-                val cursorIndex = remember(textFieldValue.selection, textFieldValue.text) {
-                    textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
-                }
-
-                val cursorLine = remember(textFieldValue.text, cursorIndex) {
-                    var line = 0
-                    val text = textFieldValue.text
-                    val limit = cursorIndex.coerceAtMost(text.length)
-                    for (i in 0 until limit) {
-                        if (text[i] == '\n') line++
-                    }
-                    line
-                }
-
                 BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1496,17 +1487,34 @@ fun CodeEditorView(
                     val viewportHeightPx = constraints.maxHeight
                     val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                     val topPaddingPx = with(density) { 12.dp.toPx() }
-                    val bottomComfortMargin = with(density) { 64.dp.toPx() }.toInt()
 
-                    // When keyboard appears, scroll the active cursor line gracefully above the keyboard
-                    LaunchedEffect(isImeVisible) {
-                        if (isImeVisible) {
-                            kotlinx.coroutines.delay(80)
-                            val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
-                            val currentScroll = verticalScrollState.value
-                            if (cursorY + lineHeightPx.toInt() > currentScroll + viewportHeightPx - bottomComfortMargin || cursorY < currentScroll) {
-                                val target = (cursorY - (viewportHeightPx / 3)).coerceAtLeast(0)
-                                verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                    // Keep cursor line comfortably visible above the keyboard and status bar smoothly
+                    LaunchedEffect(filePath, viewportHeightPx, isImeVisible) {
+                        androidx.compose.runtime.snapshotFlow {
+                            val sel = textFieldValue.selection
+                            val text = textFieldValue.text
+                            val cursor = sel.end.coerceIn(0, text.length)
+                            var line = 0
+                            for (i in 0 until cursor) {
+                                if (text[i] == '\n') line++
+                            }
+                            line
+                        }
+                        .collect { line ->
+                            if (viewportHeightPx > 0) {
+                                val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
+                                val curScroll = verticalScrollState.value
+                                val bottomMargin = with(density) { (if (isImeVisible) 96.dp else 48.dp).toPx() }.toInt()
+                                val topMargin = with(density) { 24.dp.toPx() }.toInt()
+                                val maxScroll = verticalScrollState.maxValue
+
+                                if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeightPx - bottomMargin) {
+                                    val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeightPx).coerceIn(0, maxScroll)
+                                    verticalScrollState.animateScrollTo(target)
+                                } else if (cursorY < curScroll + topMargin) {
+                                    val target = (cursorY - topMargin).coerceIn(0, maxScroll)
+                                    verticalScrollState.animateScrollTo(target)
+                                }
                             }
                         }
                     }
@@ -1515,7 +1523,7 @@ fun CodeEditorView(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(verticalScrollState)
-                            .padding(bottom = 420.dp)
+                            .padding(bottom = 500.dp)
                     ) {
                         // Line numbers column rendered in 1 single Text pass for instant 120 FPS scrolling
                         if (showLineNumbers) {
