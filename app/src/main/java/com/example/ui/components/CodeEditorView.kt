@@ -144,6 +144,26 @@ import com.example.ui.theme.GitHubOrange
 import com.example.ui.theme.Md3LightError
 import com.example.ui.viewmodel.EditorTabInfo
 
+// High performance object cache for line number strings across tabs
+private object LineNumbersCache {
+    private val cache = androidx.collection.LruCache<Int, String>(30)
+
+    fun getLineNumbers(count: Int): String {
+        val safeCount = count.coerceAtLeast(1)
+        val cached = cache.get(safeCount)
+        if (cached != null) return cached
+
+        val sb = StringBuilder(safeCount * 5)
+        for (i in 1..safeCount) {
+            sb.append(i).append('\n')
+        }
+        if (sb.isNotEmpty()) sb.setLength(sb.length - 1)
+        val result = sb.toString()
+        cache.put(safeCount, result)
+        return result
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CodeEditorView(
@@ -197,8 +217,8 @@ fun CodeEditorView(
     // Three-dot Menu State
     var showMoreMenu by remember { mutableStateOf(false) }
 
-    // Text Field Value State
-    var textFieldValue by remember {
+    // Text Field Value State (Keyed to filePath for instantaneous tab switching with zero delay)
+    var textFieldValue by remember(filePath) {
         mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
     }
 
@@ -253,8 +273,8 @@ fun CodeEditorView(
         val selection: TextRange
     )
 
-    val undoStack = remember { mutableStateListOf<EditorHistoryItem>() }
-    val redoStack = remember { mutableStateListOf<EditorHistoryItem>() }
+    val undoStack = remember(filePath) { mutableStateListOf<EditorHistoryItem>() }
+    val redoStack = remember(filePath) { mutableStateListOf<EditorHistoryItem>() }
 
     fun handleTextChange(newText: String, previousSelection: TextRange = textFieldValue.selection) {
         if (newText != content) {
@@ -369,15 +389,10 @@ fun CodeEditorView(
         ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
     }
 
-    // High performance single-string line number generation for smooth 120 FPS scrolling
+    // High performance single-string line number generation with LRU cache
     val lineCount = remember(content) { content.count { it == '\n' } + 1 }
     val lineNumbersText = remember(lineCount) {
-        val sb = StringBuilder(lineCount * 6)
-        for (i in 1..lineCount) {
-            sb.append(i).append('\n')
-        }
-        if (sb.isNotEmpty()) sb.setLength(sb.length - 1)
-        sb.toString()
+        LineNumbersCache.getLineNumbers(lineCount)
     }
 
     val charCount = remember(content) { content.length }
@@ -626,6 +641,7 @@ fun CodeEditorView(
         modifier = modifier
             .fillMaxSize()
             .background(GitAppBg)
+            .imePadding()
     ) {
         // TOP APP BAR
         TopAppBar(
@@ -1443,37 +1459,7 @@ fun CodeEditorView(
                     line
                 }
 
-                // Ensure active cursor line is automatically scrolled into view when cursor line moves
-                LaunchedEffect(cursorLine) {
-                    val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
-                    val topPaddingPx = with(density) { 12.dp.toPx() }
-                    val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
-                    val currentScroll = verticalScrollState.value
-                    val topComfortMargin = with(density) { 36.dp.toPx() }.toInt()
-                    val bottomComfortMargin = with(density) { 140.dp.toPx() }.toInt()
-
-                    if (cursorY < currentScroll + topComfortMargin) {
-                        val target = (cursorY - topComfortMargin).coerceAtLeast(0)
-                        verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
-                    } else if (cursorY > currentScroll + 650 - bottomComfortMargin) {
-                        val target = (cursorY - 200).coerceAtLeast(0)
-                        verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
-                    }
-                }
-
-                // When keyboard appears, scroll the active cursor line above the keyboard
-                LaunchedEffect(isImeVisible) {
-                    if (isImeVisible) {
-                        kotlinx.coroutines.delay(120)
-                        val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
-                        val topPaddingPx = with(density) { 12.dp.toPx() }
-                        val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
-                        val target = (cursorY - 140).coerceAtLeast(0)
-                        verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
-                    }
-                }
-
-                Box(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(GitAppBg)
@@ -1485,6 +1471,39 @@ fun CodeEditorView(
                             }
                         }
                 ) {
+                    val viewportHeightPx = constraints.maxHeight
+                    val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
+                    val topPaddingPx = with(density) { 12.dp.toPx() }
+                    val topComfortMargin = with(density) { 32.dp.toPx() }.toInt()
+                    val bottomComfortMargin = with(density) { 64.dp.toPx() }.toInt()
+
+                    // Ensure active cursor line is automatically scrolled into view when cursor line moves or viewport changes
+                    LaunchedEffect(cursorLine, isImeVisible, viewportHeightPx) {
+                        val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
+                        val currentScroll = verticalScrollState.value
+
+                        if (cursorY < currentScroll + topComfortMargin) {
+                            val target = (cursorY - topComfortMargin).coerceAtLeast(0)
+                            verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                        } else if (cursorY + lineHeightPx.toInt() > currentScroll + viewportHeightPx - bottomComfortMargin) {
+                            val target = (cursorY + lineHeightPx.toInt() + bottomComfortMargin - viewportHeightPx).coerceAtLeast(0)
+                            verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                        }
+                    }
+
+                    // When keyboard appears, scroll the active cursor line gracefully above the keyboard
+                    LaunchedEffect(isImeVisible) {
+                        if (isImeVisible) {
+                            kotlinx.coroutines.delay(80)
+                            val cursorY = (topPaddingPx + (cursorLine * lineHeightPx)).toInt()
+                            val currentScroll = verticalScrollState.value
+                            if (cursorY + lineHeightPx.toInt() > currentScroll + viewportHeightPx - bottomComfortMargin || cursorY < currentScroll) {
+                                val target = (cursorY - (viewportHeightPx / 3)).coerceAtLeast(0)
+                                verticalScrollState.animateScrollTo(target.coerceIn(0, verticalScrollState.maxValue))
+                            }
+                        }
+                    }
+
                     Row(modifier = Modifier.fillMaxSize()) {
                         // Line numbers column rendered in 1 single Text engine pass for instantaneous scrolling
                         if (showLineNumbers) {

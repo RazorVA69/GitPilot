@@ -4,17 +4,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.sp
-import com.example.ui.theme.GitAccent
-import com.example.ui.theme.GitText1
-import com.example.ui.theme.GitText2
-import com.example.ui.theme.GitText3
 
 enum class SupportedLanguage {
     KOTLIN, JAVA, JAVASCRIPT, TYPESCRIPT, PYTHON, JSON, XML_HTML, CSS,
@@ -140,7 +134,15 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
         text: String,
         matchingBracketIndices: Pair<Int, Int>? = null
     ): AnnotatedString {
-        if (language == SupportedLanguage.PLAIN_TEXT || text.isEmpty()) {
+        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN || text.isEmpty()) {
+            return buildAnnotatedString {
+                append(text)
+                applyBracketHighlight(this, text, matchingBracketIndices)
+            }
+        }
+
+        // For large files (> 200KB), skip detailed token styling for lightning performance
+        if (text.length > 200_000) {
             return buildAnnotatedString {
                 append(text)
                 applyBracketHighlight(this, text, matchingBracketIndices)
@@ -156,7 +158,7 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
             while (i < len) {
                 val c = text[i]
 
-                // Line comment
+                // Line comment (//)
                 if (c == '/' && i + 1 < len && text[i + 1] == '/' && language != SupportedLanguage.CSS) {
                     val end = text.indexOf('\n', i).let { if (it == -1) len else it }
                     addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
@@ -189,7 +191,7 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                 }
 
                 // XML/HTML Comment (<!-- ... -->)
-                if (c == '<' && i + 3 < len && text.substring(i, (i + 4).coerceAtMost(len)) == "<!--") {
+                if (c == '<' && i + 3 < len && text.startsWith("<!--", i)) {
                     val end = text.indexOf("-->", i + 4).let { if (it == -1) len else it + 3 }
                     addStyle(SpanStyle(color = SyntaxColors.Comment, fontStyle = FontStyle.Italic), i, end)
                     i = end
@@ -249,7 +251,7 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                     }
                 }
 
-                // Numbers (0-9 or hex 0x)
+                // Numbers (0-9)
                 if (c.isDigit() && (i == 0 || !text[i - 1].isLetterOrDigit() && text[i - 1] != '_')) {
                     var end = i + 1
                     while (end < len && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
@@ -346,24 +348,35 @@ class CodeSyntaxVisualTransformation(
 ) : VisualTransformation {
     private val highlighter = SyntaxHighlighter(language)
 
+    private data class CacheKey(
+        val language: SupportedLanguage,
+        val textHashCode: Int,
+        val textLength: Int,
+        val bracketIndices: Pair<Int, Int>?
+    )
+
     companion object {
-        // High performance memory cache so scrolling never re-parses text
-        private var lastInputText: String? = null
-        private var lastLanguage: SupportedLanguage? = null
-        private var lastBracketIndices: Pair<Int, Int>? = null
-        private var lastTransformedText: TransformedText? = null
+        // Multi-entry LRU Cache (stores up to 24 tabs/files) so tab switching is instantaneous with 0ms delay!
+        private const val MAX_CACHE_SIZE = 24
+        private val transformationCache = object : java.util.LinkedHashMap<CacheKey, TransformedText>(MAX_CACHE_SIZE, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<CacheKey, TransformedText>?): Boolean {
+                return size > MAX_CACHE_SIZE
+            }
+        }
     }
 
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
+        val key = CacheKey(
+            language = language,
+            textHashCode = raw.hashCode(),
+            textLength = raw.length,
+            bracketIndices = matchingBracketIndices
+        )
 
-        // Fast path: if raw string, language, and brackets match cache, return in O(1) time
-        val cached = lastTransformedText
-        if (cached != null &&
-            lastLanguage == language &&
-            lastBracketIndices == matchingBracketIndices &&
-            (lastInputText === raw || (lastInputText?.length == raw.length && lastInputText == raw))
-        ) {
+        // Instantaneous O(1) retrieval from multi-tab cache
+        val cached = transformationCache[key]
+        if (cached != null) {
             return cached
         }
 
@@ -371,20 +384,18 @@ class CodeSyntaxVisualTransformation(
         val highlighted = highlighter.highlight(raw, matchingBracketIndices)
         val result = TransformedText(highlighted, OffsetMapping.Identity)
 
-        // Update cache
-        lastInputText = raw
-        lastLanguage = language
-        lastBracketIndices = matchingBracketIndices
-        lastTransformedText = result
+        // Store into LRU cache
+        transformationCache[key] = result
 
         return result
     }
 }
 
-// Bracket Matching Utilities
+// Bounded Bracket Matching Utilities for High Performance
 object BracketMatcher {
     private val OPEN_TO_CLOSE = mapOf('(' to ')', '{' to '}', '[' to ']', '<' to '>')
     private val CLOSE_TO_OPEN = mapOf(')' to '(', '}' to '{', ']' to '[', '>' to '<')
+    private const val MAX_SCAN_DISTANCE = 2500
 
     fun findMatchingBracket(text: String, cursorPosition: Int): Pair<Int, Int>? {
         if (text.isEmpty()) return null
@@ -398,7 +409,8 @@ object BracketMatcher {
             if (OPEN_TO_CLOSE.containsKey(char)) {
                 val target = OPEN_TO_CLOSE[char]!!
                 var depth = 1
-                for (i in (pos + 1) until text.length) {
+                val maxLimit = (pos + MAX_SCAN_DISTANCE).coerceAtMost(text.length)
+                for (i in (pos + 1) until maxLimit) {
                     if (text[i] == char) depth++
                     else if (text[i] == target) {
                         depth--
@@ -408,7 +420,8 @@ object BracketMatcher {
             } else if (CLOSE_TO_OPEN.containsKey(char)) {
                 val target = CLOSE_TO_OPEN[char]!!
                 var depth = 1
-                for (i in (pos - 1) downTo 0) {
+                val minLimit = (pos - MAX_SCAN_DISTANCE).coerceAtLeast(0)
+                for (i in (pos - 1) downTo minLimit) {
                     if (text[i] == char) depth++
                     else if (text[i] == target) {
                         depth--
@@ -440,3 +453,4 @@ object BracketMatcher {
         return indentPrefix + extraIndent
     }
 }
+

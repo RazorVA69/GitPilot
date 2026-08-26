@@ -1068,9 +1068,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun switchEditorTab(path: String) {
+        val currentPath = _uiState.value.activeFilePath
+        if (currentPath == path) return
+
         val currentTabs = _uiState.value.openEditorTabs
         val targetTab = currentTabs.find { it.path == path } ?: return
-        val currentPath = _uiState.value.activeFilePath
 
         val updatedTabs = currentTabs.map { tab ->
             if (tab.path == currentPath) {
