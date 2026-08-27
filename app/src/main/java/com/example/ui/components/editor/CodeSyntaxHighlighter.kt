@@ -362,35 +362,55 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
     }
 }
 
+object SyntaxHighlighterRegistry {
+    private val highlighters = SupportedLanguage.values().associateWith { SyntaxHighlighter(it) }
+    fun get(language: SupportedLanguage): SyntaxHighlighter = highlighters[language] ?: SyntaxHighlighter(language)
+}
+
 class CodeSyntaxVisualTransformation(
     private val language: SupportedLanguage,
     private val matchingBracketIndices: Pair<Int, Int>? = null
 ) : VisualTransformation {
-    private val highlighter = SyntaxHighlighter(language)
+    private val highlighter = SyntaxHighlighterRegistry.get(language)
+
+    // Fast memory cache for transformed text to prevent rebuilding on repeated layout passes
+    private var lastRawText: String? = null
+    private var lastBracketPair: Pair<Int, Int>? = null
+    private var lastResult: TransformedText? = null
 
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
+        if (raw == lastRawText && matchingBracketIndices == lastBracketPair && lastResult != null) {
+            return lastResult!!
+        }
+
         val base = BaseSyntaxCache.getOrCreate(language, raw, highlighter)
 
+        val result: TransformedText
         if (matchingBracketIndices == null) {
-            return TransformedText(base, OffsetMapping.Identity)
+            result = TransformedText(base, OffsetMapping.Identity)
+        } else {
+            val (first, second) = matchingBracketIndices
+            val hasFirst = first in raw.indices
+            val hasSecond = second in raw.indices
+            if (!hasFirst && !hasSecond) {
+                result = TransformedText(base, OffsetMapping.Identity)
+            } else {
+                val builder = AnnotatedString.Builder(base)
+                if (hasFirst) {
+                    builder.addStyle(SyntaxStyles.BracketHighlight, first, first + 1)
+                }
+                if (hasSecond) {
+                    builder.addStyle(SyntaxStyles.BracketHighlight, second, second + 1)
+                }
+                result = TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
+            }
         }
 
-        val (first, second) = matchingBracketIndices
-        val hasFirst = first in raw.indices
-        val hasSecond = second in raw.indices
-        if (!hasFirst && !hasSecond) {
-            return TransformedText(base, OffsetMapping.Identity)
-        }
-
-        val builder = AnnotatedString.Builder(base)
-        if (hasFirst) {
-            builder.addStyle(SyntaxStyles.BracketHighlight, first, first + 1)
-        }
-        if (hasSecond) {
-            builder.addStyle(SyntaxStyles.BracketHighlight, second, second + 1)
-        }
-        return TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
+        lastRawText = raw
+        lastBracketPair = matchingBracketIndices
+        lastResult = result
+        return result
     }
 }
 
