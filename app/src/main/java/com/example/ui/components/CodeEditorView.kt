@@ -1671,10 +1671,11 @@ fun CodeEditorView(
             }
         }
 
-        // BOTTOM STATUS BAR
+        // BOTTOM STATUS BAR (raises with IME keyboard so bottom text is never covered)
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
+                .imePadding()
                 .navigationBarsPadding(),
             color = GitSurface,
             border = BorderStroke(0.5.dp, GitBorder)
