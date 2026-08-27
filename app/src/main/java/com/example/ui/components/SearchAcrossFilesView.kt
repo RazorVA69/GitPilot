@@ -54,9 +54,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -110,24 +112,28 @@ fun SearchAcrossFilesView(
     val focusManager = LocalFocusManager.current
 
     // Group results by file path
-    val groupedResults = remember(results) {
-        results.groupBy { it.path }
-            .map { (path, matches) ->
-                RepoFileGroupedMatches(
-                    path = path,
-                    fileName = path.substringAfterLast('/'),
-                    matches = matches
-                )
-            }
+    val groupedResults by remember(results) {
+        derivedStateOf {
+            results.groupBy { it.path }
+                .map { (path, matches) ->
+                    RepoFileGroupedMatches(
+                        path = path,
+                        fileName = path.substringAfterLast('/'),
+                        matches = matches
+                    )
+                }
+        }
     }
 
     // List of directories in repo for custom path picker
-    val availableDirectories = remember(allTreeItems) {
-        val dirs = allTreeItems.filter { it.isDirectory }.map { it.path }.sorted()
-        listOf("") + dirs
+    val availableDirectories by remember(allTreeItems) {
+        derivedStateOf {
+            val dirs = allTreeItems.filter { it.isDirectory }.map { it.path }.sorted()
+            listOf("") + dirs
+        }
     }
 
-    var showPathPickerDropdown by remember { mutableStateOf(false) }
+    var showPathPickerDropdown by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = modifier

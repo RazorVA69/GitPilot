@@ -4,7 +4,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -14,7 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -68,51 +68,56 @@ fun EditorTabsRow(
         color = GitSurface,
         border = BorderStroke(0.5.dp, GitBorder)
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Folder drawer quick launcher button
-            Surface(
-                onClick = onOpenFolderDrawer,
-                color = GitSurface2,
-                shape = RoundedCornerShape(6.dp),
-                modifier = Modifier
-                    .padding(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
-                    .height(30.dp)
-                    .testTag("tabs_folder_drawer_button")
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+            item(key = "folder_drawer_launcher") {
+                Surface(
+                    onClick = onOpenFolderDrawer,
+                    color = GitSurface2,
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .padding(start = 6.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+                        .height(30.dp)
+                        .testTag("tabs_folder_drawer_button")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.FolderOpen,
-                        contentDescription = "Folder Files",
-                        tint = GitAccent,
-                        modifier = Modifier.size(15.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = "Files",
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = GitText1
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FolderOpen,
+                            contentDescription = "Folder Files",
+                            tint = GitAccent,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Files",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = GitText1
+                        )
+                    }
                 }
             }
 
-            Box(
-                modifier = Modifier
-                    .height(20.dp)
-                    .width(1.dp)
-                    .background(GitBorder)
-            )
+            item(key = "tabs_divider") {
+                Box(
+                    modifier = Modifier
+                        .height(20.dp)
+                        .width(1.dp)
+                        .background(GitBorder)
+                )
+            }
 
-            // Render all open editor tabs
-            tabs.forEach { tab ->
+            // Render all open editor tabs efficiently with key
+            items(
+                items = tabs,
+                key = { it.path }
+            ) { tab ->
                 val isActive = tab.path == activeFilePath
                 val ext = tab.fileName.substringAfterLast('.', "")
 

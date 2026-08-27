@@ -1296,13 +1296,13 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setSearchAcrossFilesQuery(query: String) {
         _uiState.update { it.copy(searchAcrossFilesQuery = query) }
-        executeSearchAcrossFiles(query, _uiState.value.searchAcrossFilesPath)
+        executeSearchAcrossFiles(query, _uiState.value.searchAcrossFilesPath, debounceMs = 300L)
     }
 
     fun refreshSearchAcrossFiles() {
         val query = _uiState.value.searchAcrossFilesQuery
         val path = _uiState.value.searchAcrossFilesPath
-        executeSearchAcrossFiles(query, path)
+        executeSearchAcrossFiles(query, path, debounceMs = 0L)
     }
 
     fun openFileAtLine(path: String, line: Int) {
@@ -1319,7 +1319,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         openFile(treeItem)
     }
 
-    fun executeSearchAcrossFiles(query: String, pathScope: String) {
+    fun executeSearchAcrossFiles(query: String, pathScope: String, debounceMs: Long = 0L) {
         searchAcrossFilesJob?.cancel()
         val cleanQuery = query.trim()
         if (cleanQuery.isEmpty() || cleanQuery.length < 2) {
@@ -1355,6 +1355,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         searchAcrossFilesJob = viewModelScope.launch(Dispatchers.IO) {
+            if (debounceMs > 0L) {
+                delay(debounceMs)
+            }
             _uiState.update {
                 it.copy(
                     isSearchingAcrossFiles = true,

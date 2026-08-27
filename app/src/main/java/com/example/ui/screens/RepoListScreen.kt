@@ -61,6 +61,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -109,16 +110,16 @@ fun RepoListScreen(
     onLogout: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var isSearchVisible by remember { mutableStateOf(false) }
-    var showSortMenu by remember { mutableStateOf(false) }
+    var isSearchVisible by rememberSaveable { mutableStateOf(false) }
+    var showSortMenu by rememberSaveable { mutableStateOf(false) }
     var selectedRepoForActions by remember { mutableStateOf<GitHubRepository?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 
-    val allCount = remember(allRepositories) { allRepositories.size }
-    val publicCount = remember(allRepositories) { allRepositories.count { !it.private } }
-    val privateCount = remember(allRepositories) { allRepositories.count { it.private } }
-    val forksCount = remember(allRepositories) { allRepositories.count { it.fork } }
+    val allCount by remember(allRepositories) { derivedStateOf { allRepositories.size } }
+    val publicCount by remember(allRepositories) { derivedStateOf { allRepositories.count { !it.private } } }
+    val privateCount by remember(allRepositories) { derivedStateOf { allRepositories.count { it.private } } }
+    val forksCount by remember(allRepositories) { derivedStateOf { allRepositories.count { it.fork } } }
 
     Scaffold(
         topBar = {

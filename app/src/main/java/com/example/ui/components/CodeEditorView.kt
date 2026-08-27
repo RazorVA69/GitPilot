@@ -86,6 +86,7 @@ import androidx.compose.ui.geometry.Offset
 import com.example.ui.util.LocalKeyboardState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -93,7 +94,9 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -221,10 +224,10 @@ fun CodeEditorView(
     val verticalScrollState = rememberScrollState()
     val horizontalScrollState = rememberScrollState()
 
-    var fontSize by remember { mutableFloatStateOf(13.5f) }
-    var selectedFontFamily by remember { mutableStateOf(EditorFontFamily.JETBRAINS_MONO) }
-    var showTypographyModal by remember { mutableStateOf(false) }
-    var isFolderDrawerOpen by remember { mutableStateOf(false) }
+    var fontSize by rememberSaveable { mutableFloatStateOf(13.5f) }
+    var selectedFontFamily by rememberSaveable { mutableStateOf(EditorFontFamily.JETBRAINS_MONO) }
+    var showTypographyModal by rememberSaveable { mutableStateOf(false) }
+    var isFolderDrawerOpen by rememberSaveable { mutableStateOf(false) }
 
     // Clear focus and hide IME whenever the drawer or modals open so cursors never leak through
     LaunchedEffect(isFolderDrawerOpen, showTypographyModal) {
@@ -234,22 +237,22 @@ fun CodeEditorView(
         }
     }
 
-    var isWordWrapEnabled by remember { mutableStateOf(false) }
-    var showLineNumbers by remember { mutableStateOf(true) }
+    var isWordWrapEnabled by rememberSaveable { mutableStateOf(false) }
+    var showLineNumbers by rememberSaveable { mutableStateOf(true) }
 
     // Search and Replace State
-    var isSearchVisible by remember { mutableStateOf(false) }
-    var isReplaceMode by remember { mutableStateOf(false) }
-    var searchQuery by remember { mutableStateOf("") }
-    var replaceQuery by remember { mutableStateOf("") }
-    var currentMatchIndex by remember { mutableIntStateOf(0) }
+    var isSearchVisible by rememberSaveable { mutableStateOf(false) }
+    var isReplaceMode by rememberSaveable { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var replaceQuery by rememberSaveable { mutableStateOf("") }
+    var currentMatchIndex by rememberSaveable { mutableIntStateOf(0) }
 
     // Go To Line Dialog State
-    var showGoToLineDialog by remember { mutableStateOf(false) }
-    var goToLineInput by remember { mutableStateOf("") }
+    var showGoToLineDialog by rememberSaveable { mutableStateOf(false) }
+    var goToLineInput by rememberSaveable { mutableStateOf("") }
 
     // Three-dot Menu State
-    var showMoreMenu by remember { mutableStateOf(false) }
+    var showMoreMenu by rememberSaveable { mutableStateOf(false) }
 
     // Tab Position, Selection, and Scroll State Cache across tabs for instant differential tab switching
     val tabPositionCache = remember { mutableMapOf<String, Triple<Int, Int, TextRange>>() }
@@ -356,18 +359,45 @@ fun CodeEditorView(
         val selection: TextRange
     )
 
+    // Debounced text sync to ViewModel to prevent frame drops during rapid typing
+    var pendingTextContent by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(pendingTextContent) {
+        val pending = pendingTextContent ?: return@LaunchedEffect
+        delay(250L)
+        if (pending != content) {
+            onContentChange(pending)
+        }
+        pendingTextContent = null
+    }
+
+    fun flushPendingTextContent() {
+        val pending = pendingTextContent
+        if (pending != null && pending != content) {
+            onContentChange(pending)
+            pendingTextContent = null
+        }
+    }
+
     val undoStack = remember(filePath) { mutableStateListOf<EditorHistoryItem>() }
     val redoStack = remember(filePath) { mutableStateListOf<EditorHistoryItem>() }
 
-    fun handleTextChange(newText: String, previousSelection: TextRange = textFieldValue.selection) {
-        if (newText != content) {
-            undoStack.add(EditorHistoryItem(content, previousSelection))
+    fun handleTextChange(newText: String, previousSelection: TextRange = textFieldValue.selection, immediate: Boolean = false) {
+        val currentEffectiveText = pendingTextContent ?: content
+        if (newText != currentEffectiveText) {
+            undoStack.add(EditorHistoryItem(currentEffectiveText, previousSelection))
             redoStack.clear()
-            onContentChange(newText)
+            if (immediate) {
+                pendingTextContent = null
+                onContentChange(newText)
+            } else {
+                pendingTextContent = newText
+            }
         }
     }
 
     fun performUndo() {
+        flushPendingTextContent()
         if (undoStack.isNotEmpty()) {
             val previous = undoStack.removeAt(undoStack.lastIndex)
             redoStack.add(EditorHistoryItem(content, textFieldValue.selection))
@@ -390,6 +420,7 @@ fun CodeEditorView(
     }
 
     fun performRedo() {
+        flushPendingTextContent()
         if (redoStack.isNotEmpty()) {
             val next = redoStack.removeAt(redoStack.lastIndex)
             undoStack.add(EditorHistoryItem(content, textFieldValue.selection))
@@ -460,28 +491,30 @@ fun CodeEditorView(
         }
 
         textFieldValue = adjustedTfv
-        if (adjustedTfv.text != content) {
+        if (adjustedTfv.text != (pendingTextContent ?: content)) {
             handleTextChange(adjustedTfv.text, oldSelection)
         }
     }
 
-    val fileName = remember(filePath) { filePath.substringAfterLast('/') }
-    val isMarkdown = remember(fileName) { fileName.endsWith(".md", ignoreCase = true) }
-    val isImage = remember(fileName) {
-        val ext = fileName.substringAfterLast('.', "").lowercase()
-        ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
+    val fileName by remember(filePath) { derivedStateOf { filePath.substringAfterLast('/') } }
+    val isMarkdown by remember(fileName) { derivedStateOf { fileName.endsWith(".md", ignoreCase = true) } }
+    val isImage by remember(fileName) {
+        derivedStateOf {
+            val ext = fileName.substringAfterLast('.', "").lowercase()
+            ext in listOf("png", "jpg", "jpeg", "gif", "webp", "svg", "ico")
+        }
     }
 
-    // High performance single-string line number generation with LRU cache
-    val lineCount = remember(content) { FileLineCountCache.getLineCount(content) }
-    val lineNumbersText = remember(lineCount) {
-        LineNumbersCache.getLineNumbers(lineCount)
+    // High performance single-string line number generation with LRU cache and derivedStateOf
+    val lineCount by remember(textFieldValue.text) { derivedStateOf { FileLineCountCache.getLineCount(textFieldValue.text) } }
+    val lineNumbersText by remember(lineCount) {
+        derivedStateOf { LineNumbersCache.getLineNumbers(lineCount) }
     }
 
-    val charCount = remember(content) { content.length }
+    val charCount by remember(textFieldValue.text) { derivedStateOf { textFieldValue.text.length } }
 
-    val hasSelection = remember(textFieldValue.selection) {
-        !textFieldValue.selection.collapsed && textFieldValue.selection.length > 0
+    val hasSelection by remember {
+        derivedStateOf { !textFieldValue.selection.collapsed && textFieldValue.selection.length > 0 }
     }
 
     fun copyText() {
@@ -507,7 +540,7 @@ fun CodeEditorView(
                 text = newText,
                 selection = TextRange(start)
             )
-            handleTextChange(newText, prevSelection)
+            handleTextChange(newText, prevSelection, immediate = true)
         }
     }
 
@@ -523,7 +556,7 @@ fun CodeEditorView(
                     text = newText,
                     selection = TextRange(start + clip.length)
                 )
-                handleTextChange(newText, prevSelection)
+                handleTextChange(newText, prevSelection, immediate = true)
             } else {
                 val cursor = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
                 val newText = textFieldValue.text.substring(0, cursor) + clip + textFieldValue.text.substring(cursor)
@@ -531,7 +564,7 @@ fun CodeEditorView(
                     text = newText,
                     selection = TextRange(cursor + clip.length)
                 )
-                handleTextChange(newText, prevSelection)
+                handleTextChange(newText, prevSelection, immediate = true)
             }
         }
     }
@@ -546,10 +579,10 @@ fun CodeEditorView(
                 text = newText,
                 selection = TextRange(start)
             )
-            handleTextChange(newText, prevSelection)
+            handleTextChange(newText, prevSelection, immediate = true)
         } else {
             textFieldValue = textFieldValue.copy(text = "", selection = TextRange.Zero)
-            handleTextChange("", prevSelection)
+            handleTextChange("", prevSelection, immediate = true)
         }
     }
 
@@ -562,15 +595,16 @@ fun CodeEditorView(
     }
 
     fun jumpToLine(targetLine: Int) {
+        val currentText = textFieldValue.text
         val clampedLine = targetLine.coerceIn(1, lineCount)
         var charIdx = 0
         var currentL = 1
-        for (i in content.indices) {
+        for (i in currentText.indices) {
             if (currentL == clampedLine) {
                 charIdx = i
                 break
             }
-            if (content[i] == '\n') {
+            if (currentText[i] == '\n') {
                 currentL++
             }
         }
@@ -582,17 +616,20 @@ fun CodeEditorView(
         }
     }
 
-    // Matches for search
-    val matches = remember(content, searchQuery) {
-        if (searchQuery.isBlank()) emptyList<Int>()
-        else {
-            val list = mutableListOf<Int>()
-            var index = content.indexOf(searchQuery, ignoreCase = true)
-            while (index >= 0) {
-                list.add(index)
-                index = content.indexOf(searchQuery, index + 1, ignoreCase = true)
+    // Matches for search with derivedStateOf
+    val matches by remember(textFieldValue.text, searchQuery) {
+        derivedStateOf {
+            val text = textFieldValue.text
+            if (searchQuery.isBlank()) emptyList<Int>()
+            else {
+                val list = mutableListOf<Int>()
+                var index = text.indexOf(searchQuery, ignoreCase = true)
+                while (index >= 0) {
+                    list.add(index)
+                    index = text.indexOf(searchQuery, index + 1, ignoreCase = true)
+                }
+                list
             }
-            list
         }
     }
 
@@ -772,7 +809,10 @@ fun CodeEditorView(
             },
             navigationIcon = {
                 IconButton(
-                    onClick = onClose,
+                    onClick = {
+                        flushPendingTextContent()
+                        onClose()
+                    },
                     modifier = Modifier.testTag("editor_back_btn")
                 ) {
                     Icon(
@@ -958,7 +998,10 @@ fun CodeEditorView(
                     // 5. COMMIT BUTTON (ONLY SHOWN WHEN CHANGES EXIST / isDirty == true)
                     if (isDirty) {
                         Button(
-                            onClick = onOpenCommitDialog,
+                            onClick = {
+                                flushPendingTextContent()
+                                onOpenCommitDialog()
+                            },
                             enabled = !isLoading,
                             modifier = Modifier
                                 .height(36.dp)
@@ -1308,8 +1351,14 @@ fun CodeEditorView(
             EditorTabsRow(
                 tabs = openTabs,
                 activeFilePath = filePath,
-                onSelectTab = onSelectTab,
-                onCloseTab = onCloseTab,
+                onSelectTab = { targetPath ->
+                    flushPendingTextContent()
+                    onSelectTab(targetPath)
+                },
+                onCloseTab = { targetPath ->
+                    flushPendingTextContent()
+                    onCloseTab(targetPath)
+                },
                 onTogglePinTab = onTogglePinTab,
                 onOpenFolderDrawer = { isFolderDrawerOpen = true }
             )
