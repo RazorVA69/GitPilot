@@ -56,6 +56,7 @@ import com.example.ui.components.SettingsModal
 import com.example.ui.screens.LoginScreen
 import com.example.ui.screens.RepoListScreen
 import com.example.ui.theme.MyApplicationTheme
+import com.example.ui.util.ProvideKeyboardState
 import com.example.ui.viewmodel.AppScreen
 import com.example.ui.viewmodel.GitExplorerViewModel
 
@@ -64,7 +65,9 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            GitExplorerApp()
+            ProvideKeyboardState {
+                GitExplorerApp()
+            }
         }
     }
 }

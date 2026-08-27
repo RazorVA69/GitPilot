@@ -81,6 +81,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import com.example.ui.util.LocalKeyboardState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -717,10 +720,14 @@ fun CodeEditorView(
         )
     }
 
+    val keyboardState = LocalKeyboardState.current
+    val editorBgColor = GitAppBg
+    val editorBorderColor = GitBorder
+
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(GitAppBg)
+            .drawBehind { drawRect(editorBgColor) }
             .imePadding()
     ) {
         // TOP APP BAR
@@ -1516,7 +1523,8 @@ fun CodeEditorView(
                 val density = LocalDensity.current
                 var viewportHeightPx by remember { mutableIntStateOf(0) }
                 var viewportWidthPx by remember { mutableIntStateOf(0) }
-                val isImeActive = WindowInsets.ime.getBottom(density) > 0
+                val isImeActive = keyboardState.isVisible
+                val isImeAnimating = keyboardState.isAnimating
 
                 // Sync search match selection into textFieldValue
                 LaunchedEffect(matches, currentMatchIndex) {
@@ -1530,9 +1538,9 @@ fun CodeEditorView(
                 val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                 val topPaddingPx = with(density) { 12.dp.toPx() }
 
-                // Keep cursor comfortably in view ONLY when it would otherwise be occluded below the keyboard or above the top bar
-                LaunchedEffect(filePath, textFieldValue.selection, isImeActive, viewportHeightPx) {
-                    if (viewportHeightPx <= 0) return@LaunchedEffect
+                // Keep cursor comfortably in view ONLY when it would otherwise be occluded below the keyboard or above the top bar, deferring during active IME animation
+                LaunchedEffect(filePath, textFieldValue.selection, isImeActive, isImeAnimating, viewportHeightPx) {
+                    if (viewportHeightPx <= 0 || isImeAnimating) return@LaunchedEffect
                     val sel = textFieldValue.selection
                     val text = textFieldValue.text
                     val cursor = sel.end.coerceIn(0, text.length)
@@ -1562,7 +1570,7 @@ fun CodeEditorView(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(GitAppBg)
+                        .drawBehind { drawRect(editorBgColor) }
                         .onSizeChanged { size ->
                             viewportHeightPx = size.height
                             viewportWidthPx = size.width
@@ -1574,7 +1582,7 @@ fun CodeEditorView(
                             .verticalScroll(verticalScrollState)
                             .padding(bottom = 600.dp)
                     ) {
-                        // Line numbers column rendered in 1 single Text pass for instant 120 FPS scrolling
+                        // Line numbers column rendered in 1 single Text pass for instant 120 FPS scrolling with drawBehind border
                         if (showLineNumbers) {
                             val digits = remember(lineCount) { maxOf(2, lineCount.toString().length) }
                             val gutterWidth = remember(digits, fontSize) {
@@ -1584,7 +1592,14 @@ fun CodeEditorView(
                             Box(
                                 modifier = Modifier
                                     .width(gutterWidth)
-                                    .background(GitAppBg)
+                                    .drawBehind {
+                                        drawLine(
+                                            color = editorBorderColor,
+                                            start = Offset(size.width, 0f),
+                                            end = Offset(size.width, size.height),
+                                            strokeWidth = 1f
+                                        )
+                                    }
                                     .padding(top = 12.dp, start = 2.dp, end = 3.dp)
                             ) {
                                 Text(
@@ -1597,14 +1612,6 @@ fun CodeEditorView(
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
-
-                            // Gutter Divider
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxHeight()
-                                    .width(0.8.dp)
-                                    .background(GitBorder)
-                            )
                         }
 
                         // Text Editor Field
