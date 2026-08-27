@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,7 +23,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -192,7 +193,7 @@ private object LineNumbersCache {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun CodeEditorView(
     file: FileContentResponse?,
@@ -1581,6 +1582,42 @@ fun CodeEditorView(
 
                 val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                 val topPaddingPx = with(density) { 12.dp.toPx() }
+                val isImeVisible = WindowInsets.isImeVisible
+                val imeBottomPx = WindowInsets.ime.getBottom(density)
+
+                // Smoothly keep the active cursor line visible above the keyboard without layout thrashing
+                LaunchedEffect(filePath, textFieldValue.selection, isImeVisible, imeBottomPx) {
+                    val viewportHeight = verticalScrollState.viewportSize
+                    if (viewportHeight <= 0) return@LaunchedEffect
+
+                    val visibleViewport = if (isImeVisible && imeBottomPx > 0) {
+                        (viewportHeight - imeBottomPx).coerceAtLeast(100)
+                    } else {
+                        viewportHeight
+                    }
+
+                    val sel = textFieldValue.selection
+                    val text = textFieldValue.text
+                    val cursor = sel.end.coerceIn(0, text.length)
+                    var line = 0
+                    for (i in 0 until cursor) {
+                        if (text[i] == '\n') line++
+                    }
+
+                    val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
+                    val curScroll = verticalScrollState.value
+                    val maxScroll = verticalScrollState.maxValue
+                    val bottomMargin = with(density) { 64.dp.toPx() }.toInt()
+                    val topMargin = with(density) { 24.dp.toPx() }.toInt()
+
+                    if (cursorY + lineHeightPx.toInt() > curScroll + visibleViewport - bottomMargin) {
+                        val target = (cursorY + lineHeightPx.toInt() + bottomMargin - visibleViewport).coerceIn(0, maxScroll)
+                        verticalScrollState.scrollTo(target)
+                    } else if (cursorY < curScroll + topMargin) {
+                        val target = (cursorY - topMargin).coerceIn(0, maxScroll)
+                        verticalScrollState.scrollTo(target)
+                    }
+                }
 
                 Box(
                     modifier = Modifier
@@ -1671,11 +1708,10 @@ fun CodeEditorView(
             }
         }
 
-        // BOTTOM STATUS BAR (raises with IME keyboard so bottom text is never covered)
+        // BOTTOM STATUS BAR
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .imePadding()
                 .navigationBarsPadding(),
             color = GitSurface,
             border = BorderStroke(0.5.dp, GitBorder)
