@@ -94,6 +94,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.delay
@@ -1827,6 +1828,10 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
     )
     val availableTrackPx = (trackHeightPx - thumbHeightPx).coerceAtLeast(1f)
 
+    val currentScrollState by rememberUpdatedState(scrollState)
+    val currentAvailableTrackPx by rememberUpdatedState(availableTrackPx)
+    val currentThumbHeightPx by rememberUpdatedState(thumbHeightPx)
+
     Box(
         modifier = Modifier
             .align(Alignment.CenterEnd)
@@ -1834,31 +1839,36 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
             .width(44.dp)
             .padding(top = 4.dp, bottom = 4.dp, end = 2.dp)
             .onSizeChanged { trackHeightPx = it.height.toFloat() }
-            .pointerInput(scrollState.maxValue, availableTrackPx) {
+            .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = {
                         isDragging = true
-                        dragAccumulator = scrollState.value.toFloat()
+                        dragAccumulator = currentScrollState.value.toFloat()
                     },
                     onDragEnd = { isDragging = false },
                     onDragCancel = { isDragging = false },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        val scrollDelta = (dragAmount / availableTrackPx) * scrollState.maxValue.toFloat()
-                        dragAccumulator = (dragAccumulator + scrollDelta).coerceIn(0f, scrollState.maxValue.toFloat())
+                        val track = currentAvailableTrackPx
+                        val maxVal = currentScrollState.maxValue.toFloat()
+                        val scrollDelta = (dragAmount / track) * maxVal
+                        dragAccumulator = (dragAccumulator + scrollDelta).coerceIn(0f, maxVal)
                         coroutineScope.launch {
-                            scrollState.scrollTo(dragAccumulator.toInt())
+                            currentScrollState.scrollTo(dragAccumulator.toInt())
                         }
                     }
                 )
             }
-            .pointerInput(scrollState.maxValue, availableTrackPx, thumbHeightPx) {
+            .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val targetCenterY = offset.y - (thumbHeightPx / 2f)
-                    val fraction = (targetCenterY / availableTrackPx).coerceIn(0f, 1f)
-                    val target = (fraction * scrollState.maxValue.toFloat()).toInt()
+                    val thumbH = currentThumbHeightPx
+                    val track = currentAvailableTrackPx
+                    val maxVal = currentScrollState.maxValue.toFloat()
+                    val targetCenterY = offset.y - (thumbH / 2f)
+                    val fraction = (targetCenterY / track).coerceIn(0f, 1f)
+                    val target = (fraction * maxVal).toInt()
                     coroutineScope.launch {
-                        scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                        currentScrollState.animateScrollTo(target.coerceIn(0, currentScrollState.maxValue))
                     }
                 }
             }
@@ -1907,6 +1917,10 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
     )
     val availableTrackPx = (trackWidthPx - thumbWidthPx).coerceAtLeast(1f)
 
+    val currentScrollState by rememberUpdatedState(scrollState)
+    val currentAvailableTrackPx by rememberUpdatedState(availableTrackPx)
+    val currentThumbWidthPx by rememberUpdatedState(thumbWidthPx)
+
     Box(
         modifier = Modifier
             .align(Alignment.BottomCenter)
@@ -1914,31 +1928,36 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
             .height(36.dp)
             .padding(start = 4.dp, end = 4.dp, bottom = 2.dp)
             .onSizeChanged { trackWidthPx = it.width.toFloat() }
-            .pointerInput(scrollState.maxValue, availableTrackPx) {
+            .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragStart = {
                         isDragging = true
-                        dragAccumulator = scrollState.value.toFloat()
+                        dragAccumulator = currentScrollState.value.toFloat()
                     },
                     onDragEnd = { isDragging = false },
                     onDragCancel = { isDragging = false },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
-                        val scrollDelta = (dragAmount / availableTrackPx) * scrollState.maxValue.toFloat()
-                        dragAccumulator = (dragAccumulator + scrollDelta).coerceIn(0f, scrollState.maxValue.toFloat())
+                        val track = currentAvailableTrackPx
+                        val maxVal = currentScrollState.maxValue.toFloat()
+                        val scrollDelta = (dragAmount / track) * maxVal
+                        dragAccumulator = (dragAccumulator + scrollDelta).coerceIn(0f, maxVal)
                         coroutineScope.launch {
-                            scrollState.scrollTo(dragAccumulator.toInt())
+                            currentScrollState.scrollTo(dragAccumulator.toInt())
                         }
                     }
                 )
             }
-            .pointerInput(scrollState.maxValue, availableTrackPx, thumbWidthPx) {
+            .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val targetCenterX = offset.x - (thumbWidthPx / 2f)
-                    val fraction = (targetCenterX / availableTrackPx).coerceIn(0f, 1f)
-                    val target = (fraction * scrollState.maxValue.toFloat()).toInt()
+                    val thumbW = currentThumbWidthPx
+                    val track = currentAvailableTrackPx
+                    val maxVal = currentScrollState.maxValue.toFloat()
+                    val targetCenterX = offset.x - (thumbW / 2f)
+                    val fraction = (targetCenterX / track).coerceIn(0f, 1f)
+                    val target = (fraction * maxVal).toInt()
                     coroutineScope.launch {
-                        scrollState.animateScrollTo(target.coerceIn(0, scrollState.maxValue))
+                        currentScrollState.animateScrollTo(target.coerceIn(0, currentScrollState.maxValue))
                     }
                 }
             }
