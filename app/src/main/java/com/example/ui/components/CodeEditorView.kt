@@ -1583,33 +1583,6 @@ fun CodeEditorView(
                 val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                 val topPaddingPx = with(density) { 12.dp.toPx() }
 
-                // Keep cursor comfortably in view when selection changes
-                LaunchedEffect(filePath, textFieldValue.selection) {
-                    val viewportHeight = verticalScrollState.viewportSize
-                    if (viewportHeight <= 0) return@LaunchedEffect
-                    val sel = textFieldValue.selection
-                    val text = textFieldValue.text
-                    val cursor = sel.end.coerceIn(0, text.length)
-                    var line = 0
-                    for (i in 0 until cursor) {
-                        if (text[i] == '\n') line++
-                    }
-
-                    val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
-                    val curScroll = verticalScrollState.value
-                    val maxScroll = verticalScrollState.maxValue
-                    val bottomMargin = with(density) { 48.dp.toPx() }.toInt()
-                    val topMargin = with(density) { 24.dp.toPx() }.toInt()
-
-                    if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeight - bottomMargin) {
-                        val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeight).coerceIn(0, maxScroll)
-                        verticalScrollState.animateScrollTo(target)
-                    } else if (cursorY < curScroll + topMargin) {
-                        val target = (cursorY - topMargin).coerceIn(0, maxScroll)
-                        verticalScrollState.animateScrollTo(target)
-                    }
-                }
-
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1801,12 +1774,9 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
     scrollState: androidx.compose.foundation.ScrollState,
     coroutineScope: kotlinx.coroutines.CoroutineScope
 ) {
-    if (scrollState.maxValue <= 0) return
-
     val density = LocalDensity.current
     var isDragging by remember { mutableStateOf(false) }
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
-    var trackHeightPx by remember { mutableFloatStateOf(0f) }
 
     val currentScrollState by rememberUpdatedState(scrollState)
 
@@ -1816,7 +1786,6 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
             .fillMaxHeight()
             .width(44.dp)
             .padding(top = 4.dp, bottom = 4.dp, end = 2.dp)
-            .onSizeChanged { trackHeightPx = it.height.toFloat() }
             .pointerInput(Unit) {
                 detectVerticalDragGestures(
                     onDragStart = {
@@ -1827,7 +1796,7 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
                     onDragCancel = { isDragging = false },
                     onVerticalDrag = { change, dragAmount ->
                         change.consume()
-                        val track = trackHeightPx
+                        val track = size.height.toFloat()
                         val maxVal = currentScrollState.maxValue.toFloat()
                         if (track > 0f && maxVal > 0f) {
                             val totalH = maxVal + track
@@ -1845,7 +1814,7 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
             }
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val track = trackHeightPx
+                    val track = size.height.toFloat()
                     val maxVal = currentScrollState.maxValue.toFloat()
                     if (track > 0f && maxVal > 0f) {
                         val totalH = maxVal + track
@@ -1862,34 +1831,35 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorVerticalScrollbar(
                 }
             }
     ) {
-        if (trackHeightPx > 0f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .width(if (isDragging) 8.dp else 5.dp)
-                    .fillMaxHeight()
-                    .graphicsLayer {
-                        val maxVal = scrollState.maxValue
-                        val track = trackHeightPx
-                        if (maxVal > 0 && track > 0f) {
-                            val totalH = (maxVal + track).coerceAtLeast(1f)
-                            val thumbRatio = (track / totalH).coerceIn(0.06f, 0.40f)
-                            val thumbH = (track * thumbRatio).coerceIn(44f * density.density, 140f * density.density)
-                            val availableTrack = (track - thumbH).coerceAtLeast(1f)
-                            val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .width(if (isDragging) 8.dp else 5.dp)
+                .fillMaxHeight()
+                .graphicsLayer {
+                    val maxVal = scrollState.maxValue
+                    val track = size.height
+                    if (maxVal > 0 && track > 0f) {
+                        alpha = 1f
+                        val totalH = (maxVal + track).coerceAtLeast(1f)
+                        val thumbRatio = (track / totalH).coerceIn(0.06f, 0.40f)
+                        val thumbH = (track * thumbRatio).coerceIn(44f * density.density, 140f * density.density)
+                        val availableTrack = (track - thumbH).coerceAtLeast(1f)
+                        val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
 
-                            translationY = availableTrack * fraction
-                            scaleY = thumbH / track
-                            transformOrigin = TransformOrigin(0.5f, 0f)
-                        }
+                        translationY = availableTrack * fraction
+                        scaleY = thumbH / track
+                        transformOrigin = TransformOrigin(0.5f, 0f)
+                    } else {
+                        alpha = 0f
                     }
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(
-                        if (isDragging) GitAccent.copy(alpha = 0.9f)
-                        else GitText3.copy(alpha = 0.55f)
-                    )
-            )
-        }
+                }
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    if (isDragging) GitAccent.copy(alpha = 0.9f)
+                    else GitText3.copy(alpha = 0.55f)
+                )
+        )
     }
 }
 
@@ -1898,12 +1868,9 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
     scrollState: androidx.compose.foundation.ScrollState,
     coroutineScope: kotlinx.coroutines.CoroutineScope
 ) {
-    if (scrollState.maxValue <= 0) return
-
     val density = LocalDensity.current
     var isDragging by remember { mutableStateOf(false) }
     var dragAccumulator by remember { mutableFloatStateOf(0f) }
-    var trackWidthPx by remember { mutableFloatStateOf(0f) }
 
     val currentScrollState by rememberUpdatedState(scrollState)
 
@@ -1913,7 +1880,6 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
             .fillMaxWidth()
             .height(36.dp)
             .padding(start = 4.dp, end = 4.dp, bottom = 2.dp)
-            .onSizeChanged { trackWidthPx = it.width.toFloat() }
             .pointerInput(Unit) {
                 detectHorizontalDragGestures(
                     onDragStart = {
@@ -1924,7 +1890,7 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
                     onDragCancel = { isDragging = false },
                     onHorizontalDrag = { change, dragAmount ->
                         change.consume()
-                        val track = trackWidthPx
+                        val track = size.width.toFloat()
                         val maxVal = currentScrollState.maxValue.toFloat()
                         if (track > 0f && maxVal > 0f) {
                             val totalW = maxVal + track
@@ -1942,7 +1908,7 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
             }
             .pointerInput(Unit) {
                 detectTapGestures { offset ->
-                    val track = trackWidthPx
+                    val track = size.width.toFloat()
                     val maxVal = currentScrollState.maxValue.toFloat()
                     if (track > 0f && maxVal > 0f) {
                         val totalW = maxVal + track
@@ -1959,33 +1925,34 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
                 }
             }
     ) {
-        if (trackWidthPx > 0f) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .height(if (isDragging) 8.dp else 5.dp)
-                    .fillMaxWidth()
-                    .graphicsLayer {
-                        val maxVal = scrollState.maxValue
-                        val track = trackWidthPx
-                        if (maxVal > 0 && track > 0f) {
-                            val totalW = (maxVal + track).coerceAtLeast(1f)
-                            val thumbRatio = (track / totalW).coerceIn(0.08f, 0.40f)
-                            val thumbW = (track * thumbRatio).coerceIn(44f * density.density, 140f * density.density)
-                            val availableTrack = (track - thumbW).coerceAtLeast(1f)
-                            val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .height(if (isDragging) 8.dp else 5.dp)
+                .fillMaxWidth()
+                .graphicsLayer {
+                    val maxVal = scrollState.maxValue
+                    val track = size.width
+                    if (maxVal > 0 && track > 0f) {
+                        alpha = 1f
+                        val totalW = (maxVal + track).coerceAtLeast(1f)
+                        val thumbRatio = (track / totalW).coerceIn(0.08f, 0.40f)
+                        val thumbW = (track * thumbRatio).coerceIn(44f * density.density, 140f * density.density)
+                        val availableTrack = (track - thumbW).coerceAtLeast(1f)
+                        val fraction = (scrollState.value.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
 
-                            translationX = availableTrack * fraction
-                            scaleX = thumbW / track
-                            transformOrigin = TransformOrigin(0f, 0.5f)
-                        }
+                        translationX = availableTrack * fraction
+                        scaleX = thumbW / track
+                        transformOrigin = TransformOrigin(0f, 0.5f)
+                    } else {
+                        alpha = 0f
                     }
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(
-                        if (isDragging) GitAccent.copy(alpha = 0.9f)
-                        else GitText3.copy(alpha = 0.55f)
-                    )
-            )
-        }
+                }
+                .clip(RoundedCornerShape(4.dp))
+                .background(
+                    if (isDragging) GitAccent.copy(alpha = 0.9f)
+                    else GitText3.copy(alpha = 0.55f)
+                )
+        )
     }
 }
