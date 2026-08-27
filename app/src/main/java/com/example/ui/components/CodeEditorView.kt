@@ -765,7 +765,6 @@ fun CodeEditorView(
         modifier = modifier
             .fillMaxSize()
             .drawBehind { drawRect(editorBgColor) }
-            .imePadding()
     ) {
         // TOP APP BAR
         TopAppBar(
