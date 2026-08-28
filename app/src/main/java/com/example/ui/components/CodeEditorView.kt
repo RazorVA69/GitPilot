@@ -113,6 +113,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -343,8 +344,9 @@ fun CodeEditorView(
         SupportedLanguage.fromFileName(filePath.substringAfterLast('/'))
     }
 
-    val matchingBracketIndices = remember(textFieldValue.text, textFieldValue.selection) {
-        BracketMatcher.findMatchingBracket(textFieldValue.text, textFieldValue.selection.start)
+    val matchingBracketIndices = remember(language, textFieldValue.text, textFieldValue.selection) {
+        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) null
+        else BracketMatcher.findMatchingBracket(textFieldValue.text, textFieldValue.selection.start)
     }
 
     val visualTransformation = remember(language, matchingBracketIndices) {
@@ -1572,6 +1574,7 @@ fun CodeEditorView(
             } else {
                 // Code Editor with High Performance Synchronized Gutter & Custom Scrollbars
                 val density = LocalDensity.current
+                var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
 
                 // Sync search match selection into textFieldValue
                 LaunchedEffect(matches, currentMatchIndex) {
@@ -1582,65 +1585,38 @@ fun CodeEditorView(
                     }
                 }
 
-                val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                 val topPaddingPx = with(density) { 12.dp.toPx() }
+                val safetyMarginPx = with(density) { 56.dp.toPx() }.toInt()
+                val topMarginPx = with(density) { 20.dp.toPx() }.toInt()
 
-                // Instantly keep cursor in view when selection changes or cursor moves
-                LaunchedEffect(filePath, textFieldValue.selection) {
+                // Instantly and accurately keep active cursor in view when selection or viewport changes (e.g. keyboard opens)
+                LaunchedEffect(filePath, textFieldValue.selection, verticalScrollState.viewportSize, textLayoutResult) {
+                    val layout = textLayoutResult ?: return@LaunchedEffect
+                    val sel = textFieldValue.selection
+                    val cursor = sel.end.coerceIn(0, textFieldValue.text.length)
+                    if (cursor > layout.layoutInput.text.length) return@LaunchedEffect
+
+                    val cursorRect = try {
+                        layout.getCursorRect(cursor)
+                    } catch (e: Exception) {
+                        return@LaunchedEffect
+                    }
+
                     val viewportHeight = verticalScrollState.viewportSize
                     if (viewportHeight <= 0) return@LaunchedEffect
 
-                    val sel = textFieldValue.selection
-                    val text = textFieldValue.text
-                    val cursor = sel.end.coerceIn(0, text.length)
-                    var line = 0
-                    for (i in 0 until cursor) {
-                        if (text[i] == '\n') line++
-                    }
-
-                    val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
+                    val cursorTop = (cursorRect.top + topPaddingPx).toInt()
+                    val cursorBottom = (cursorRect.bottom + topPaddingPx).toInt()
                     val curScroll = verticalScrollState.value
                     val maxScroll = verticalScrollState.maxValue
-                    val bottomMargin = with(density) { 48.dp.toPx() }.toInt()
-                    val topMargin = with(density) { 16.dp.toPx() }.toInt()
 
-                    if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeight - bottomMargin) {
-                        val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeight).coerceIn(0, maxScroll)
+                    if (cursorBottom > curScroll + viewportHeight - safetyMarginPx) {
+                        val target = (cursorBottom + safetyMarginPx - viewportHeight).coerceIn(0, maxScroll)
                         verticalScrollState.scrollTo(target)
-                    } else if (cursorY < curScroll + topMargin) {
-                        val target = (cursorY - topMargin).coerceIn(0, maxScroll)
+                    } else if (cursorTop < curScroll + topMarginPx) {
+                        val target = (cursorTop - topMarginPx).coerceIn(0, maxScroll)
                         verticalScrollState.scrollTo(target)
                     }
-                }
-
-                // Adjust scroll when keyboard opens/closes and changes viewport height
-                LaunchedEffect(filePath) {
-                    androidx.compose.runtime.snapshotFlow { verticalScrollState.viewportSize }
-                        .collect { currentViewportHeight ->
-                            if (currentViewportHeight > 0) {
-                                val sel = textFieldValue.selection
-                                val text = textFieldValue.text
-                                val cursor = sel.end.coerceIn(0, text.length)
-                                var line = 0
-                                for (i in 0 until cursor) {
-                                    if (text[i] == '\n') line++
-                                }
-
-                                val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
-                                val curScroll = verticalScrollState.value
-                                val maxScroll = verticalScrollState.maxValue
-                                val bottomMargin = with(density) { 48.dp.toPx() }.toInt()
-                                val topMargin = with(density) { 16.dp.toPx() }.toInt()
-
-                                if (cursorY + lineHeightPx.toInt() > curScroll + currentViewportHeight - bottomMargin) {
-                                    val target = (cursorY + lineHeightPx.toInt() + bottomMargin - currentViewportHeight).coerceIn(0, maxScroll)
-                                    verticalScrollState.scrollTo(target)
-                                } else if (cursorY < curScroll + topMargin) {
-                                    val target = (cursorY - topMargin).coerceIn(0, maxScroll)
-                                    verticalScrollState.scrollTo(target)
-                                }
-                            }
-                        }
                 }
 
                 Box(
@@ -1652,7 +1628,7 @@ fun CodeEditorView(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(verticalScrollState)
-                            .padding(bottom = 600.dp)
+                            .padding(bottom = 400.dp)
                     ) {
                         // Line numbers column rendered in a dedicated composable to avoid recomposing on selection changes
                         if (showLineNumbers) {
@@ -1680,6 +1656,7 @@ fun CodeEditorView(
                         BasicTextField(
                             value = textFieldValue,
                             onValueChange = { handleEditorValueChange(it) },
+                            onTextLayout = { textLayoutResult = it },
                             modifier = textModifier.testTag("code_editor_textarea"),
                             readOnly = isFolderDrawerOpen,
                             enabled = !isFolderDrawerOpen,
