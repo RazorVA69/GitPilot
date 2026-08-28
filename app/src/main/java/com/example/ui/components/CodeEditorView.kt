@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -764,6 +765,8 @@ fun CodeEditorView(
     Column(
         modifier = modifier
             .fillMaxSize()
+            .imePadding()
+            .navigationBarsPadding()
             .drawBehind { drawRect(editorBgColor) }
     ) {
         // TOP APP BAR
@@ -1581,41 +1584,8 @@ fun CodeEditorView(
 
                 val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
                 val topPaddingPx = with(density) { 12.dp.toPx() }
-                val isImeVisible = WindowInsets.isImeVisible
 
-                // Smoothly keep the active cursor line visible above the keyboard when keyboard opens
-                LaunchedEffect(filePath, isImeVisible) {
-                    if (isImeVisible) {
-                        // Wait for keyboard entrance animation to settle before adjusting scroll
-                        delay(120L)
-                        val viewportHeight = verticalScrollState.viewportSize
-                        if (viewportHeight > 0) {
-                            val sel = textFieldValue.selection
-                            val text = textFieldValue.text
-                            val cursor = sel.end.coerceIn(0, text.length)
-                            var line = 0
-                            for (i in 0 until cursor) {
-                                if (text[i] == '\n') line++
-                            }
-
-                            val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
-                            val curScroll = verticalScrollState.value
-                            val maxScroll = verticalScrollState.maxValue
-                            val bottomMargin = with(density) { 64.dp.toPx() }.toInt()
-                            val topMargin = with(density) { 24.dp.toPx() }.toInt()
-
-                            if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeight - bottomMargin) {
-                                val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeight).coerceIn(0, maxScroll)
-                                verticalScrollState.animateScrollTo(target)
-                            } else if (cursorY < curScroll + topMargin) {
-                                val target = (cursorY - topMargin).coerceIn(0, maxScroll)
-                                verticalScrollState.animateScrollTo(target)
-                            }
-                        }
-                    }
-                }
-
-                // Keep active cursor visible when typing or moving cursor
+                // Instantly keep cursor in view when selection changes or cursor moves
                 LaunchedEffect(filePath, textFieldValue.selection) {
                     val viewportHeight = verticalScrollState.viewportSize
                     if (viewportHeight <= 0) return@LaunchedEffect
@@ -1631,16 +1601,46 @@ fun CodeEditorView(
                     val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
                     val curScroll = verticalScrollState.value
                     val maxScroll = verticalScrollState.maxValue
-                    val bottomMargin = with(density) { 64.dp.toPx() }.toInt()
-                    val topMargin = with(density) { 24.dp.toPx() }.toInt()
+                    val bottomMargin = with(density) { 48.dp.toPx() }.toInt()
+                    val topMargin = with(density) { 16.dp.toPx() }.toInt()
 
                     if (cursorY + lineHeightPx.toInt() > curScroll + viewportHeight - bottomMargin) {
                         val target = (cursorY + lineHeightPx.toInt() + bottomMargin - viewportHeight).coerceIn(0, maxScroll)
-                        verticalScrollState.animateScrollTo(target)
+                        verticalScrollState.scrollTo(target)
                     } else if (cursorY < curScroll + topMargin) {
                         val target = (cursorY - topMargin).coerceIn(0, maxScroll)
-                        verticalScrollState.animateScrollTo(target)
+                        verticalScrollState.scrollTo(target)
                     }
+                }
+
+                // Adjust scroll when keyboard opens/closes and changes viewport height
+                LaunchedEffect(filePath) {
+                    androidx.compose.runtime.snapshotFlow { verticalScrollState.viewportSize }
+                        .collect { currentViewportHeight ->
+                            if (currentViewportHeight > 0) {
+                                val sel = textFieldValue.selection
+                                val text = textFieldValue.text
+                                val cursor = sel.end.coerceIn(0, text.length)
+                                var line = 0
+                                for (i in 0 until cursor) {
+                                    if (text[i] == '\n') line++
+                                }
+
+                                val cursorY = (topPaddingPx + (line * lineHeightPx)).toInt()
+                                val curScroll = verticalScrollState.value
+                                val maxScroll = verticalScrollState.maxValue
+                                val bottomMargin = with(density) { 48.dp.toPx() }.toInt()
+                                val topMargin = with(density) { 16.dp.toPx() }.toInt()
+
+                                if (cursorY + lineHeightPx.toInt() > curScroll + currentViewportHeight - bottomMargin) {
+                                    val target = (cursorY + lineHeightPx.toInt() + bottomMargin - currentViewportHeight).coerceIn(0, maxScroll)
+                                    verticalScrollState.scrollTo(target)
+                                } else if (cursorY < curScroll + topMargin) {
+                                    val target = (cursorY - topMargin).coerceIn(0, maxScroll)
+                                    verticalScrollState.scrollTo(target)
+                                }
+                            }
+                        }
                 }
 
                 Box(
@@ -1654,36 +1654,15 @@ fun CodeEditorView(
                             .verticalScroll(verticalScrollState)
                             .padding(bottom = 600.dp)
                     ) {
-                        // Line numbers column rendered in 1 single Text pass for instant 120 FPS scrolling with drawBehind border
+                        // Line numbers column rendered in a dedicated composable to avoid recomposing on selection changes
                         if (showLineNumbers) {
-                            val digits = remember(lineCount) { maxOf(2, lineCount.toString().length) }
-                            val gutterWidth = remember(digits, fontSize) {
-                                (digits * (fontSize * 0.62f) + 8f).dp
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .width(gutterWidth)
-                                    .drawBehind {
-                                        drawLine(
-                                            color = editorBorderColor,
-                                            start = Offset(size.width, 0f),
-                                            end = Offset(size.width, size.height),
-                                            strokeWidth = 1f
-                                        )
-                                    }
-                                    .padding(top = 12.dp, start = 2.dp, end = 3.dp)
-                            ) {
-                                Text(
-                                    text = lineNumbersText,
-                                    fontSize = fontSize.sp,
-                                    fontFamily = selectedFontFamily.fontFamily,
-                                    color = GitText3,
-                                    textAlign = TextAlign.End,
-                                    lineHeight = (fontSize * 1.5).sp,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                            LineNumbersGutter(
+                                lineNumbersText = lineNumbersText,
+                                lineCount = lineCount,
+                                fontSize = fontSize,
+                                fontFamily = selectedFontFamily.fontFamily,
+                                editorBorderColor = editorBorderColor
+                            )
                         }
 
                         // Text Editor Field
@@ -1735,8 +1714,7 @@ fun CodeEditorView(
         // BOTTOM STATUS BAR
         Surface(
             modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding(),
+                .fillMaxWidth(),
             color = GitSurface,
             border = BorderStroke(0.5.dp, GitBorder)
         ) {
@@ -2013,6 +1991,43 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
                     if (isDragging) GitAccent.copy(alpha = 0.9f)
                     else GitText3.copy(alpha = 0.55f)
                 )
+        )
+    }
+}
+
+@Composable
+private fun LineNumbersGutter(
+    lineNumbersText: String,
+    lineCount: Int,
+    fontSize: Float,
+    fontFamily: androidx.compose.ui.text.font.FontFamily,
+    editorBorderColor: Color,
+    modifier: Modifier = Modifier
+) {
+    val digits = maxOf(2, lineCount.toString().length)
+    val gutterWidth = (digits * (fontSize * 0.62f) + 8f).dp
+
+    Box(
+        modifier = modifier
+            .width(gutterWidth)
+            .drawBehind {
+                drawLine(
+                    color = editorBorderColor,
+                    start = Offset(size.width, 0f),
+                    end = Offset(size.width, size.height),
+                    strokeWidth = 1f
+                )
+            }
+            .padding(top = 12.dp, start = 2.dp, end = 3.dp)
+    ) {
+        Text(
+            text = lineNumbersText,
+            fontSize = fontSize.sp,
+            fontFamily = fontFamily,
+            color = GitText3,
+            textAlign = TextAlign.End,
+            lineHeight = (fontSize * 1.5).sp,
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
