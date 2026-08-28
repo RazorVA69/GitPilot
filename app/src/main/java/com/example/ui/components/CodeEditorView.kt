@@ -228,17 +228,18 @@ fun CodeEditorView(
     val horizontalScrollState = rememberScrollState()
 
     var fontSize by rememberSaveable { mutableFloatStateOf(13.5f) }
+    var selectedFontFamily by rememberSaveable { mutableStateOf(EditorFontFamily.JETBRAINS_MONO) }
+    var showTypographyModal by rememberSaveable { mutableStateOf(false) }
     var isFolderDrawerOpen by rememberSaveable { mutableStateOf(false) }
 
-    // Clear focus and hide IME whenever the drawer opens so cursors never leak through
-    LaunchedEffect(isFolderDrawerOpen) {
-        if (isFolderDrawerOpen) {
+    // Clear focus and hide IME whenever the drawer or modals open so cursors never leak through
+    LaunchedEffect(isFolderDrawerOpen, showTypographyModal) {
+        if (isFolderDrawerOpen || showTypographyModal) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
         }
     }
 
-    var isSyntaxHighlightingEnabled by rememberSaveable { mutableStateOf(false) }
     var isWordWrapEnabled by rememberSaveable { mutableStateOf(false) }
     var showLineNumbers by rememberSaveable { mutableStateOf(true) }
 
@@ -343,13 +344,13 @@ fun CodeEditorView(
         SupportedLanguage.fromFileName(filePath.substringAfterLast('/'))
     }
 
-    val matchingBracketIndices = remember(isSyntaxHighlightingEnabled, language, textFieldValue.text, textFieldValue.selection) {
-        if (!isSyntaxHighlightingEnabled || language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) null
+    val matchingBracketIndices = remember(language, textFieldValue.text, textFieldValue.selection) {
+        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) null
         else BracketMatcher.findMatchingBracket(textFieldValue.text, textFieldValue.selection.start)
     }
 
-    val visualTransformation = remember(isSyntaxHighlightingEnabled, language, matchingBracketIndices) {
-        if (!isSyntaxHighlightingEnabled || language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) {
+    val visualTransformation = remember(language, matchingBracketIndices) {
+        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) {
             androidx.compose.ui.text.input.VisualTransformation.None
         } else {
             CodeSyntaxVisualTransformation(language, matchingBracketIndices)
@@ -1138,6 +1139,23 @@ fun CodeEditorView(
 
                             HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
 
+                            // Typography & Fonts
+                            DropdownMenuItem(
+                                text = { Text("Typography & Font...", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.TextFields,
+                                        contentDescription = null,
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    showTypographyModal = true
+                                }
+                            )
+
                             // Open Folder Files Drawer
                             DropdownMenuItem(
                                 text = { Text("Browse Folder Files...", color = GitText1, fontSize = 13.sp) },
@@ -1152,41 +1170,6 @@ fun CodeEditorView(
                                 onClick = {
                                     showMoreMenu = false
                                     isFolderDrawerOpen = true
-                                }
-                            )
-
-                            HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-
-                            // Syntax Highlighting Toggle
-                            DropdownMenuItem(
-                                text = {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text("Syntax Highlighting", color = GitText1, fontSize = 13.sp)
-                                        if (isSyntaxHighlightingEnabled) {
-                                            Icon(
-                                                Icons.Default.Check,
-                                                contentDescription = null,
-                                                tint = GitAccent,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                        }
-                                    }
-                                },
-                                leadingIcon = {
-                                    Icon(
-                                        Icons.Default.Preview,
-                                        contentDescription = null,
-                                        tint = GitAccent,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                },
-                                onClick = {
-                                    isSyntaxHighlightingEnabled = !isSyntaxHighlightingEnabled
-                                    showMoreMenu = false
                                 }
                             )
 
@@ -1653,7 +1636,7 @@ fun CodeEditorView(
                                 lineNumbersText = lineNumbersText,
                                 lineCount = lineCount,
                                 fontSize = fontSize,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = selectedFontFamily.fontFamily,
                                 editorBorderColor = editorBorderColor
                             )
                         }
@@ -1678,7 +1661,7 @@ fun CodeEditorView(
                             readOnly = isFolderDrawerOpen,
                             enabled = !isFolderDrawerOpen,
                             textStyle = TextStyle(
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = selectedFontFamily.fontFamily,
                                 fontSize = fontSize.sp,
                                 color = GitText1,
                                 lineHeight = (fontSize * 1.5).sp
@@ -1788,6 +1771,17 @@ fun CodeEditorView(
         onTogglePinFile = onTogglePinFile,
         onClose = { isFolderDrawerOpen = false }
     )
+
+    // TYPOGRAPHY & FONT CONFIGURATION MODAL
+    if (showTypographyModal) {
+        EditorTypographyModal(
+            currentFontSize = fontSize,
+            currentFontFamily = selectedFontFamily,
+            onFontSizeChange = { fontSize = it },
+            onFontFamilyChange = { selectedFontFamily = it },
+            onDismiss = { showTypographyModal = false }
+        )
+    }
 }
 
 @Composable
