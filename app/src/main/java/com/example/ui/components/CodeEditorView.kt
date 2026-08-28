@@ -1,8 +1,10 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -29,6 +31,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -104,7 +109,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
@@ -172,25 +179,6 @@ private object FileLineCountCache {
         }
         cache.put(hash, count)
         return count
-    }
-}
-
-private object LineNumbersCache {
-    private val cache = androidx.collection.LruCache<Int, String>(64)
-
-    fun getLineNumbers(count: Int): String {
-        val safeCount = count.coerceAtLeast(1)
-        val cached = cache.get(safeCount)
-        if (cached != null) return cached
-
-        val sb = StringBuilder(safeCount * 5)
-        for (i in 1..safeCount) {
-            sb.append(i).append('\n')
-        }
-        if (sb.isNotEmpty()) sb.setLength(sb.length - 1)
-        val result = sb.toString()
-        cache.put(safeCount, result)
-        return result
     }
 }
 
@@ -509,11 +497,8 @@ fun CodeEditorView(
         }
     }
 
-    // High performance single-string line number generation with LRU cache and derivedStateOf
+    // High performance line count calculation with LRU cache and derivedStateOf
     val lineCount by remember(textFieldValue.text) { derivedStateOf { FileLineCountCache.getLineCount(textFieldValue.text) } }
-    val lineNumbersText by remember(lineCount) {
-        derivedStateOf { LineNumbersCache.getLineNumbers(lineCount) }
-    }
 
     val charCount by remember(textFieldValue.text) { derivedStateOf { textFieldValue.text.length } }
 
@@ -596,6 +581,106 @@ fun CodeEditorView(
 
     fun deselectText() {
         textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.selection.end))
+    }
+
+    val quickSymbols = remember {
+        listOf("{", "}", "(", ")", "[", "]", ";", ":", "=", "<", ">", "\"", "'", "/", "\\", "|", "&", "!", "->", "=>", "tab", "//")
+    }
+
+    fun insertSymbol(sym: String) {
+        val currentText = textFieldValue.text
+        val sel = textFieldValue.selection
+        val prevSelection = sel
+        val (newText, newSelection) = when (sym) {
+            "tab" -> {
+                val indent = "  "
+                if (!sel.collapsed) {
+                    val start = sel.min
+                    val end = sel.max
+                    val before = currentText.substring(0, start)
+                    val selected = currentText.substring(start, end)
+                    val after = currentText.substring(end)
+                    val indented = selected.lines().joinToString("\n") { "$indent$it" }
+                    Pair(before + indented + after, TextRange(start, start + indented.length))
+                } else {
+                    val cursor = sel.start.coerceIn(0, currentText.length)
+                    Pair(
+                        currentText.substring(0, cursor) + indent + currentText.substring(cursor),
+                        TextRange(cursor + indent.length)
+                    )
+                }
+            }
+            "//" -> {
+                val cursor = sel.start.coerceIn(0, currentText.length)
+                val lineStart = currentText.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
+                val before = currentText.substring(0, lineStart)
+                val rest = currentText.substring(lineStart)
+                if (rest.startsWith("// ")) {
+                    Pair(before + rest.removePrefix("// "), TextRange((cursor - 3).coerceAtLeast(lineStart)))
+                } else {
+                    Pair(before + "// " + rest, TextRange(cursor + 3))
+                }
+            }
+            "{", "(", "[", "<" -> {
+                val closer = when (sym) {
+                    "{" -> "}"
+                    "(" -> ")"
+                    "[" -> "]"
+                    "<" -> ">"
+                    else -> ""
+                }
+                if (!sel.collapsed) {
+                    val start = sel.min
+                    val end = sel.max
+                    val selected = currentText.substring(start, end)
+                    Pair(
+                        currentText.substring(0, start) + sym + selected + closer + currentText.substring(end),
+                        TextRange(start + 1, end + 1)
+                    )
+                } else {
+                    val cursor = sel.start.coerceIn(0, currentText.length)
+                    Pair(
+                        currentText.substring(0, cursor) + sym + closer + currentText.substring(cursor),
+                        TextRange(cursor + 1)
+                    )
+                }
+            }
+            "\"", "'", "`" -> {
+                if (!sel.collapsed) {
+                    val start = sel.min
+                    val end = sel.max
+                    val selected = currentText.substring(start, end)
+                    Pair(
+                        currentText.substring(0, start) + sym + selected + sym + currentText.substring(end),
+                        TextRange(start + 1, end + 1)
+                    )
+                } else {
+                    val cursor = sel.start.coerceIn(0, currentText.length)
+                    Pair(
+                        currentText.substring(0, cursor) + sym + sym + currentText.substring(cursor),
+                        TextRange(cursor + 1)
+                    )
+                }
+            }
+            else -> {
+                val cursor = sel.start.coerceIn(0, currentText.length)
+                if (!sel.collapsed) {
+                    val start = sel.min
+                    val end = sel.max
+                    Pair(
+                        currentText.substring(0, start) + sym + currentText.substring(end),
+                        TextRange(start + sym.length)
+                    )
+                } else {
+                    Pair(
+                        currentText.substring(0, cursor) + sym + currentText.substring(cursor),
+                        TextRange(cursor + sym.length)
+                    )
+                }
+            }
+        }
+        textFieldValue = TextFieldValue(text = newText, selection = newSelection)
+        handleTextChange(newText, prevSelection)
     }
 
     fun jumpToLine(targetLine: Int) {
@@ -767,7 +852,6 @@ fun CodeEditorView(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .imePadding()
             .navigationBarsPadding()
             .drawBehind { drawRect(editorBgColor) }
     ) {
@@ -1589,8 +1673,8 @@ fun CodeEditorView(
                 val safetyMarginPx = with(density) { 56.dp.toPx() }.toInt()
                 val topMarginPx = with(density) { 20.dp.toPx() }.toInt()
 
-                // Instantly and accurately keep active cursor in view when selection or viewport changes (e.g. keyboard opens)
-                LaunchedEffect(filePath, textFieldValue.selection, verticalScrollState.viewportSize, textLayoutResult) {
+                // Instantly and accurately keep active cursor in view when selection changes
+                LaunchedEffect(filePath, textFieldValue.selection) {
                     val layout = textLayoutResult ?: return@LaunchedEffect
                     val sel = textFieldValue.selection
                     val cursor = sel.end.coerceIn(0, textFieldValue.text.length)
@@ -1619,6 +1703,29 @@ fun CodeEditorView(
                     }
                 }
 
+                // Smoothly adjust viewport once when soft keyboard appears or dismisses without layout thrashing
+                val isImeVisible = WindowInsets.isImeVisible
+                LaunchedEffect(isImeVisible) {
+                    if (isImeVisible) {
+                        delay(120L)
+                        val layout = textLayoutResult ?: return@LaunchedEffect
+                        val cursor = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
+                        if (cursor <= layout.layoutInput.text.length) {
+                            val cursorRect = try { layout.getCursorRect(cursor) } catch (_: Exception) { null }
+                            if (cursorRect != null) {
+                                val viewportHeight = verticalScrollState.viewportSize
+                                val cursorBottom = (cursorRect.bottom + topPaddingPx).toInt()
+                                val curScroll = verticalScrollState.value
+                                val maxScroll = verticalScrollState.maxValue
+                                if (cursorBottom > curScroll + viewportHeight - safetyMarginPx) {
+                                    val target = (cursorBottom + safetyMarginPx - viewportHeight).coerceIn(0, maxScroll)
+                                    verticalScrollState.animateScrollTo(target)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
@@ -1630,14 +1737,14 @@ fun CodeEditorView(
                             .verticalScroll(verticalScrollState)
                             .padding(bottom = 400.dp)
                     ) {
-                        // Line numbers column rendered in a dedicated composable to avoid recomposing on selection changes
+                        // Line numbers column rendered with direct GPU canvas drawing of visible lines
                         if (showLineNumbers) {
                             LineNumbersGutter(
-                                lineNumbersText = lineNumbersText,
                                 lineCount = lineCount,
                                 fontSize = fontSize,
                                 fontFamily = selectedFontFamily.fontFamily,
-                                editorBorderColor = editorBorderColor
+                                editorBorderColor = editorBorderColor,
+                                verticalScrollState = verticalScrollState
                             )
                         }
 
@@ -1688,72 +1795,122 @@ fun CodeEditorView(
             }
         }
 
-        // BOTTOM STATUS BAR
-        Surface(
+        // BOTTOM BAR WITH QUICK SYMBOLS ROW & STATUS BAR (Tied cleanly to IME)
+        Column(
             modifier = Modifier
-                .fillMaxWidth(),
-            color = GitSurface,
-            border = BorderStroke(0.5.dp, GitBorder)
+                .fillMaxWidth()
+                .imePadding()
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            // Quick Developer Symbol Accessory Bar (Visible when soft keyboard is active)
+            val isImeVisible = WindowInsets.isImeVisible
+            AnimatedVisibility(
+                visible = isImeVisible,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = GitSurface2,
+                    border = BorderStroke(0.5.dp, GitBorder)
+                ) {
+                    LazyRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        items(quickSymbols) { sym ->
+                            Surface(
+                                onClick = { insertSymbol(sym) },
+                                shape = RoundedCornerShape(6.dp),
+                                color = GitSurface,
+                                border = BorderStroke(0.5.dp, GitBorder),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .widthIn(min = 34.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                    Text(
+                                        text = sym,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.5.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = GitText1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // BOTTOM STATUS BAR
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                color = GitSurface,
+                border = BorderStroke(0.5.dp, GitBorder)
             ) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "$lineCount lines",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GitText2
-                    )
-                    Text(
-                        text = "$charCount chars",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GitText2
-                    )
-                    Text(
-                        text = FileIcons.formatFileSize(file?.size ?: charCount.toLong()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = GitText2
-                    )
-                }
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "UTF-8",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = FontFamily.Monospace,
-                        color = GitText3
-                    )
                     Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(GitAccentSoft)
-                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                        horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(5.dp)
-                                .background(GitAccent, CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = selectedBranch,
+                            text = "$lineCount lines",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GitText2
+                        )
+                        Text(
+                            text = "$charCount chars",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GitText2
+                        )
+                        Text(
+                            text = FileIcons.formatFileSize(file?.size ?: charCount.toLong()),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = GitText2
+                        )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "UTF-8",
                             style = MaterialTheme.typography.labelSmall,
                             fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.SemiBold,
-                            color = GitAccent,
-                            fontSize = 11.sp
+                            color = GitText3
                         )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(GitAccentSoft)
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(5.dp)
+                                    .background(GitAccent, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = selectedBranch,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.SemiBold,
+                                color = GitAccent,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 }
             }
@@ -1974,37 +2131,62 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
 
 @Composable
 private fun LineNumbersGutter(
-    lineNumbersText: String,
     lineCount: Int,
     fontSize: Float,
     fontFamily: androidx.compose.ui.text.font.FontFamily,
     editorBorderColor: Color,
+    verticalScrollState: androidx.compose.foundation.ScrollState,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
     val digits = maxOf(2, lineCount.toString().length)
-    val gutterWidth = (digits * (fontSize * 0.62f) + 8f).dp
+    val gutterWidth = (digits * (fontSize * 0.62f) + 12f).dp
+    val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
+    val topPaddingPx = with(density) { 12.dp.toPx() }
+    val fontSizePx = with(density) { fontSize.sp.toPx() }
+
+    val paint = remember(fontSize, fontFamily) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textSize = fontSizePx
+            color = android.graphics.Color.parseColor("#98979F")
+            textAlign = android.graphics.Paint.Align.RIGHT
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+    }
+
+    val totalHeightDp = with(density) {
+        (topPaddingPx + (lineCount * lineHeightPx) + 60.dp.toPx()).toDp()
+    }
 
     Box(
         modifier = modifier
             .width(gutterWidth)
+            .height(totalHeightDp)
             .drawBehind {
+                // Hairline separator on right
                 drawLine(
                     color = editorBorderColor,
                     start = Offset(size.width, 0f),
                     end = Offset(size.width, size.height),
                     strokeWidth = 1f
                 )
+
+                // Render ONLY visible lines for 60fps performance on any file size
+                val scrollY = verticalScrollState.value
+                val viewportHeight = verticalScrollState.viewportSize.takeIf { it > 0 } ?: size.height.toInt()
+                val startLine = ((scrollY - topPaddingPx) / lineHeightPx).toInt().coerceAtLeast(0) + 1
+                val endLine = ((scrollY + viewportHeight - topPaddingPx) / lineHeightPx).toInt().coerceAtMost(lineCount) + 2
+
+                val textRight = size.width - with(density) { 5.dp.toPx() }
+                val baselineOffset = fontSizePx * 0.84f
+
+                drawIntoCanvas { canvas ->
+                    for (line in startLine..endLine) {
+                        val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
+                        canvas.nativeCanvas.drawText(line.toString(), textRight, y, paint)
+                    }
+                }
             }
-            .padding(top = 12.dp, start = 2.dp, end = 3.dp)
-    ) {
-        Text(
-            text = lineNumbersText,
-            fontSize = fontSize.sp,
-            fontFamily = fontFamily,
-            color = GitText3,
-            textAlign = TextAlign.End,
-            lineHeight = (fontSize * 1.5).sp,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    )
 }
