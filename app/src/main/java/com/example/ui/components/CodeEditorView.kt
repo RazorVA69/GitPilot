@@ -583,106 +583,6 @@ fun CodeEditorView(
         textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.selection.end))
     }
 
-    val quickSymbols = remember {
-        listOf("{", "}", "(", ")", "[", "]", ";", ":", "=", "<", ">", "\"", "'", "/", "\\", "|", "&", "!", "->", "=>", "tab", "//")
-    }
-
-    fun insertSymbol(sym: String) {
-        val currentText = textFieldValue.text
-        val sel = textFieldValue.selection
-        val prevSelection = sel
-        val (newText, newSelection) = when (sym) {
-            "tab" -> {
-                val indent = "  "
-                if (!sel.collapsed) {
-                    val start = sel.min
-                    val end = sel.max
-                    val before = currentText.substring(0, start)
-                    val selected = currentText.substring(start, end)
-                    val after = currentText.substring(end)
-                    val indented = selected.lines().joinToString("\n") { "$indent$it" }
-                    Pair(before + indented + after, TextRange(start, start + indented.length))
-                } else {
-                    val cursor = sel.start.coerceIn(0, currentText.length)
-                    Pair(
-                        currentText.substring(0, cursor) + indent + currentText.substring(cursor),
-                        TextRange(cursor + indent.length)
-                    )
-                }
-            }
-            "//" -> {
-                val cursor = sel.start.coerceIn(0, currentText.length)
-                val lineStart = currentText.lastIndexOf('\n', (cursor - 1).coerceAtLeast(0)) + 1
-                val before = currentText.substring(0, lineStart)
-                val rest = currentText.substring(lineStart)
-                if (rest.startsWith("// ")) {
-                    Pair(before + rest.removePrefix("// "), TextRange((cursor - 3).coerceAtLeast(lineStart)))
-                } else {
-                    Pair(before + "// " + rest, TextRange(cursor + 3))
-                }
-            }
-            "{", "(", "[", "<" -> {
-                val closer = when (sym) {
-                    "{" -> "}"
-                    "(" -> ")"
-                    "[" -> "]"
-                    "<" -> ">"
-                    else -> ""
-                }
-                if (!sel.collapsed) {
-                    val start = sel.min
-                    val end = sel.max
-                    val selected = currentText.substring(start, end)
-                    Pair(
-                        currentText.substring(0, start) + sym + selected + closer + currentText.substring(end),
-                        TextRange(start + 1, end + 1)
-                    )
-                } else {
-                    val cursor = sel.start.coerceIn(0, currentText.length)
-                    Pair(
-                        currentText.substring(0, cursor) + sym + closer + currentText.substring(cursor),
-                        TextRange(cursor + 1)
-                    )
-                }
-            }
-            "\"", "'", "`" -> {
-                if (!sel.collapsed) {
-                    val start = sel.min
-                    val end = sel.max
-                    val selected = currentText.substring(start, end)
-                    Pair(
-                        currentText.substring(0, start) + sym + selected + sym + currentText.substring(end),
-                        TextRange(start + 1, end + 1)
-                    )
-                } else {
-                    val cursor = sel.start.coerceIn(0, currentText.length)
-                    Pair(
-                        currentText.substring(0, cursor) + sym + sym + currentText.substring(cursor),
-                        TextRange(cursor + 1)
-                    )
-                }
-            }
-            else -> {
-                val cursor = sel.start.coerceIn(0, currentText.length)
-                if (!sel.collapsed) {
-                    val start = sel.min
-                    val end = sel.max
-                    Pair(
-                        currentText.substring(0, start) + sym + currentText.substring(end),
-                        TextRange(start + sym.length)
-                    )
-                } else {
-                    Pair(
-                        currentText.substring(0, cursor) + sym + currentText.substring(cursor),
-                        TextRange(cursor + sym.length)
-                    )
-                }
-            }
-        }
-        textFieldValue = TextFieldValue(text = newText, selection = newSelection)
-        handleTextChange(newText, prevSelection)
-    }
-
     fun jumpToLine(targetLine: Int) {
         val currentText = textFieldValue.text
         val clampedLine = targetLine.coerceIn(1, lineCount)
@@ -1795,57 +1695,12 @@ fun CodeEditorView(
             }
         }
 
-        // BOTTOM BAR WITH QUICK SYMBOLS ROW & STATUS BAR (Tied cleanly to IME)
+        // BOTTOM STATUS BAR (Tied cleanly to IME)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
         ) {
-            // Quick Developer Symbol Accessory Bar (Visible when soft keyboard is active)
-            val isImeVisible = WindowInsets.isImeVisible
-            AnimatedVisibility(
-                visible = isImeVisible,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically()
-            ) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = GitSurface2,
-                    border = BorderStroke(0.5.dp, GitBorder)
-                ) {
-                    LazyRow(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 6.dp, vertical = 4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        items(quickSymbols) { sym ->
-                            Surface(
-                                onClick = { insertSymbol(sym) },
-                                shape = RoundedCornerShape(6.dp),
-                                color = GitSurface,
-                                border = BorderStroke(0.5.dp, GitBorder),
-                                modifier = Modifier
-                                    .height(32.dp)
-                                    .widthIn(min = 34.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
-                                    Text(
-                                        text = sym,
-                                        fontFamily = FontFamily.Monospace,
-                                        fontSize = 12.5.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = GitText1
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // BOTTOM STATUS BAR
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = GitSurface,
