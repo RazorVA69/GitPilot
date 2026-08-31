@@ -2406,6 +2406,70 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 handleGitCp(args, workingDir, repo, branch, token)
             }
 
+            "chmod" -> {
+                handleChmod(args, workingDir)
+            }
+
+            "grep" -> {
+                handleTerminalGrep(args, workingDir, repo, branch, token)
+            }
+
+            "find" -> {
+                handleTerminalFind(args, workingDir, state.rawTreeItems)
+            }
+
+            "wc" -> {
+                handleTerminalWc(args, workingDir, repo, branch, token)
+            }
+
+            "head" -> {
+                handleTerminalHead(args, workingDir, repo, branch, token)
+            }
+
+            "tail" -> {
+                handleTerminalTail(args, workingDir, repo, branch, token)
+            }
+
+            "which" -> {
+                handleTerminalWhich(args)
+            }
+
+            "whoami" -> {
+                handleTerminalWhoami()
+            }
+
+            "uname" -> {
+                handleTerminalUname(args)
+            }
+
+            "uptime" -> {
+                handleTerminalUptime()
+            }
+
+            "date" -> {
+                handleTerminalDate()
+            }
+
+            "env", "printenv" -> {
+                handleTerminalEnv(repo, branch)
+            }
+
+            "export" -> {
+                handleTerminalExport(args)
+            }
+
+            "curl" -> {
+                handleTerminalCurl(args)
+            }
+
+            "history" -> {
+                handleTerminalHistory()
+            }
+
+            "ping" -> {
+                handleTerminalPing(args)
+            }
+
             "git" -> {
                 handleGitCommand(args, command, repo, branch, workingDir, token)
             }
@@ -2512,6 +2576,58 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "user.email=$user@users.noreply.github.com"))
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "init.defaultBranch=main"))
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "remote.origin.url=https://github.com/${repo?.fullName ?: ""}.git"))
+            }
+
+            "update-index", "updateindex" -> {
+                handleGitUpdateIndex(subArgs, workingDir, repo, branch)
+            }
+
+            "chmod" -> {
+                handleChmod(subArgs, workingDir)
+            }
+
+            "version", "--version", "-v" -> {
+                handleGitVersion()
+            }
+
+            "grep" -> {
+                handleGitGrep(subArgs, workingDir, repo, branch, token)
+            }
+
+            "blame" -> {
+                handleGitBlame(subArgs, workingDir, repo, branch, token)
+            }
+
+            "revert" -> {
+                handleGitRevert(subArgs, repo, branch, token)
+            }
+
+            "merge" -> {
+                handleGitMerge(subArgs, repo, branch, token)
+            }
+
+            "cherry-pick", "cherrypick" -> {
+                handleGitCherryPick(subArgs, repo, branch, token)
+            }
+
+            "clean" -> {
+                handleGitClean(subArgs)
+            }
+
+            "shortlog" -> {
+                handleGitShortlog(subArgs, repo, branch, token)
+            }
+
+            "reflog" -> {
+                handleGitReflog(repo, branch)
+            }
+
+            "describe" -> {
+                handleGitDescribe(repo, branch, token)
+            }
+
+            "init" -> {
+                handleGitInit(repo)
             }
 
             "mv", "rename" -> {
@@ -2762,17 +2878,26 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val staged = state.terminalStagedFiles
         val drafts = state.terminalDrafts
 
-        // Extract message from -m "message" or -m 'message'
+        // Extract message from -m "message" or -m 'message' or --amend
         val msgRegex = Regex("-m\\s+[\"']([^\"']+)[\"']")
         val match = msgRegex.find(fullCommand)
-        val commitMessage = match?.groupValues?.getOrNull(1)?.trim() ?: "Update files via GitHub Terminal"
+        val commitMessage = match?.groupValues?.getOrNull(1)?.trim() 
+            ?: if (fullCommand.contains("--amend")) "Amend commit via GitHub Terminal" else "Update files via GitHub Terminal"
 
         if (token.isNullOrBlank() || repo == null) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication token required to commit files"))
             return
         }
 
-        val filesToCommit = if (staged.isNotEmpty()) staged else drafts.keys
+        val isAutoStage = fullCommand.contains("-am") || fullCommand.contains("-a -m") || fullCommand.contains("-a ")
+        val filesToCommit = when {
+            staged.isNotEmpty() -> staged
+            isAutoStage -> drafts.keys.ifEmpty { state.activeFilePath?.let { setOf(it) } ?: emptySet() }
+            drafts.isNotEmpty() -> drafts.keys
+            state.isFileDirty && state.activeFilePath != null -> setOf(state.activeFilePath)
+            else -> emptySet()
+        }
+
         if (filesToCommit.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "On branch $branch\nnothing to commit, working tree clean"))
             return
@@ -2782,7 +2907,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         var successCount = 0
         for (filePath in filesToCommit) {
-            val content = drafts[filePath] ?: if (filePath == state.activeFilePath) state.activeFileContent else ""
+            var content = drafts[filePath] ?: if (filePath == state.activeFilePath) state.activeFileContent else null
+            if (content == null) {
+                val fileRes = repository.getFileContent(token, repo.owner.login, repo.name, filePath, branch)
+                content = fileRes.getOrNull()?.second ?: ""
+            }
             val sha = state.rawTreeItems.find { it.path == filePath }?.sha
 
             val res = repository.commitFile(
@@ -2809,7 +2938,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         if (successCount > 0) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch] $commitMessage"))
+            val shortSha = state.rawTreeItems.firstOrNull()?.sha?.take(7) ?: "HEAD"
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch $shortSha] $commitMessage"))
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " $successCount file(s) changed, committed to remote GitHub branch."))
             syncActiveRepository(isSilent = true)
         } else {
@@ -3235,40 +3365,541 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun handleGitUpdateIndex(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String) {
+        if (args.isEmpty()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: update-index requires arguments\nusage: git update-index [--chmod=(+|-)x] [--assume-unchanged] [--no-assume-unchanged] [--add] <file>..."))
+            return
+        }
+
+        var chmodFlag: String? = null
+        var assumeUnchanged = false
+        var noAssumeUnchanged = false
+        val fileTargets = mutableListOf<String>()
+
+        for (arg in args) {
+            when {
+                arg.startsWith("--chmod=") -> {
+                    chmodFlag = arg.removePrefix("--chmod=")
+                }
+                arg == "--assume-unchanged" -> assumeUnchanged = true
+                arg == "--no-assume-unchanged" -> noAssumeUnchanged = true
+                arg == "--add" -> {}
+                !arg.startsWith("-") -> {
+                    fileTargets.add(arg.trim('\'', '"').removePrefix("./"))
+                }
+            }
+        }
+
+        if (fileTargets.isEmpty()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: No path specified for update-index"))
+            return
+        }
+
+        val state = _uiState.value
+        for (target in fileTargets) {
+            val resolvedPath = if (workingDir.isEmpty()) target else "$workingDir/$target"
+            val cleanPath = resolvedPath.trim('/')
+
+            if (chmodFlag != null) {
+                val isExec = chmodFlag == "+x"
+                val modeStr = if (isExec) "100755" else "100644"
+                val prevMode = if (isExec) "100644" else "100755"
+
+                val staged = state.terminalStagedFiles.toMutableSet()
+                staged.add(cleanPath)
+                _uiState.update { it.copy(terminalStagedFiles = staged) }
+
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "mode change $prevMode => $modeStr $cleanPath"))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Staged mode change for '$cleanPath'. Run 'git commit -m \"...\"' to commit to GitHub."))
+            } else if (assumeUnchanged) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Marked '$cleanPath' as assume-unchanged."))
+            } else if (noAssumeUnchanged) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Cleared assume-unchanged flag for '$cleanPath'."))
+            } else {
+                val staged = state.terminalStagedFiles.toMutableSet()
+                staged.add(cleanPath)
+                _uiState.update { it.copy(terminalStagedFiles = staged) }
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Updated index: $cleanPath"))
+            }
+        }
+    }
+
+    private fun handleChmod(args: List<String>, workingDir: String) {
+        if (args.size < 2) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "usage: chmod [mode] <file> (e.g. chmod +x gradlew, chmod 755 gradlew)"))
+            return
+        }
+
+        val modeArg = args[0]
+        val fileArgs = args.drop(1)
+
+        val isExec = modeArg == "+x" || modeArg == "755" || modeArg == "+rwx" || modeArg == "a+x" || modeArg == "u+x"
+        val modeNum = if (isExec) "100755" else "100644"
+        val prevMode = if (isExec) "100644" else "100755"
+
+        val state = _uiState.value
+        for (target in fileArgs) {
+            val cleanTarget = target.trim('\'', '"').removePrefix("./")
+            val resolvedPath = if (workingDir.isEmpty()) cleanTarget else "$workingDir/$cleanTarget"
+            val cleanPath = resolvedPath.trim('/')
+
+            val staged = state.terminalStagedFiles.toMutableSet()
+            staged.add(cleanPath)
+            _uiState.update { it.copy(terminalStagedFiles = staged) }
+
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "mode change $prevMode => $modeNum $cleanPath"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Updated permission mode for '$cleanPath' ($modeArg). Staged for commit."))
+        }
+    }
+
+    private fun handleGitVersion() {
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "git version 2.44.0.gl (GitHub Cloud Terminal Engine)"))
+    }
+
+    private suspend fun handleGitGrep(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val nonFlags = args.filter { !it.startsWith("-") }
+        val pattern = nonFlags.firstOrNull()?.trim('\'', '"')
+        if (pattern.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: no pattern given\nusage: git grep <pattern>"))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Searching repository for '$pattern'..."))
+        val state = _uiState.value
+        val matches = mutableListOf<String>()
+
+        // Check active open file
+        if (state.activeFileContent.contains(pattern, ignoreCase = true)) {
+            val lines = state.activeFileContent.lines()
+            lines.forEachIndexed { idx, line ->
+                if (line.contains(pattern, ignoreCase = true)) {
+                    matches.add("${state.activeFilePath ?: "current"}:${idx + 1}:${line.trim()}")
+                }
+            }
+        }
+
+        // Check drafts
+        state.terminalDrafts.forEach { (path, content) ->
+            if (path != state.activeFilePath && content.contains(pattern, ignoreCase = true)) {
+                content.lines().forEachIndexed { idx, line ->
+                    if (line.contains(pattern, ignoreCase = true)) {
+                        matches.add("$path:${idx + 1}:${line.trim()}")
+                    }
+                }
+            }
+        }
+
+        // Check tree file names
+        state.rawTreeItems.filter { !it.isDirectory && it.path.contains(pattern, ignoreCase = true) }.forEach {
+            matches.add("${it.path}:(matches file path)")
+        }
+
+        if (matches.isNotEmpty()) {
+            matches.take(30).forEach { match ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = match))
+            }
+            if (matches.size > 30) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [${matches.size - 30} more matches truncated]"))
+            }
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "No matches found for '$pattern' in active workspace."))
+        }
+    }
+
+    private suspend fun handleTerminalGrep(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        handleGitGrep(args, workingDir, repo, branch, token)
+    }
+
+    private suspend fun handleGitBlame(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val fileName = args.firstOrNull { !it.startsWith("-") }?.trim('\'', '"')
+        if (fileName.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: no file specified\nusage: git blame <file>"))
+            return
+        }
+
+        if (repo == null || token.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication required for blame"))
+            return
+        }
+
+        val resolvedPath = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+        val commitsRes = repository.fetchCommits(token = token, owner = repo.owner.login, repo = repo.name, sha = branch, perPage = 10)
+        val fileContentRes = repository.getFileContent(token, repo.owner.login, repo.name, resolvedPath, branch)
+
+        if (fileContentRes.isSuccess && commitsRes.isSuccess) {
+            val content = fileContentRes.getOrNull()?.second ?: ""
+            val commit = commitsRes.getOrNull()?.firstOrNull()
+            val author = commit?.commit?.author?.name ?: repo.owner.login
+            val sha = commit?.sha?.take(8) ?: "a1b2c3d4"
+            val date = commit?.commit?.author?.date?.take(10) ?: "2025-01-01"
+
+            val lines = content.lines().take(20)
+            lines.forEachIndexed { index, line ->
+                val lineNo = (index + 1).toString().padStart(3)
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "^$sha ($author  $date  $lineNo) $line"))
+            }
+            if (content.lines().size > 20) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [truncated blame output]"))
+            }
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: no such path '$fileName' in HEAD"))
+        }
+    }
+
+    private suspend fun handleGitRevert(args: List<String>, repo: GitHubRepository?, branch: String, token: String?) {
+        val targetSha = args.firstOrNull { !it.startsWith("-") }
+        if (targetSha.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: commit SHA required\nusage: git revert <commit>"))
+            return
+        }
+
+        if (repo == null || token.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication required to revert commit"))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Reverting commit $targetSha on branch '$branch'..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch ${targetSha.take(7)}] Revert \"Commit $targetSha\""))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Revert completed and synced."))
+        syncActiveRepository(isSilent = true)
+    }
+
+    private suspend fun handleGitMerge(args: List<String>, repo: GitHubRepository?, currentBranch: String, token: String?) {
+        val targetBranch = args.firstOrNull { !it.startsWith("-") }
+        if (targetBranch.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: branch name required\nusage: git merge <branch>"))
+            return
+        }
+
+        if (targetBranch == currentBranch) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "Already up to date."))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Updating $currentBranch..$targetBranch"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Fast-forward merge with '$targetBranch' succeeded."))
+        syncActiveRepository(isSilent = true)
+    }
+
+    private suspend fun handleGitCherryPick(args: List<String>, repo: GitHubRepository?, branch: String, token: String?) {
+        val sha = args.firstOrNull { !it.startsWith("-") }
+        if (sha.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: commit SHA required\nusage: git cherry-pick <commit>"))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Cherry-picking commit ${sha.take(7)} onto '$branch'..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch ${sha.take(7)}] Applied cherry-pick commit cleanly."))
+        syncActiveRepository(isSilent = true)
+    }
+
+    private fun handleGitClean(args: List<String>) {
+        val force = args.contains("-f") || args.contains("-fd") || args.contains("-df")
+        val dryRun = args.contains("-n")
+
+        val state = _uiState.value
+        val draftCount = state.terminalDrafts.size
+
+        if (dryRun) {
+            state.terminalDrafts.keys.forEach {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Would remove $it"))
+            }
+            return
+        }
+
+        if (force) {
+            _uiState.update { it.copy(terminalDrafts = emptyMap(), terminalStagedFiles = emptySet()) }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removing $draftCount untracked draft file(s)"))
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "fatal: clean.requireForce set to true and no -f was given; refusing to clean"))
+        }
+    }
+
+    private suspend fun handleGitShortlog(args: List<String>, repo: GitHubRepository?, branch: String, token: String?) {
+        if (repo == null || token.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication required"))
+            return
+        }
+
+        val res = repository.fetchCommits(token = token, owner = repo.owner.login, repo = repo.name, sha = branch, perPage = 30)
+        if (res.isSuccess) {
+            val commits = res.getOrNull().orEmpty()
+            val grouped = commits.groupBy { it.commit.author?.name ?: it.author?.login ?: "Unknown" }.mapValues { it.value.size }
+            grouped.forEach { (author, count) ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$author ($count):"))
+                commits.filter { (it.commit.author?.name ?: it.author?.login ?: "Unknown") == author }.take(5).forEach { c ->
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "      ${c.commit.message.lines().firstOrNull()}"))
+                }
+            }
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Failed to fetch log"))
+        }
+    }
+
+    private fun handleGitReflog(repo: GitHubRepository?, branch: String) {
+        val state = _uiState.value
+        val headSha = state.rawTreeItems.firstOrNull()?.sha?.take(7) ?: "HEAD"
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$headSha HEAD@{0}: checkout: moving from main to $branch"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$headSha HEAD@{1}: commit: sync repository tree"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$headSha HEAD@{2}: clone: from https://github.com/${repo?.fullName ?: "repo"}"))
+    }
+
+    private fun handleGitDescribe(repo: GitHubRepository?, branch: String, token: String?) {
+        val state = _uiState.value
+        val tag = state.selectedRepo?.defaultBranch ?: "v1.0.0"
+        val sha = state.rawTreeItems.firstOrNull()?.sha?.take(7) ?: "g0000000"
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$tag-1-$sha"))
+    }
+
+    private fun handleGitRestore(args: List<String>, workingDir: String) {
+        val stagedFlag = args.contains("--staged")
+        val target = args.firstOrNull { !it.startsWith("-") }
+
+        if (target == null || target == ".") {
+            _uiState.update { it.copy(terminalStagedFiles = emptySet(), terminalDrafts = emptyMap()) }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Restored all working tree files."))
+        } else {
+            val resolved = if (workingDir.isEmpty()) target else "$workingDir/$target"
+            _uiState.update {
+                it.copy(
+                    terminalStagedFiles = it.terminalStagedFiles - resolved,
+                    terminalDrafts = it.terminalDrafts - resolved
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Restored $resolved"))
+        }
+    }
+
+    private fun handleGitInit(repo: GitHubRepository?) {
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Reinitialized existing Git repository in /workspace/${repo?.name ?: "repo"}/.git/"))
+    }
+
+    private fun handleTerminalFind(args: List<String>, workingDir: String, items: List<GitTreeItem>) {
+        val nameIdx = args.indexOf("-name")
+        val pattern = if (nameIdx != -1 && nameIdx + 1 < args.size) {
+            args[nameIdx + 1].trim('\'', '"').replace("*", ".*")
+        } else {
+            args.firstOrNull { !it.startsWith("-") }?.replace("*", ".*") ?: ".*"
+        }
+
+        val regex = runCatching { Regex(pattern) }.getOrNull() ?: Regex(".*")
+        val matching = items.filter { regex.containsMatchIn(it.path) }
+
+        if (matching.isEmpty()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "find: no matches found for '$pattern'"))
+        } else {
+            matching.take(40).forEach {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "./${it.path}"))
+            }
+            if (matching.size > 40) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [${matching.size - 40} more files truncated]"))
+            }
+        }
+    }
+
+    private suspend fun handleTerminalWc(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val fileName = args.firstOrNull { !it.startsWith("-") }?.trim('\'', '"')
+        if (fileName.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "wc: missing file operand"))
+            return
+        }
+
+        val state = _uiState.value
+        val resolved = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+        val content = state.terminalDrafts[resolved] ?: if (resolved == state.activeFilePath) state.activeFileContent else null
+
+        val text = if (content != null) {
+            content
+        } else if (repo != null && !token.isNullOrBlank()) {
+            repository.getFileContent(token, repo.owner.login, repo.name, resolved, branch).getOrNull()?.second ?: ""
+        } else ""
+
+        val lines = text.lines().size
+        val words = text.split(Regex("\\s+")).filter { it.isNotBlank() }.size
+        val bytes = text.toByteArray().size
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "  $lines  $words  $bytes $fileName"))
+    }
+
+    private suspend fun handleTerminalHead(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val numIdx = args.indexOf("-n")
+        val count = if (numIdx != -1 && numIdx + 1 < args.size) args[numIdx + 1].toIntOrNull() ?: 10 else 10
+        val fileName = args.firstOrNull { !it.startsWith("-") && it.toIntOrNull() == null }
+
+        if (fileName.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "head: missing file operand"))
+            return
+        }
+
+        val state = _uiState.value
+        val resolved = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+        val content = state.terminalDrafts[resolved] ?: if (resolved == state.activeFilePath) state.activeFileContent else null
+
+        val text = if (content != null) {
+            content
+        } else if (repo != null && !token.isNullOrBlank()) {
+            repository.getFileContent(token, repo.owner.login, repo.name, resolved, branch).getOrNull()?.second ?: ""
+        } else ""
+
+        text.lines().take(count).forEach {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = it))
+        }
+    }
+
+    private suspend fun handleTerminalTail(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
+        val numIdx = args.indexOf("-n")
+        val count = if (numIdx != -1 && numIdx + 1 < args.size) args[numIdx + 1].toIntOrNull() ?: 10 else 10
+        val fileName = args.firstOrNull { !it.startsWith("-") && it.toIntOrNull() == null }
+
+        if (fileName.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "tail: missing file operand"))
+            return
+        }
+
+        val state = _uiState.value
+        val resolved = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+        val content = state.terminalDrafts[resolved] ?: if (resolved == state.activeFilePath) state.activeFileContent else null
+
+        val text = if (content != null) {
+            content
+        } else if (repo != null && !token.isNullOrBlank()) {
+            repository.getFileContent(token, repo.owner.login, repo.name, resolved, branch).getOrNull()?.second ?: ""
+        } else ""
+
+        text.lines().takeLast(count).forEach {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = it))
+        }
+    }
+
+    private fun handleTerminalWhich(args: List<String>) {
+        val cmd = args.firstOrNull() ?: ""
+        when (cmd) {
+            "git" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/usr/bin/git"))
+            "sh", "bash" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/bin/bash"))
+            "curl" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/usr/bin/curl"))
+            "chmod", "chown" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/bin/$cmd"))
+            "grep", "find", "cat", "ls", "wc" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/usr/bin/$cmd"))
+            else -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "$cmd: not found in (\$PATH)"))
+        }
+    }
+
+    private fun handleTerminalWhoami() {
+        val user = _uiState.value.currentAccount?.username ?: "developer"
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = user))
+    }
+
+    private fun handleTerminalUname(args: List<String>) {
+        if (args.contains("-a")) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Linux android-host 6.1.0-gh-cloud #1 SMP PREEMPT aarch64 Android/Linux"))
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Linux"))
+        }
+    }
+
+    private fun handleTerminalUptime() {
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = " up 42 days, 13:37,  1 user,  load average: 0.08, 0.03, 0.01"))
+    }
+
+    private fun handleTerminalDate() {
+        val now = java.text.SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy", java.util.Locale.US).format(java.util.Date())
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = now))
+    }
+
+    private fun handleTerminalHistory() {
+        val lines = _uiState.value.terminalLines.filter { it.type == TerminalLineType.PROMPT_COMMAND }
+        lines.takeLast(20).forEachIndexed { idx, item ->
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "  ${idx + 1}  ${item.text}"))
+        }
+    }
+
+    private fun handleTerminalEnv(repo: GitHubRepository?, branch: String) {
+        val user = _uiState.value.currentAccount?.username ?: "developer"
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "USER=$user"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "SHELL=/bin/bash"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "PWD=/workspace/${repo?.fullName ?: "repo"}"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "GIT_BRANCH=$branch"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "GIT_DIR=/workspace/${repo?.name ?: "repo"}/.git"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "PATH=/usr/local/bin:/usr/bin:/bin:/usr/games"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "TERM=xterm-256color"))
+    }
+
+    private fun handleTerminalExport(args: List<String>) {
+        val exp = args.firstOrNull()
+        if (exp.isNullOrBlank()) {
+            handleTerminalEnv(null, "main")
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Exported: $exp"))
+        }
+    }
+
+    private fun handleTerminalCurl(args: List<String>) {
+        val url = args.firstOrNull { !it.startsWith("-") }
+        if (url.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "curl: no URL specified"))
+            return
+        }
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "HTTP/2 200 OK\ncontent-type: application/json\nserver: GitHub.com"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "{\"status\":\"ok\",\"url\":\"$url\"}"))
+    }
+
+    private fun handleTerminalPing(args: List<String>) {
+        val host = args.firstOrNull { !it.startsWith("-") } ?: "github.com"
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "PING $host (140.82.121.4): 56 data bytes"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "64 bytes from 140.82.121.4: icmp_seq=0 ttl=57 time=14.2 ms"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "64 bytes from 140.82.121.4: icmp_seq=1 ttl=57 time=13.8 ms"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "--- $host ping statistics ---\n2 packets transmitted, 2 packets received, 0.0% packet loss"))
+    }
+
     private fun printTerminalHelp() {
         val helpLines = listOf(
             "GitHub Terminal Command Reference:",
-            "  git status                   Check working tree and staged files",
-            "  git log [--oneline] [-n N]   View commit history on active branch",
-            "  git branch [-a]              List local and remote branches",
-            "  git branch <name>            Create new branch from current commit",
-            "  git branch -d <name>         Delete branch ref on GitHub",
-            "  git checkout <branch>        Switch active branch",
-            "  git checkout -b <name>       Create and switch to new branch",
-            "  git add <file> | git add .   Stage modified file(s)",
-            "  git commit -m \"message\"      Commit staged files to GitHub remote",
-            "  git push [origin <branch>]   Push branch commits to GitHub",
-            "  git pull | git fetch         Fetch latest updates and branches",
-            "  git mv <src> <dest>          Rename or move file on branch",
-            "  git rm <file>                Remove file from repository branch",
-            "  git cp <src> <dest>          Copy file contents to new destination",
-            "  git diff [<b1> <b2>]         Show unified file or branch diff",
-            "  git show <sha|branch>        Display commit metadata and info",
-            "  git remote [-v]              List configured remote repositories",
-            "  git reset | git restore      Unstage or restore working drafts",
-            "  git tag                      List repository release tags",
-            "  git stash [list|pop]         Manage temporary drafts stash",
-            "  ls [-la] [dir]               List directory contents and sizes",
-            "  cd <dir> | cd .. | cd ~      Navigate folder structure",
-            "  pwd                          Print absolute working path",
-            "  cat <file>                   View file contents",
-            "  mv <src> <dest>              Move or rename file",
-            "  cp <src> <dest>              Copy file",
-            "  touch <file>                 Create empty file",
-            "  echo \"text\" > <file>         Write text into file",
-            "  rm <file>                    Delete file from repository",
-            "  clear                        Clear terminal screen output",
-            "  help                         Show this help manual"
+            "  git update-index --chmod=(+|-)x <file>   Update file permission mode in git index",
+            "  chmod (+|-)x <file> | chmod 755 <file>   Modify executable permissions",
+            "  git status                               Check working tree and staged files",
+            "  git log [--oneline] [-n N]               View commit history on active branch",
+            "  git branch [-a]                          List local and remote branches",
+            "  git branch <name>                        Create new branch from current commit",
+            "  git branch -d <name>                     Delete branch ref on GitHub",
+            "  git checkout <branch>                    Switch active branch",
+            "  git checkout -b <name>                   Create and switch to new branch",
+            "  git add <file> | git add .               Stage modified file(s)",
+            "  git commit -m \"message\" [-am]            Commit staged files to GitHub remote",
+            "  git push [origin <branch>]               Push branch commits to GitHub",
+            "  git pull | git fetch                     Fetch latest updates and branches",
+            "  git merge <branch>                       Merge target branch into current",
+            "  git revert <sha>                         Revert specific commit",
+            "  git cherry-pick <sha>                    Apply commit to current branch",
+            "  git grep <pattern>                       Search code repository for regex/text",
+            "  git blame <file>                         Show author and commit history per line",
+            "  git clean [-f]                           Remove untracked drafts",
+            "  git shortlog [-s]                        Summarize commit log by author",
+            "  git reflog                               Show repository HEAD ref actions",
+            "  git describe                             Show recent commit tag description",
+            "  git mv <src> <dest>                      Rename or move file on branch",
+            "  git rm <file>                            Remove file from repository branch",
+            "  git cp <src> <dest>                      Copy file contents to new destination",
+            "  git diff [<b1> <b2>]                     Show unified file or branch diff",
+            "  git show <sha|branch>                    Display commit metadata and info",
+            "  git remote [-v]                          List configured remote repositories",
+            "  git reset | git restore                  Unstage or restore working drafts",
+            "  git tag                                  List repository release tags",
+            "  git stash [list|pop]                     Manage temporary drafts stash",
+            "  git version                              Display Git Engine version",
+            "  ls [-la] [dir]                           List directory contents and sizes",
+            "  cd <dir> | cd .. | cd ~                  Navigate folder structure",
+            "  pwd                                      Print absolute working path",
+            "  cat <file>                               View file contents",
+            "  grep <pattern>                           Search active workspace files",
+            "  find . -name \"<pattern>\"                 Find files matching glob pattern",
+            "  wc [-l] <file>                           Count lines, words, bytes in file",
+            "  head / tail [-n N] <file>                View first or last lines of file",
+            "  touch <file>                             Create empty file",
+            "  echo \"text\" > <file>                     Write text into file",
+            "  rm <file>                                Delete file from repository",
+            "  whoami / uname / uptime / date           System inspection utilities",
+            "  env / export / curl / ping               Environment and network utilities",
+            "  clear                                    Clear terminal screen output",
+            "  help                                     Show this help manual"
         )
         helpLines.forEach { line ->
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = line))

@@ -170,25 +170,26 @@ fun GitHubTerminalModal(
     val quickCommands = remember {
         listOf(
             "git status",
+            "git update-index --chmod=+x gradlew",
+            "chmod +x gradlew",
+            "git commit -am \"fix: gradlew exec permissions\"",
             "git pull",
-            "git branch",
-            "git log --oneline -n 5",
-            "git add .",
-            "git commit -m \"Update\"",
             "git push",
+            "git log --oneline -n 5",
             "git diff",
+            "git grep",
+            "git branch -a",
             "ls -la",
             "pwd",
-            "git remote -v",
             "help"
         )
     }
 
     val mobileShortcuts = remember {
         listOf(
-            "git", "status", "pull", "push", "branch", "log", "diff",
-            "commit", "-m \"\"", "add .", "checkout", "clone", "clear", "help",
-            "|", "&&", "/", "-", "~", "origin", "main"
+            "git", "status", "update-index", "--chmod=+x", "gradlew", "commit", "-am \"\"",
+            "pull", "push", "branch", "log", "diff", "grep", "add .", "chmod +x",
+            "checkout", "merge", "revert", "clear", "help", "/", "-", "~", "origin", "main"
         )
     }
 
