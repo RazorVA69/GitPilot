@@ -4,6 +4,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -65,6 +67,8 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.VerticalAlignBottom
+import androidx.compose.material.icons.filled.VerticalAlignTop
 import androidx.compose.material.icons.filled.WrapText
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -95,6 +99,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -106,6 +111,8 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
@@ -219,10 +226,13 @@ fun CodeEditorView(
     var selectedFontFamily by rememberSaveable { mutableStateOf(EditorFontFamily.JETBRAINS_MONO) }
     var showTypographyModal by rememberSaveable { mutableStateOf(false) }
     var isFolderDrawerOpen by rememberSaveable { mutableStateOf(false) }
+    var showGoToLineDialog by rememberSaveable { mutableStateOf(false) }
+    var goToLineInput by rememberSaveable { mutableStateOf("") }
+    var showMoreMenu by rememberSaveable { mutableStateOf(false) }
 
     // Clear focus and hide IME whenever the drawer or modals open so cursors never leak through
-    LaunchedEffect(isFolderDrawerOpen, showTypographyModal) {
-        if (isFolderDrawerOpen || showTypographyModal) {
+    LaunchedEffect(isFolderDrawerOpen, showTypographyModal, showGoToLineDialog, showMoreMenu) {
+        if (isFolderDrawerOpen || showTypographyModal || showGoToLineDialog || showMoreMenu) {
             focusManager.clearFocus(force = true)
             keyboardController?.hide()
         }
@@ -237,13 +247,47 @@ fun CodeEditorView(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var replaceQuery by rememberSaveable { mutableStateOf("") }
     var currentMatchIndex by rememberSaveable { mutableIntStateOf(0) }
+    val searchFocusRequester = remember { FocusRequester() }
 
-    // Go To Line Dialog State
-    var showGoToLineDialog by rememberSaveable { mutableStateOf(false) }
-    var goToLineInput by rememberSaveable { mutableStateOf("") }
+    // Floating navigation button states: Down button shown initially, Up button shown when scrolling up
+    var showDownButton by remember(filePath) { mutableStateOf(true) }
+    var showUpButton by remember { mutableStateOf(false) }
+    var lastScrollUpTrigger by remember { mutableLongStateOf(0L) }
+    var previousScrollValue by remember { mutableIntStateOf(0) }
 
-    // Three-dot Menu State
-    var showMoreMenu by rememberSaveable { mutableStateOf(false) }
+    // Scroll listener for floating navigation buttons
+    LaunchedEffect(verticalScrollState) {
+        androidx.compose.runtime.snapshotFlow { verticalScrollState.value }
+            .collect { currentScroll ->
+                val delta = currentScroll - previousScrollValue
+                if (delta < -15 && currentScroll > 120) {
+                    showUpButton = true
+                    lastScrollUpTrigger = System.currentTimeMillis()
+                } else if (currentScroll <= 40) {
+                    showUpButton = false
+                }
+                previousScrollValue = currentScroll
+            }
+    }
+
+    // Auto-hide Up button after a few seconds
+    LaunchedEffect(lastScrollUpTrigger) {
+        if (showUpButton && lastScrollUpTrigger > 0L) {
+            delay(3500)
+            showUpButton = false
+        }
+    }
+
+    // When Search is opened, automatically focus the search box and open keyboard
+    LaunchedEffect(isSearchVisible) {
+        if (isSearchVisible) {
+            delay(150)
+            try {
+                searchFocusRequester.requestFocus()
+                keyboardController?.show()
+            } catch (_: Exception) {}
+        }
+    }
 
     // Tab Position, Selection, and Scroll State Cache across tabs for instant differential tab switching
     val tabPositionCache = remember { mutableMapOf<String, Triple<Int, Int, TextRange>>() }
@@ -629,10 +673,10 @@ fun CodeEditorView(
             textFieldValue = textFieldValue.copy(
                 selection = TextRange(matchPos, matchPos + searchQuery.length)
             )
-            // Scroll to the matched line
+            // Scroll so the matched text appears in clear view in the top portion above keyboard
             val line = content.take(matchPos).count { it == '\n' }
-            val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
-            val targetScroll = (line * approximateLineHeightPx - 100).coerceAtLeast(0)
+            val approximateLineHeightPx = (fontSize * 1.5f * 2.6f).toInt()
+            val targetScroll = (line * approximateLineHeightPx - 80).coerceAtLeast(0)
             verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
         } else if (searchQuery.isEmpty() || !isSearchVisible) {
             if (!textFieldValue.selection.collapsed) {
@@ -1066,6 +1110,46 @@ fun CodeEditorView(
                                 }
                             )
 
+                            // Go to Top
+                            DropdownMenuItem(
+                                text = { Text("Go to Top", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.VerticalAlignTop,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    coroutineScope.launch {
+                                        verticalScrollState.animateScrollTo(0)
+                                    }
+                                    textFieldValue = textFieldValue.copy(selection = TextRange.Zero)
+                                }
+                            )
+
+                            // Go to Bottom
+                            DropdownMenuItem(
+                                text = { Text("Go to Bottom (End)", color = GitText1, fontSize = 13.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.VerticalAlignBottom,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showMoreMenu = false
+                                    coroutineScope.launch {
+                                        verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
+                                    }
+                                    textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.text.length))
+                                }
+                            )
+
                             // Go to Line
                             DropdownMenuItem(
                                 text = { Text("Go to Line...", color = GitText1, fontSize = 13.sp) },
@@ -1384,6 +1468,7 @@ fun CodeEditorView(
                             },
                             modifier = Modifier
                                 .weight(1f)
+                                .focusRequester(searchFocusRequester)
                                 .testTag("editor_find_input"),
                             placeholder = { Text("Find...", fontSize = 12.sp, color = GitText3) },
                             singleLine = true,
@@ -1674,8 +1759,81 @@ fun CodeEditorView(
                                 lineHeight = (fontSize * 1.5).sp
                             ),
                             visualTransformation = visualTransformation,
-                            cursorBrush = if (isFolderDrawerOpen) SolidColor(Color.Transparent) else SolidColor(GitAccent)
+                            cursorBrush = if (isFolderDrawerOpen || showTypographyModal || showGoToLineDialog || showMoreMenu || isSearchVisible) SolidColor(Color.Transparent) else SolidColor(GitAccent)
                         )
+                    }
+
+                    // Floating Up / Down navigation buttons
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 20.dp, end = 24.dp)
+                    ) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = (showDownButton && verticalScrollState.value < (verticalScrollState.maxValue - 80).coerceAtLeast(0) && verticalScrollState.maxValue > 0) || (showUpButton && verticalScrollState.value > 80),
+                            enter = fadeIn() + scaleIn(),
+                            exit = fadeOut() + scaleOut()
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                if (showUpButton && verticalScrollState.value > 80) {
+                                    Surface(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                verticalScrollState.animateScrollTo(0)
+                                            }
+                                            textFieldValue = textFieldValue.copy(selection = TextRange.Zero)
+                                            showUpButton = false
+                                        },
+                                        shape = CircleShape,
+                                        color = GitSurface,
+                                        border = BorderStroke(1.dp, GitBorderStrong),
+                                        shadowElevation = 6.dp,
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .testTag("editor_floating_up_button")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.KeyboardArrowUp,
+                                                contentDescription = "Go to Top",
+                                                tint = GitText1,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                if (showDownButton && verticalScrollState.value < (verticalScrollState.maxValue - 80).coerceAtLeast(0) && verticalScrollState.maxValue > 0) {
+                                    Surface(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
+                                            }
+                                            textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.text.length))
+                                        },
+                                        shape = CircleShape,
+                                        color = GitSurface,
+                                        border = BorderStroke(1.dp, GitBorderStrong),
+                                        shadowElevation = 6.dp,
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .testTag("editor_floating_down_button")
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = Icons.Default.KeyboardArrowDown,
+                                                contentDescription = "Go to File End Line",
+                                                tint = GitAccent,
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Interactive Draggable Vertical Scrollbar (Scrub, Drag, or Tap to jump)
@@ -2030,16 +2188,18 @@ private fun LineNumbersGutter(
                 // Render ONLY visible lines for 60fps performance on any file size
                 val scrollY = verticalScrollState.value
                 val viewportHeight = verticalScrollState.viewportSize.takeIf { it > 0 } ?: size.height.toInt()
-                val startLine = ((scrollY - topPaddingPx) / lineHeightPx).toInt().coerceAtLeast(0) + 1
-                val endLine = ((scrollY + viewportHeight - topPaddingPx) / lineHeightPx).toInt().coerceAtMost(lineCount) + 2
+                val startLine = (((scrollY - topPaddingPx) / lineHeightPx).toInt() - 1).coerceIn(1, lineCount)
+                val endLine = (((scrollY + viewportHeight - topPaddingPx) / lineHeightPx).toInt() + 2).coerceIn(1, lineCount)
 
                 val textRight = size.width - with(density) { 5.dp.toPx() }
                 val baselineOffset = fontSizePx * 0.84f
 
                 drawIntoCanvas { canvas ->
-                    for (line in startLine..endLine) {
-                        val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
-                        canvas.nativeCanvas.drawText(line.toString(), textRight, y, paint)
+                    if (lineCount >= 1 && startLine <= endLine) {
+                        for (line in startLine..endLine) {
+                            val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
+                            canvas.nativeCanvas.drawText(line.toString(), textRight, y, paint)
+                        }
                     }
                 }
             }

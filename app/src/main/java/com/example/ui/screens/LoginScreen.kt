@@ -315,7 +315,6 @@ fun LoginScreen(
 
                     HorizontalPager(
                         state = pagerState,
-                        beyondViewportPageCount = 1,
                         verticalAlignment = Alignment.Top,
                         modifier = Modifier.fillMaxWidth()
                     ) { page ->

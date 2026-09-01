@@ -48,7 +48,10 @@ enum class FileTreeSortOption {
     FOLDERS_FIRST,
     FILES_FIRST,
     NAME_ASC,
-    NAME_DESC
+    NAME_DESC,
+    SIZE_DESC,
+    SIZE_ASC,
+    TYPE_ASC
 }
 
 enum class SyncStatus { IDLE, SYNCING, SYNCED, ERROR }
@@ -786,6 +789,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun selectRepository(repo: GitHubRepository) {
         val savedPinnedFolders = prefs.getStringSet("pinned_folders_${repo.id}", emptySet()) ?: emptySet()
+        val savedPinnedFiles = prefs.getStringSet("pinned_files_${repo.id}", emptySet()) ?: emptySet()
 
         viewModelScope.launch {
             _uiState.update {
@@ -802,6 +806,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     isBatchMode = false,
                     selectedFilePaths = emptySet(),
                     pinnedFolders = savedPinnedFolders,
+                    pinnedFiles = savedPinnedFiles,
                     currentScreen = AppScreen.EXPLORER,
                     isLeftDrawerOpen = false,
                     syncStatus = SyncStatus.SYNCING,
@@ -1169,35 +1174,33 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun togglePinEditorTab(path: String) {
-        val currentPinned = _uiState.value.pinnedFiles
-        val isNowPinned = !currentPinned.contains(path)
-        val newPinned = if (isNowPinned) currentPinned + path else currentPinned - path
-
-        val updatedTabs = _uiState.value.openEditorTabs.map {
-            if (it.path == path) it.copy(isPinned = isNowPinned) else it
-        }
-
-        _uiState.update {
-            it.copy(
-                pinnedFiles = newPinned,
-                openEditorTabs = updatedTabs
-            )
-        }
+        togglePinFile(path)
     }
 
     fun togglePinFile(path: String) {
-        val currentPinned = _uiState.value.pinnedFiles
-        val isNowPinned = !currentPinned.contains(path)
-        val newPinned = if (isNowPinned) currentPinned + path else currentPinned - path
+        val repo = _uiState.value.selectedRepo
+        val currentPinned = _uiState.value.pinnedFiles.toMutableSet()
+        val isPinned = if (currentPinned.contains(path)) {
+            currentPinned.remove(path)
+            false
+        } else {
+            currentPinned.add(path)
+            true
+        }
+
+        if (repo != null) {
+            prefs.edit().putStringSet("pinned_files_${repo.id}", currentPinned).apply()
+        }
 
         val updatedTabs = _uiState.value.openEditorTabs.map {
-            if (it.path == path) it.copy(isPinned = isNowPinned) else it
+            if (it.path == path) it.copy(isPinned = isPinned) else it
         }
 
         _uiState.update {
             it.copy(
-                pinnedFiles = newPinned,
-                openEditorTabs = updatedTabs
+                pinnedFiles = currentPinned,
+                openEditorTabs = updatedTabs,
+                toastOrMessage = if (isPinned) "Pinned file to Quick Access" else "Unpinned file"
             )
         }
     }
