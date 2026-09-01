@@ -121,7 +121,8 @@ data class GitExplorerUiState(
     val currentDirectoryPath: String = "", // empty = root
     val fileSearchQuery: String = "",
     val matchingSearchFiles: List<GitTreeItem> = emptyList(),
-    val pinnedFolders: Set<String> = emptySet(), // Pinned folders for current repo
+    val pinnedFolders: Set<String> = emptySet(), // Quick Access pinned folders
+    val topPinnedFolders: Set<String> = emptySet(), // Folders pinned to top of directory
     val fileTreeSortOption: FileTreeSortOption = FileTreeSortOption.FOLDERS_FIRST,
     val isFileTreeSortReversed: Boolean = false,
 
@@ -144,7 +145,8 @@ data class GitExplorerUiState(
     val isFileDirty: Boolean = false,
     val isMarkdownPreviewMode: Boolean = false,
     val openEditorTabs: List<EditorTabInfo> = emptyList(),
-    val pinnedFiles: Set<String> = emptySet(),
+    val pinnedFiles: Set<String> = emptySet(), // Quick Access pinned files
+    val topPinnedFiles: Set<String> = emptySet(), // Files pinned to top of directory
 
     // Batch operations
     val isBatchMode: Boolean = false,
@@ -790,6 +792,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     fun selectRepository(repo: GitHubRepository) {
         val savedPinnedFolders = prefs.getStringSet("pinned_folders_${repo.id}", emptySet()) ?: emptySet()
         val savedPinnedFiles = prefs.getStringSet("pinned_files_${repo.id}", emptySet()) ?: emptySet()
+        val savedTopPinnedFolders = prefs.getStringSet("top_pinned_folders_${repo.id}", emptySet()) ?: emptySet()
+        val savedTopPinnedFiles = prefs.getStringSet("top_pinned_files_${repo.id}", emptySet()) ?: emptySet()
 
         viewModelScope.launch {
             _uiState.update {
@@ -807,6 +811,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     selectedFilePaths = emptySet(),
                     pinnedFolders = savedPinnedFolders,
                     pinnedFiles = savedPinnedFiles,
+                    topPinnedFolders = savedTopPinnedFolders,
+                    topPinnedFiles = savedTopPinnedFiles,
                     currentScreen = AppScreen.EXPLORER,
                     isLeftDrawerOpen = false,
                     syncStatus = SyncStatus.SYNCING,
@@ -822,7 +828,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     // ==========================================
-    // FOLDER PINNING INSIDE REPOSITORY
+    // FOLDER & FILE PINNING (QUICK ACCESS & PIN TO TOP)
     // ==========================================
 
     fun togglePinFolder(folderPath: String) {
@@ -841,7 +847,49 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         _uiState.update {
             it.copy(
                 pinnedFolders = currentPinned,
-                toastOrMessage = if (isPinned) "Pinned folder to Quick Access" else "Unpinned folder"
+                toastOrMessage = if (isPinned) "Pinned folder to Quick Access" else "Unpinned folder from Quick Access"
+            )
+        }
+    }
+
+    fun togglePinFolderToTop(folderPath: String) {
+        val repo = _uiState.value.selectedRepo ?: return
+        val currentTopPinned = _uiState.value.topPinnedFolders.toMutableSet()
+        val cleanPath = folderPath.trim('/')
+        val isPinned = if (currentTopPinned.contains(cleanPath)) {
+            currentTopPinned.remove(cleanPath)
+            false
+        } else {
+            currentTopPinned.add(cleanPath)
+            true
+        }
+
+        prefs.edit().putStringSet("top_pinned_folders_${repo.id}", currentTopPinned).apply()
+        _uiState.update {
+            it.copy(
+                topPinnedFolders = currentTopPinned,
+                toastOrMessage = if (isPinned) "Folder pinned to top of directory" else "Folder unpinned from top"
+            )
+        }
+    }
+
+    fun togglePinFileToTop(filePath: String) {
+        val repo = _uiState.value.selectedRepo ?: return
+        val currentTopPinned = _uiState.value.topPinnedFiles.toMutableSet()
+        val cleanPath = filePath.trim('/')
+        val isPinned = if (currentTopPinned.contains(cleanPath)) {
+            currentTopPinned.remove(cleanPath)
+            false
+        } else {
+            currentTopPinned.add(cleanPath)
+            true
+        }
+
+        prefs.edit().putStringSet("top_pinned_files_${repo.id}", currentTopPinned).apply()
+        _uiState.update {
+            it.copy(
+                topPinnedFiles = currentTopPinned,
+                toastOrMessage = if (isPinned) "File pinned to top of directory" else "File unpinned from top"
             )
         }
     }
@@ -1200,7 +1248,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             it.copy(
                 pinnedFiles = currentPinned,
                 openEditorTabs = updatedTabs,
-                toastOrMessage = if (isPinned) "Pinned file to Quick Access" else "Unpinned file"
+                toastOrMessage = if (isPinned) "Pinned file to Quick Access" else "Unpinned file from Quick Access"
             )
         }
     }

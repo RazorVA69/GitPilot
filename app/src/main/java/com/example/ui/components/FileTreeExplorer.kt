@@ -52,6 +52,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PushPin
@@ -133,6 +135,8 @@ fun FileTreeExplorer(
     selectedFilePaths: Set<String>,
     pinnedFolders: Set<String> = emptySet(),
     pinnedFiles: Set<String> = emptySet(),
+    topPinnedFolders: Set<String> = emptySet(),
+    topPinnedFiles: Set<String> = emptySet(),
     fileTreeSortOption: FileTreeSortOption = FileTreeSortOption.FOLDERS_FIRST,
     isFileTreeSortReversed: Boolean = false,
     clipboard: ClipboardState? = null,
@@ -161,6 +165,8 @@ fun FileTreeExplorer(
     onPasteClipboard: (destinationDir: String) -> Unit = {},
     onTogglePinFolder: (String) -> Unit = {},
     onTogglePinFile: (String) -> Unit = {},
+    onTogglePinFolderToTop: (String) -> Unit = {},
+    onTogglePinFileToTop: (String) -> Unit = {},
     onFileTreeSortChange: (FileTreeSortOption) -> Unit = {},
     onToggleFileTreeSortReverse: () -> Unit = {},
     onToggleLeftDrawer: () -> Unit,
@@ -1150,10 +1156,10 @@ fun FileTreeExplorer(
             } else {
                 // Directory Node Children List (Files & Folders)
                 val currentNode = rootNode?.let { RepoRepo.findNodeAtDirectory(it, currentPath) }
-                val sortedChildren = remember(currentNode?.children, fileTreeSortOption, isFileTreeSortReversed, pinnedFolders, pinnedFiles) {
+                val sortedChildren = remember(currentNode?.children, fileTreeSortOption, isFileTreeSortReversed, topPinnedFolders, topPinnedFiles) {
                     val list = currentNode?.children ?: emptyList()
-                    val isPinned: (ExplorerNode) -> Boolean = { node ->
-                        if (node.isDirectory) pinnedFolders.contains(node.path) else pinnedFiles.contains(node.path)
+                    val isTopPinned: (ExplorerNode) -> Boolean = { node ->
+                        if (node.isDirectory) topPinnedFolders.contains(node.path) else topPinnedFiles.contains(node.path)
                     }
 
                     fun sortItems(items: List<ExplorerNode>): List<ExplorerNode> {
@@ -1169,8 +1175,8 @@ fun FileTreeExplorer(
                         return if (isFileTreeSortReversed) sorted.reversed() else sorted
                     }
 
-                    val (pinned, unpinned) = list.partition { isPinned(it) }
-                    sortItems(pinned) + sortItems(unpinned)
+                    val (topPinned, unpinned) = list.partition { isTopPinned(it) }
+                    sortItems(topPinned) + sortItems(unpinned)
                 }
 
                 if (currentNode == null || sortedChildren.isEmpty()) {
@@ -1229,10 +1235,16 @@ fun FileTreeExplorer(
                                 selectedFilePaths.contains(childNode.path)
                             }
 
-                            val isItemPinned = if (childNode.isDirectory) {
+                            val isQuickAccessPinned = if (childNode.isDirectory) {
                                 pinnedFolders.contains(childNode.path)
                             } else {
                                 pinnedFiles.contains(childNode.path)
+                            }
+
+                            val isTopPinned = if (childNode.isDirectory) {
+                                topPinnedFolders.contains(childNode.path)
+                            } else {
+                                topPinnedFiles.contains(childNode.path)
                             }
 
                             // Check if in clipboard for Cut/Copy visual indication
@@ -1246,7 +1258,8 @@ fun FileTreeExplorer(
                                 rawItem = rawItem,
                                 isBatchMode = isBatchMode,
                                 isSelected = isSelected,
-                                isPinned = isItemPinned,
+                                isQuickAccessPinned = isQuickAccessPinned,
+                                isTopPinned = isTopPinned,
                                 isInClipboard = isClipboardMatch,
                                 isCutClipboard = isCutClipboard,
                                 onClick = {
@@ -1285,8 +1298,12 @@ fun FileTreeExplorer(
                                 onCopy = { onCopyItem(childNode.path, childNode.isDirectory, childNode.sha) },
                                 onRename = { itemToRename = childNode },
                                 onDelete = { onDeleteSingleFile(childNode.path, childNode.sha, childNode.isDirectory) },
-                                onTogglePinFolder = { onTogglePinFolder(childNode.path) },
-                                onTogglePinFile = { onTogglePinFile(childNode.path) },
+                                onTogglePinQuickAccess = {
+                                    if (childNode.isDirectory) onTogglePinFolder(childNode.path) else onTogglePinFile(childNode.path)
+                                },
+                                onTogglePinTop = {
+                                    if (childNode.isDirectory) onTogglePinFolderToTop(childNode.path) else onTogglePinFileToTop(childNode.path)
+                                },
                                 modifier = Modifier.animateItem()
                             )
                         }
@@ -1701,7 +1718,8 @@ private fun ExplorerItemRow(
     rawItem: GitTreeItem,
     isBatchMode: Boolean,
     isSelected: Boolean,
-    isPinned: Boolean = false,
+    isQuickAccessPinned: Boolean = false,
+    isTopPinned: Boolean = false,
     isInClipboard: Boolean = false,
     isCutClipboard: Boolean = false,
     onClick: () -> Unit,
@@ -1711,8 +1729,8 @@ private fun ExplorerItemRow(
     onCopy: () -> Unit = {},
     onRename: () -> Unit = {},
     onDelete: () -> Unit,
-    onTogglePinFolder: () -> Unit = {},
-    onTogglePinFile: () -> Unit = {},
+    onTogglePinQuickAccess: () -> Unit = {},
+    onTogglePinTop: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showMenu by remember { mutableStateOf(false) }
@@ -1786,11 +1804,11 @@ private fun ExplorerItemRow(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
-                    if (isPinned) {
+                    if (isTopPinned) {
                         Spacer(modifier = Modifier.width(6.dp))
                         Icon(
                             imageVector = Icons.Default.PushPin,
-                            contentDescription = "Pinned",
+                            contentDescription = "Pinned to top",
                             tint = GitAccent,
                             modifier = Modifier.size(12.dp)
                         )
@@ -1847,37 +1865,57 @@ private fun ExplorerItemRow(
                     border = BorderStroke(1.dp, GitBorderStrong),
                     shadowElevation = 6.dp
                 ) {
-                    if (node.isDirectory) {
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(if (isPinned) "Unpin Folder" else "Pin to Quick Folders", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1, fontWeight = FontWeight.Medium)
-                                }
-                            },
-                            onClick = {
-                                onTogglePinFolder()
-                                showMenu = false
+                    // Option 1: Quick Access
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Bookmarks,
+                                    contentDescription = null,
+                                    tint = if (isQuickAccessPinned) GitAccent else GitText1,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (isQuickAccessPinned) "Unpin from Quick Access" else "Pin to Quick Access",
+                                    fontSize = 13.sp,
+                                    color = if (isQuickAccessPinned) GitAccent else GitText1,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
-                    } else {
-                        DropdownMenuItem(
-                            text = {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.PushPin, contentDescription = null, tint = if (isPinned) GitAccent else GitText1, modifier = Modifier.size(15.dp))
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(if (isPinned) "Unpin File" else "Pin to Quick Access", fontSize = 13.sp, color = if (isPinned) GitAccent else GitText1, fontWeight = FontWeight.Medium)
-                                }
-                            },
-                            onClick = {
-                                onTogglePinFile()
-                                showMenu = false
+                        },
+                        onClick = {
+                            onTogglePinQuickAccess()
+                            showMenu = false
+                        }
+                    )
+
+                    // Option 2: Pin to Top
+                    DropdownMenuItem(
+                        text = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.PushPin,
+                                    contentDescription = null,
+                                    tint = if (isTopPinned) GitAccent else GitText1,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text(
+                                    text = if (isTopPinned) "Unpin from Top" else "Pin to Top",
+                                    fontSize = 13.sp,
+                                    color = if (isTopPinned) GitAccent else GitText1,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
-                        )
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
-                    }
+                        },
+                        onClick = {
+                            onTogglePinTop()
+                            showMenu = false
+                        }
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 3.dp), color = GitBorder, thickness = 0.5.dp)
 
                     DropdownMenuItem(
                         text = {
