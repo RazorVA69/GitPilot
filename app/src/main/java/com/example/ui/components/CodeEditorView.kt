@@ -1726,6 +1726,7 @@ fun CodeEditorView(
                         if (showLineNumbers) {
                             LineNumbersGutter(
                                 lineCount = lineCount,
+                                textLayoutResult = textLayoutResult,
                                 fontSize = fontSize,
                                 fontFamily = selectedFontFamily.fontFamily,
                                 editorBorderColor = editorBorderColor,
@@ -2145,6 +2146,7 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
 @Composable
 private fun LineNumbersGutter(
     lineCount: Int,
+    textLayoutResult: TextLayoutResult?,
     fontSize: Float,
     fontFamily: androidx.compose.ui.text.font.FontFamily,
     editorBorderColor: Color,
@@ -2153,7 +2155,7 @@ private fun LineNumbersGutter(
 ) {
     val density = LocalDensity.current
     val digits = maxOf(2, lineCount.toString().length)
-    val gutterWidth = (digits * (fontSize * 0.62f) + 12f).dp
+    val gutterWidth = (digits * (fontSize * 0.65f) + 14f).dp
     val lineHeightPx = with(density) { (fontSize * 1.5).sp.toPx() }
     val topPaddingPx = with(density) { 12.dp.toPx() }
     val fontSizePx = with(density) { fontSize.sp.toPx() }
@@ -2169,7 +2171,9 @@ private fun LineNumbersGutter(
     }
 
     val totalHeightDp = with(density) {
-        (topPaddingPx + (lineCount * lineHeightPx) + 60.dp.toPx()).toDp()
+        val measuredHeightPx = textLayoutResult?.size?.height?.toFloat()
+        val baseHeight = measuredHeightPx ?: (lineCount * lineHeightPx)
+        (topPaddingPx + baseHeight + 60.dp.toPx()).toDp()
     }
 
     Box(
@@ -2185,17 +2189,36 @@ private fun LineNumbersGutter(
                     strokeWidth = 1f
                 )
 
-                // Render ONLY visible lines for 60fps performance on any file size
                 val scrollY = verticalScrollState.value
                 val viewportHeight = verticalScrollState.viewportSize.takeIf { it > 0 } ?: size.height.toInt()
-                val startLine = (((scrollY - topPaddingPx) / lineHeightPx).toInt() - 1).coerceIn(1, lineCount)
-                val endLine = (((scrollY + viewportHeight - topPaddingPx) / lineHeightPx).toInt() + 2).coerceIn(1, lineCount)
-
                 val textRight = size.width - with(density) { 5.dp.toPx() }
-                val baselineOffset = fontSizePx * 0.84f
+                val layout = textLayoutResult
 
                 drawIntoCanvas { canvas ->
-                    if (lineCount >= 1 && startLine <= endLine) {
+                    if (layout != null && layout.lineCount > 0) {
+                        val relScrollTop = (scrollY - topPaddingPx).coerceAtLeast(0f)
+                        val relScrollBottom = (scrollY + viewportHeight - topPaddingPx).coerceAtLeast(0f)
+                        val firstVisualLine = (layout.getLineForVerticalPosition(relScrollTop) - 2).coerceIn(0, layout.lineCount - 1)
+                        val lastVisualLine = (layout.getLineForVerticalPosition(relScrollBottom) + 2).coerceIn(0, layout.lineCount - 1)
+
+                        val fullText = layout.layoutInput.text.text
+                        val startChar = layout.getLineStart(firstVisualLine)
+                        var logicalLine = 1 + fullText.take(startChar).count { it == '\n' }
+
+                        for (vLine in firstVisualLine..lastVisualLine) {
+                            val charStart = layout.getLineStart(vLine)
+                            val isStartOfLogicalLine = vLine == 0 || (charStart > 0 && fullText.getOrNull(charStart - 1) == '\n')
+                            if (isStartOfLogicalLine) {
+                                val baselineY = topPaddingPx + layout.getLineBaseline(vLine)
+                                canvas.nativeCanvas.drawText(logicalLine.toString(), textRight, baselineY, paint)
+                                logicalLine++
+                            }
+                        }
+                    } else if (lineCount >= 1) {
+                        val startLine = (((scrollY - topPaddingPx) / lineHeightPx).toInt() - 1).coerceIn(1, lineCount)
+                        val endLine = (((scrollY + viewportHeight - topPaddingPx) / lineHeightPx).toInt() + 2).coerceIn(1, lineCount)
+                        val baselineOffset = fontSizePx * 0.84f
+
                         for (line in startLine..endLine) {
                             val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
                             canvas.nativeCanvas.drawText(line.toString(), textRight, y, paint)

@@ -35,7 +35,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.ChevronRight
@@ -44,6 +47,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOpen
@@ -55,6 +59,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.SortByAlpha
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Terminal
@@ -468,13 +473,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Outlined.Folder,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Folders First", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "Folders First",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.FOLDERS_FIRST) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -487,13 +505,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Description,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Files First", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "Files First",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.FILES_FIRST) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -506,13 +537,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.SortByAlpha,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Name (A → Z)", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "Name (A → Z)",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.NAME_ASC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -525,13 +569,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.SortByAlpha,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Name (Z → A)", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "Name (Z → A)",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.NAME_DESC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -544,13 +601,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.SIZE_DESC) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Size (Largest First)", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "Size (Largest First)",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.SIZE_DESC) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.SIZE_DESC) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.SIZE_DESC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -563,13 +633,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.SIZE_ASC) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Size (Smallest First)", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "Size (Smallest First)",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.SIZE_ASC) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.SIZE_ASC) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.SIZE_ASC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -582,13 +665,26 @@ fun FileTreeExplorer(
                         )
 
                         DropdownMenuItem(
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Category,
+                                    contentDescription = null,
+                                    tint = if (fileTreeSortOption == FileTreeSortOption.TYPE_ASC) GitAccent else GitText2,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            },
                             text = {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("File Type / Extension", fontSize = 13.sp, color = GitText1)
+                                    Text(
+                                        "File Type / Extension",
+                                        fontSize = 13.sp,
+                                        color = if (fileTreeSortOption == FileTreeSortOption.TYPE_ASC) GitAccent else GitText1,
+                                        fontWeight = if (fileTreeSortOption == FileTreeSortOption.TYPE_ASC) FontWeight.SemiBold else FontWeight.Normal
+                                    )
                                     if (fileTreeSortOption == FileTreeSortOption.TYPE_ASC) {
                                         Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
                                     }
@@ -1054,18 +1150,27 @@ fun FileTreeExplorer(
             } else {
                 // Directory Node Children List (Files & Folders)
                 val currentNode = rootNode?.let { RepoRepo.findNodeAtDirectory(it, currentPath) }
-                val sortedChildren = remember(currentNode?.children, fileTreeSortOption, isFileTreeSortReversed) {
+                val sortedChildren = remember(currentNode?.children, fileTreeSortOption, isFileTreeSortReversed, pinnedFolders, pinnedFiles) {
                     val list = currentNode?.children ?: emptyList()
-                    val sorted = when (fileTreeSortOption) {
-                        FileTreeSortOption.FOLDERS_FIRST -> list.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
-                        FileTreeSortOption.FILES_FIRST -> list.sortedWith(compareBy({ it.isDirectory }, { it.name.lowercase() }))
-                        FileTreeSortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
-                        FileTreeSortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
-                        FileTreeSortOption.SIZE_DESC -> list.sortedWith(compareByDescending<ExplorerNode> { it.size ?: 0L }.thenBy { it.name.lowercase() })
-                        FileTreeSortOption.SIZE_ASC -> list.sortedWith(compareBy<ExplorerNode> { it.size ?: Long.MAX_VALUE }.thenBy { it.name.lowercase() })
-                        FileTreeSortOption.TYPE_ASC -> list.sortedWith(compareBy({ !it.isDirectory }, { it.extension.lowercase() }, { it.name.lowercase() }))
+                    val isPinned: (ExplorerNode) -> Boolean = { node ->
+                        if (node.isDirectory) pinnedFolders.contains(node.path) else pinnedFiles.contains(node.path)
                     }
-                    if (isFileTreeSortReversed) sorted.reversed() else sorted
+
+                    fun sortItems(items: List<ExplorerNode>): List<ExplorerNode> {
+                        val sorted = when (fileTreeSortOption) {
+                            FileTreeSortOption.FOLDERS_FIRST -> items.sortedWith(compareBy({ !it.isDirectory }, { it.name.lowercase() }))
+                            FileTreeSortOption.FILES_FIRST -> items.sortedWith(compareBy({ it.isDirectory }, { it.name.lowercase() }))
+                            FileTreeSortOption.NAME_ASC -> items.sortedBy { it.name.lowercase() }
+                            FileTreeSortOption.NAME_DESC -> items.sortedByDescending { it.name.lowercase() }
+                            FileTreeSortOption.SIZE_DESC -> items.sortedWith(compareByDescending<ExplorerNode> { it.size ?: 0L }.thenBy { it.name.lowercase() })
+                            FileTreeSortOption.SIZE_ASC -> items.sortedWith(compareBy<ExplorerNode> { it.size ?: Long.MAX_VALUE }.thenBy { it.name.lowercase() })
+                            FileTreeSortOption.TYPE_ASC -> items.sortedWith(compareBy({ !it.isDirectory }, { it.extension.lowercase() }, { it.name.lowercase() }))
+                        }
+                        return if (isFileTreeSortReversed) sorted.reversed() else sorted
+                    }
+
+                    val (pinned, unpinned) = list.partition { isPinned(it) }
+                    sortItems(pinned) + sortItems(unpinned)
                 }
 
                 if (currentNode == null || sortedChildren.isEmpty()) {
