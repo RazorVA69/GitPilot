@@ -187,6 +187,95 @@ data class CompareFile(
     val patch: String? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class GitHubPullRequest(
+    val id: Long = 0,
+    val number: Int = 0,
+    val state: String = "open",
+    val title: String = "",
+    val body: String? = null,
+    val user: GitHubUser? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null,
+    @Json(name = "updated_at") val updatedAt: String? = null,
+    @Json(name = "merged_at") val mergedAt: String? = null,
+    @Json(name = "draft") val isDraft: Boolean = false,
+    val head: PullRequestBranchRef? = null,
+    val base: PullRequestBranchRef? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class PullRequestBranchRef(
+    val label: String? = null,
+    val ref: String = "",
+    val sha: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class MergePullRequestPayload(
+    @Json(name = "commit_title") val commitTitle: String? = null,
+    @Json(name = "commit_message") val commitMessage: String? = null,
+    val sha: String? = null,
+    @Json(name = "merge_method") val mergeMethod: String = "merge" // merge, squash, rebase
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubMergeResponse(
+    val sha: String? = null,
+    val merged: Boolean = false,
+    val message: String = ""
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubIssue(
+    val id: Long = 0,
+    val number: Int = 0,
+    val state: String = "open",
+    val title: String = "",
+    val body: String? = null,
+    val user: GitHubUser? = null,
+    val comments: Int = 0,
+    @Json(name = "html_url") val htmlUrl: String? = null,
+    @Json(name = "created_at") val createdAt: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubRelease(
+    val id: Long = 0,
+    @Json(name = "tag_name") val tagName: String = "",
+    val name: String? = null,
+    val body: String? = null,
+    val draft: Boolean = false,
+    val prerelease: Boolean = false,
+    @Json(name = "published_at") val publishedAt: String? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubWorkflow(
+    val id: Long = 0,
+    val name: String = "",
+    val path: String = "",
+    val state: String = "active"
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubWorkflowRunsResponse(
+    @Json(name = "total_count") val totalCount: Int = 0,
+    @Json(name = "workflow_runs") val workflowRuns: List<GitHubWorkflowRun> = emptyList()
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubWorkflowRun(
+    val id: Long = 0,
+    val name: String? = null,
+    @Json(name = "head_branch") val headBranch: String? = null,
+    @Json(name = "head_sha") val headSha: String? = null,
+    val status: String? = null,
+    val conclusion: String? = null,
+    @Json(name = "html_url") val htmlUrl: String? = null
+)
+
 // In-Memory Hierarchical File Node for Ultra-Fast Explorer Navigation
 data class ExplorerNode(
     val path: String,

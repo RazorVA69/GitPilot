@@ -760,6 +760,137 @@ class GitHubRepository(
         }
     }
 
+    suspend fun fetchPullRequests(
+        token: String?,
+        owner: String,
+        repo: String,
+        state: String = "open",
+        perPage: Int = 50
+    ): Result<List<com.example.data.model.GitHubPullRequest>> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getPullRequests(authHeader, owner, repo, state, perPage)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch pull requests: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun fetchPullRequest(
+        token: String?,
+        owner: String,
+        repo: String,
+        pullNumber: Int
+    ): Result<com.example.data.model.GitHubPullRequest> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getPullRequest(authHeader, owner, repo, pullNumber)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch PR #$pullNumber: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun mergePullRequest(
+        token: String,
+        owner: String,
+        repo: String,
+        pullNumber: Int,
+        commitTitle: String? = null,
+        commitMessage: String? = null,
+        mergeMethod: String = "merge"
+    ): Result<com.example.data.model.GitHubMergeResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Authentication token required to merge pull request"))
+            val payload = com.example.data.model.MergePullRequestPayload(
+                commitTitle = commitTitle,
+                commitMessage = commitMessage,
+                mergeMethod = mergeMethod
+            )
+            val response = apiService.mergePullRequest(authHeader, owner, repo, pullNumber, payload)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to merge PR #$pullNumber: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun fetchIssues(
+        token: String?,
+        owner: String,
+        repo: String,
+        state: String = "open",
+        perPage: Int = 50
+    ): Result<List<com.example.data.model.GitHubIssue>> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getIssues(authHeader, owner, repo, state, perPage)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch issues: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun fetchReleases(
+        token: String?,
+        owner: String,
+        repo: String,
+        perPage: Int = 30
+    ): Result<List<com.example.data.model.GitHubRelease>> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getReleases(authHeader, owner, repo, perPage)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch releases: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun fetchWorkflowRuns(
+        token: String?,
+        owner: String,
+        repo: String,
+        perPage: Int = 30
+    ): Result<com.example.data.model.GitHubWorkflowRunsResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getWorkflowRuns(authHeader, owner, repo, perPage)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to fetch workflow runs: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
     private fun decodeFileContent(rawContent: String?, encoding: String?): String {
         if (rawContent == null) return ""
         return if (encoding.equals("base64", ignoreCase = true)) {

@@ -149,4 +149,55 @@ interface GitHubApiService {
         @Path("repo") repo: String,
         @Path("basehead") basehead: String
     ): Response<CompareResponse>
+
+    @GET("repos/{owner}/{repo}/pulls")
+    suspend fun getPullRequests(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 50
+    ): Response<List<com.example.data.model.GitHubPullRequest>>
+
+    @GET("repos/{owner}/{repo}/pulls/{pull_number}")
+    suspend fun getPullRequest(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("pull_number") pullNumber: Int
+    ): Response<com.example.data.model.GitHubPullRequest>
+
+    @PUT("repos/{owner}/{repo}/pulls/{pull_number}/merge")
+    suspend fun mergePullRequest(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("pull_number") pullNumber: Int,
+        @Body payload: com.example.data.model.MergePullRequestPayload
+    ): Response<com.example.data.model.GitHubMergeResponse>
+
+    @GET("repos/{owner}/{repo}/issues")
+    suspend fun getIssues(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("state") state: String = "open",
+        @Query("per_page") perPage: Int = 50
+    ): Response<List<com.example.data.model.GitHubIssue>>
+
+    @GET("repos/{owner}/{repo}/releases")
+    suspend fun getReleases(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 30
+    ): Response<List<com.example.data.model.GitHubRelease>>
+
+    @GET("repos/{owner}/{repo}/actions/runs")
+    suspend fun getWorkflowRuns(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Query("per_page") perPage: Int = 30
+    ): Response<com.example.data.model.GitHubWorkflowRunsResponse>
 }
