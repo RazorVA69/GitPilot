@@ -871,6 +871,115 @@ class GitHubRepository(
         }
     }
 
+    suspend fun getReleaseByTag(
+        token: String?,
+        owner: String,
+        repo: String,
+        tag: String
+    ): Result<com.example.data.model.GitHubRelease> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getReleaseByTag(authHeader, owner, repo, tag)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Release not found for tag '$tag': $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun deleteRelease(
+        token: String?,
+        owner: String,
+        repo: String,
+        releaseId: Long
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.deleteRelease(authHeader, owner, repo, releaseId)
+            if (response.isSuccessful || response.code() == 204) {
+                Result.success(Unit)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to delete release: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun deleteTagRef(
+        token: String?,
+        owner: String,
+        repo: String,
+        tag: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val cleanTag = tag.removePrefix("tags/").removePrefix("refs/tags/")
+            val response = apiService.deleteTagRef(authHeader, owner, repo, cleanTag)
+            if (response.isSuccessful || response.code() == 204) {
+                Result.success(Unit)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to delete tag '$cleanTag': $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun deleteReleaseByTag(
+        token: String?,
+        owner: String,
+        repo: String,
+        tag: String,
+        cleanupTag: Boolean = false
+    ): Result<Pair<Boolean, Boolean>> = withContext(Dispatchers.IO) {
+        try {
+            var releaseDeleted = false
+            var tagDeleted = false
+
+            // 1. Try to find release by tag directly
+            val relResult = getReleaseByTag(token, owner, repo, tag)
+            val releaseId = if (relResult.isSuccess) {
+                relResult.getOrNull()?.id
+            } else {
+                // Fallback: search in releases list
+                val listResult = fetchReleases(token, owner, repo, perPage = 100)
+                listResult.getOrNull()?.firstOrNull { it.tagName == tag || it.tagName == tag.removePrefix("v") || "v${it.tagName}" == tag }?.id
+            }
+
+            if (releaseId != null && releaseId > 0) {
+                val delRel = deleteRelease(token, owner, repo, releaseId)
+                if (delRel.isSuccess) {
+                    releaseDeleted = true
+                }
+            }
+
+            // 2. If cleanupTag is requested or if release was deleted with cleanup tag
+            if (cleanupTag) {
+                val delTag = deleteTagRef(token, owner, repo, tag)
+                if (delTag.isSuccess) {
+                    tagDeleted = true
+                }
+            }
+
+            if (releaseDeleted || tagDeleted) {
+                Result.success(Pair(releaseDeleted, tagDeleted))
+            } else if (releaseId == null && !cleanupTag) {
+                Result.failure(Exception("Release '$tag' not found in $owner/$repo"))
+            } else {
+                Result.failure(Exception("Could not delete release or tag for '$tag'"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
     suspend fun fetchWorkflowRuns(
         token: String?,
         owner: String,

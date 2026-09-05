@@ -193,6 +193,30 @@ interface GitHubApiService {
         @Query("per_page") perPage: Int = 30
     ): Response<List<com.example.data.model.GitHubRelease>>
 
+    @GET("repos/{owner}/{repo}/releases/tags/{tag}")
+    suspend fun getReleaseByTag(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("tag") tag: String
+    ): Response<com.example.data.model.GitHubRelease>
+
+    @DELETE("repos/{owner}/{repo}/releases/{release_id}")
+    suspend fun deleteRelease(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("release_id") releaseId: Long
+    ): Response<ResponseBody>
+
+    @DELETE("repos/{owner}/{repo}/git/refs/tags/{tag}")
+    suspend fun deleteTagRef(
+        @Header("Authorization") authHeader: String?,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path("tag") tag: String
+    ): Response<ResponseBody>
+
     @GET("repos/{owner}/{repo}/actions/runs")
     suspend fun getWorkflowRuns(
         @Header("Authorization") authHeader: String?,

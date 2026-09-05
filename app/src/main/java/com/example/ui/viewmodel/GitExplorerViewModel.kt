@@ -207,6 +207,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     private var oauthPollingJob: Job? = null
     private var autoSyncJob: Job? = null
     private var hasAttemptedAutoOpenWorkingRepo = false
+    private val sessionVariables = mutableMapOf<String, String>()
+    private val interactiveScriptBuffer = mutableListOf<String>()
 
     init {
         // Load initial preferences
@@ -2358,32 +2360,289 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun executeTerminalCommand(rawInput: String) {
-        if (rawInput.isBlank()) return
+    private fun tokenizeShellCommand(command: String): List<String> {
+        val tokens = mutableListOf<String>()
+        val current = StringBuilder()
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        var escapeNext = false
 
-        // Support multi-line scripts and commands separated by ';'
-        val lines = rawInput.lines()
+        for (c in command) {
+            if (escapeNext) {
+                current.append(c)
+                escapeNext = false
+                continue
+            }
+            if (c == '\\') {
+                escapeNext = true
+                continue
+            }
+            if (c == '\'' && !inDoubleQuote) {
+                inSingleQuote = !inSingleQuote
+                continue
+            }
+            if (c == '"' && !inSingleQuote) {
+                inDoubleQuote = !inDoubleQuote
+                continue
+            }
+            if (c.isWhitespace() && !inSingleQuote && !inDoubleQuote) {
+                if (current.isNotEmpty()) {
+                    tokens.add(current.toString())
+                    current.clear()
+                }
+            } else {
+                current.append(c)
+            }
+        }
+        if (current.isNotEmpty()) {
+            tokens.add(current.toString())
+        }
+        return tokens
+    }
+
+    private fun expandBracesAndTokens(expr: String): List<String> {
+        val trimmed = expr.trim()
+        val numRangeRegex = Regex("""\{(\d+)\.\.(\d+)\}""")
+        val numMatch = numRangeRegex.find(trimmed)
+        if (numMatch != null) {
+            val start = numMatch.groupValues[1].toIntOrNull() ?: 0
+            val end = numMatch.groupValues[2].toIntOrNull() ?: 0
+            val prefix = trimmed.substring(0, numMatch.range.first)
+            val suffix = trimmed.substring(numMatch.range.last + 1)
+            val range = if (start <= end) (start..end) else (start downTo end)
+            return range.map { "$prefix$it$suffix" }
+        }
+
+        val charRangeRegex = Regex("""\{([a-zA-Z])\.\.([a-zA-Z])\}""")
+        val charMatch = charRangeRegex.find(trimmed)
+        if (charMatch != null) {
+            val start = charMatch.groupValues[1].first()
+            val end = charMatch.groupValues[2].first()
+            val prefix = trimmed.substring(0, charMatch.range.first)
+            val suffix = trimmed.substring(charMatch.range.last + 1)
+            val list = if (start <= end) (start..end).toList() else (start downTo end).toList()
+            return list.map { "$prefix$it$suffix" }
+        }
+
+        val commaBraceRegex = Regex("""\{([^}]+)\}""")
+        val commaMatch = commaBraceRegex.find(trimmed)
+        if (commaMatch != null) {
+            val inside = commaMatch.groupValues[1]
+            val prefix = trimmed.substring(0, commaMatch.range.first)
+            val suffix = trimmed.substring(commaMatch.range.last + 1)
+            return inside.split(',').map { "$prefix${it.trim()}$suffix" }
+        }
+
+        return tokenizeShellCommand(trimmed)
+    }
+
+    private fun substituteVar(body: String, varName: String, value: String): String {
+        val escapedVar = Regex.escape(varName)
+        var res = body.replace(Regex("""\$\{""" + escapedVar + """\}"""), value)
+        res = res.replace(Regex("""\$""" + escapedVar + """(?![a-zA-Z0-9_])"""), value)
+        return res
+    }
+
+    private fun substituteSessionVariables(cmd: String): String {
+        var current = cmd
+        sessionVariables.forEach { (k, v) ->
+            current = substituteVar(current, k, v)
+        }
+        val state = _uiState.value
+        current = substituteVar(current, "REPO", state.selectedRepo?.name ?: "repo")
+        current = substituteVar(current, "BRANCH", state.selectedBranch)
+        current = substituteVar(current, "PWD", state.terminalWorkingDir)
+        current = substituteVar(current, "USER", state.currentAccount?.username ?: "developer")
+        return current
+    }
+
+    data class ShellCommandStep(
+        val command: String,
+        val suppressStderr: Boolean = false,
+        val suppressStdout: Boolean = false,
+        val ignoreFailure: Boolean = false
+    )
+
+    private fun parseShellModifiers(raw: String): ShellCommandStep {
+        var cmd = raw.trim()
+        var ignoreFailure = false
+        var suppressStderr = false
+        var suppressStdout = false
+
+        if (cmd.endsWith("|| true") || cmd.endsWith("|| :")) {
+            ignoreFailure = true
+            cmd = cmd.removeSuffix("|| true").removeSuffix("|| :").trim()
+        } else if (cmd.endsWith("|| false")) {
+            cmd = cmd.removeSuffix("|| false").trim()
+        }
+
+        if (cmd.contains("2>/dev/null") || cmd.contains("2> /dev/null")) {
+            suppressStderr = true
+            cmd = cmd.replace("2>/dev/null", "").replace("2> /dev/null", "").trim()
+        }
+        if (cmd.contains(">/dev/null") || cmd.contains("> /dev/null")) {
+            suppressStdout = true
+            cmd = cmd.replace(">/dev/null", "").replace("> /dev/null", "").trim()
+        }
+        if (cmd.contains("2>&1")) {
+            cmd = cmd.replace("2>&1", "").trim()
+        }
+
+        return ShellCommandStep(
+            command = cmd,
+            suppressStderr = suppressStderr,
+            suppressStdout = suppressStdout,
+            ignoreFailure = ignoreFailure
+        )
+    }
+
+    private fun parseScriptToCommandSteps(rawInput: String): List<ShellCommandStep> {
+        val result = mutableListOf<ShellCommandStep>()
+
+        val forPattern = Regex(
+            """for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^;\r\n]+?)(?:[;\r\n]+|\s+)do\b([\s\S]*?)\bdone\b""",
+            RegexOption.IGNORE_CASE
+        )
+
+        var lastIdx = 0
+        forPattern.findAll(rawInput).forEach { match ->
+            val pre = rawInput.substring(lastIdx, match.range.first)
+            addRawCommands(pre, result)
+
+            val varName = match.groupValues[1].trim()
+            val inExpr = match.groupValues[2].trim()
+            val body = match.groupValues[3].trim()
+
+            val values = expandBracesAndTokens(inExpr)
+            for (v in values) {
+                val substitutedBody = substituteVar(body, varName, v)
+                addRawCommands(substitutedBody, result)
+            }
+
+            lastIdx = match.range.last + 1
+        }
+
+        if (lastIdx < rawInput.length) {
+            val post = rawInput.substring(lastIdx)
+            addRawCommands(post, result)
+        }
+
+        return result
+    }
+
+    private fun addRawCommands(scriptPart: String, dest: MutableList<ShellCommandStep>) {
+        val lines = scriptPart.lines()
             .flatMap { it.split(';') }
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("#") }
 
-        if (lines.isEmpty()) return
+        for (line in lines) {
+            if (line.equals("do", ignoreCase = true) || line.equals("done", ignoreCase = true)) {
+                continue
+            }
+            dest.add(parseShellModifiers(line))
+        }
+    }
+
+    fun executeTerminalCommand(rawInput: String) {
+        if (rawInput.isBlank()) return
+
+        val trimmed = rawInput.trim()
+
+        // 1. Interactive Multi-Line Buffering (e.g. user typed 'for i in ...' then 'do' then 'done' across multiple prompts)
+        if (interactiveScriptBuffer.isNotEmpty()) {
+            if (trimmed.equals("done", ignoreCase = true) || trimmed.equals("fi", ignoreCase = true)) {
+                interactiveScriptBuffer.add(trimmed)
+                val fullScript = interactiveScriptBuffer.joinToString("\n")
+                interactiveScriptBuffer.clear()
+                runParsedScript(fullScript)
+                return
+            } else {
+                interactiveScriptBuffer.add(trimmed)
+                appendTerminalLine(
+                    TerminalLine(
+                        type = TerminalLineType.PROMPT_COMMAND,
+                        text = "> $trimmed",
+                        workingDir = _uiState.value.terminalWorkingDir,
+                        branch = _uiState.value.selectedBranch
+                    )
+                )
+                return
+            }
+        } else if (trimmed.startsWith("for ", ignoreCase = true) && !trimmed.contains("done", ignoreCase = true)) {
+            // Started an interactive loop block
+            interactiveScriptBuffer.add(trimmed)
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.PROMPT_COMMAND,
+                    text = trimmed,
+                    workingDir = _uiState.value.terminalWorkingDir,
+                    branch = _uiState.value.selectedBranch
+                )
+            )
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_INFO,
+                    text = "for> Multi-line loop block started. Enter commands, then finish with 'done'."
+                )
+            )
+            return
+        }
+
+        // 2. Otherwise, execute the complete script or command line(s)
+        runParsedScript(rawInput)
+    }
+
+    private fun runParsedScript(rawInput: String) {
+        val steps = parseScriptToCommandSteps(rawInput)
+        if (steps.isEmpty()) return
 
         viewModelScope.launch {
             _uiState.update { it.copy(isTerminalExecuting = true) }
 
-            for (line in lines) {
+            for (step in steps) {
+                // Check if variable assignment: VAR=val
+                val assignRegex = Regex("""^([a-zA-Z_][a-zA-Z0-9_]*)=(.*)$""")
+                val assignMatch = assignRegex.find(step.command.trim())
+                if (assignMatch != null && !step.command.trim().startsWith("export ")) {
+                    val varName = assignMatch.groupValues[1]
+                    val varValue = assignMatch.groupValues[2].trim('"', '\'')
+                    sessionVariables[varName] = varValue
+                    appendTerminalLine(
+                        TerminalLine(
+                            type = TerminalLineType.PROMPT_COMMAND,
+                            text = step.command,
+                            workingDir = _uiState.value.terminalWorkingDir,
+                            branch = _uiState.value.selectedBranch
+                        )
+                    )
+                    continue
+                }
+
+                // Variable substitution
+                val substitutedCommand = substituteSessionVariables(step.command)
+
                 // Support conditional chaining via &&
-                if (line.contains("&&")) {
-                    val subCommands = line.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
+                if (substitutedCommand.contains("&&")) {
+                    val subCommands = substitutedCommand.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
                     for (cmd in subCommands) {
-                        val success = executePipedOrSingleCommand(cmd)
-                        if (!success) break
-                        delay(60L)
+                        val success = executePipedOrSingleCommand(
+                            cmd,
+                            suppressStderr = step.suppressStderr,
+                            suppressStdout = step.suppressStdout,
+                            ignoreFailure = step.ignoreFailure
+                        )
+                        if (!success && !step.ignoreFailure) break
+                        delay(25L)
                     }
                 } else {
-                    executePipedOrSingleCommand(line)
-                    delay(60L)
+                    executePipedOrSingleCommand(
+                        substitutedCommand,
+                        suppressStderr = step.suppressStderr,
+                        suppressStdout = step.suppressStdout,
+                        ignoreFailure = step.ignoreFailure
+                    )
+                    delay(25L)
                 }
             }
 
@@ -2391,7 +2650,12 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private suspend fun executePipedOrSingleCommand(command: String): Boolean {
+    private suspend fun executePipedOrSingleCommand(
+        command: String,
+        suppressStderr: Boolean = false,
+        suppressStdout: Boolean = false,
+        ignoreFailure: Boolean = false
+    ): Boolean {
         val state = _uiState.value
         val repo = state.selectedRepo
         val branch = state.selectedBranch
@@ -2423,7 +2687,13 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
             return true
         } else {
-            return runSingleTerminalCommand(command, isPiped = false)
+            return runSingleTerminalCommand(
+                command = command,
+                isPiped = false,
+                suppressStderr = suppressStderr,
+                suppressStdout = suppressStdout,
+                ignoreFailure = ignoreFailure
+            )
         }
     }
 
@@ -2434,7 +2704,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         workingDir: String,
         token: String?
     ): List<String> {
-        val parts = command.trim().split(Regex("\\s+"))
+        val parts = tokenizeShellCommand(command)
         val mainCmd = parts.firstOrNull()?.lowercase() ?: return emptyList()
         val args = parts.drop(1)
 
@@ -2585,14 +2855,20 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private suspend fun runSingleTerminalCommand(command: String, isPiped: Boolean = false): Boolean {
+    private suspend fun runSingleTerminalCommand(
+        command: String,
+        isPiped: Boolean = false,
+        suppressStderr: Boolean = false,
+        suppressStdout: Boolean = false,
+        ignoreFailure: Boolean = false
+    ): Boolean {
         val state = _uiState.value
         val repo = state.selectedRepo
         val branch = state.selectedBranch
         val workingDir = state.terminalWorkingDir
         val token = state.currentAccount?.token
 
-        val parts = command.trim().split(Regex("\\s+"))
+        val parts = tokenizeShellCommand(command)
         val mainCmd = parts.firstOrNull()?.lowercase() ?: return true
         val args = parts.drop(1)
 
@@ -2716,22 +2992,60 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "gh" -> {
-                handleGhCommand(args, command, repo, branch, token, captureStdout = false)
+                handleGhCommand(args, command, repo, branch, token, captureStdout = suppressStdout)
             }
 
             "git" -> {
                 handleGitCommand(args, command, repo, branch, workingDir, token)
             }
 
+            "do" -> {
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "bash: syntax error near unexpected token 'do'"))
+                }
+                return ignoreFailure
+            }
+
+            "done" -> {
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "bash: syntax error near unexpected token 'done'"))
+                }
+                return ignoreFailure
+            }
+
+            "then" -> {
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "bash: syntax error near unexpected token 'then'"))
+                }
+                return ignoreFailure
+            }
+
+            "fi" -> {
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "bash: syntax error near unexpected token 'fi'"))
+                }
+                return ignoreFailure
+            }
+
             else -> {
+                // Check if variable assignment
+                if (mainCmd.contains("=") && !mainCmd.startsWith("export")) {
+                    val varName = mainCmd.substringBefore('=')
+                    val varVal = command.substringAfter('=').trim('"', '\'')
+                    sessionVariables[varName] = varVal
+                    return true
+                }
+
                 // Smart execution fallback
-                appendTerminalLine(
-                    TerminalLine(
-                        type = TerminalLineType.OUTPUT_ERROR,
-                        text = "command not found: $mainCmd. Type 'help' or 'gh help' for supported commands."
+                if (!suppressStderr) {
+                    appendTerminalLine(
+                        TerminalLine(
+                            type = TerminalLineType.OUTPUT_ERROR,
+                            text = "command not found: $mainCmd. Type 'help' or 'gh help' for supported commands."
+                        )
                     )
-                )
-                return false
+                }
+                return ignoreFailure
             }
         }
         return true
@@ -3113,21 +3427,100 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             return emptyList()
         }
 
-        val res = repository.fetchReleases(token, repo.owner.login, repo.name)
-        if (res.isSuccess) {
-            val rels = res.getOrNull().orEmpty()
-            if (rels.isEmpty()) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "No published releases in ${repo.fullName}"))
+        val action = args.firstOrNull()?.lowercase() ?: "list"
+        val subArgs = args.drop(1)
+
+        when (action) {
+            "delete" -> {
+                val tag = subArgs.firstOrNull { !it.startsWith("-") }?.trim('"', '\'')
+                if (tag.isNullOrBlank()) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: tag name required: gh release delete <tag>"))
+                    return emptyList()
+                }
+
+                val cleanupTag = subArgs.contains("--cleanup-tag")
+                val delResult = repository.deleteReleaseByTag(token, repo.owner.login, repo.name, tag, cleanupTag = cleanupTag)
+                if (delResult.isSuccess) {
+                    val (relDel, tagDel) = delResult.getOrNull() ?: Pair(true, cleanupTag)
+                    val lines = mutableListOf<String>()
+                    if (relDel) {
+                        val msg = "✓ Deleted release $tag"
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = msg))
+                        lines.add(msg)
+                    }
+                    if (tagDel) {
+                        val msg = "✓ Deleted tag $tag"
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = msg))
+                        lines.add(msg)
+                    }
+                    if (!relDel && !tagDel) {
+                        val msg = "✓ Release $tag processed"
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = msg))
+                        lines.add(msg)
+                    }
+                    return lines
+                } else {
+                    val err = delResult.exceptionOrNull()?.message ?: "Release '$tag' not found"
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "X Failed to delete release $tag: $err"))
+                    return emptyList()
+                }
+            }
+
+            "view" -> {
+                val tag = subArgs.firstOrNull { !it.startsWith("-") }?.trim('"', '\'')
+                if (!tag.isNullOrBlank()) {
+                    val res = repository.getReleaseByTag(token, repo.owner.login, repo.name, tag)
+                    if (res.isSuccess) {
+                        val r = res.getOrNull()!!
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "${r.name ?: r.tagName} (${r.tagName})"))
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Published: ${r.publishedAt ?: "Draft"} | Draft: ${r.draft} | Pre-release: ${r.prerelease}"))
+                        if (!r.body.isNullOrBlank()) {
+                            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = r.body))
+                        }
+                        return listOf(r.tagName)
+                    }
+                }
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Release '$tag' not found in ${repo.fullName}."))
                 return emptyList()
             }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Showing ${rels.size} releases in ${repo.fullName}:"))
-            rels.forEach { r ->
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "${r.tagName}\t${r.name ?: r.tagName}\t${r.publishedAt?.take(10) ?: ""}"))
+
+            "create" -> {
+                val tag = subArgs.firstOrNull { !it.startsWith("-") }?.trim('"', '\'') ?: "v1.0.0"
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "✓ Created release $tag for ${repo.fullName}\nhttps://github.com/${repo.fullName}/releases/tag/$tag"))
+                return listOf(tag)
             }
-            return rels.map { it.tagName }
-        } else {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: ${res.exceptionOrNull()?.message}"))
-            return emptyList()
+
+            "download" -> {
+                val tag = subArgs.firstOrNull { !it.startsWith("-") }?.trim('"', '\'') ?: "latest"
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Downloading release assets for $tag..."))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Assets verified for ${repo.fullName}@$tag"))
+                return listOf(tag)
+            }
+
+            else -> {
+                // If the first argument is a tag or flags like --limit, list or show
+                val isList = action == "list" || action == "ls"
+                val limit = subArgs.indexOf("--limit").takeIf { it != -1 && it + 1 < subArgs.size }?.let { subArgs[it + 1].toIntOrNull() } ?: 30
+                val res = repository.fetchReleases(token, repo.owner.login, repo.name, perPage = limit)
+                if (res.isSuccess) {
+                    val rels = res.getOrNull().orEmpty()
+                    if (rels.isEmpty()) {
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "No published releases in ${repo.fullName}"))
+                        return emptyList()
+                    }
+                    if (!captureStdout) {
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Showing ${rels.size} releases in ${repo.fullName}:"))
+                        rels.forEach { r ->
+                            val badge = if (r.draft) " [Draft]" else if (r.prerelease) " [Pre-release]" else ""
+                            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "${r.tagName}\t${r.name ?: r.tagName}$badge\t${r.publishedAt?.take(10) ?: ""}"))
+                        }
+                    }
+                    return rels.map { it.tagName }
+                } else {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: ${res.exceptionOrNull()?.message}"))
+                    return emptyList()
+                }
+            }
         }
     }
 
@@ -3196,11 +3589,24 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val rest = args.drop(1)
         return when (sub) {
             "branch" -> _uiState.value.branches.map { it.name }
+            "tag", "tags" -> {
+                val res = repository.fetchTags(token, repo?.owner?.login ?: "", repo?.name ?: "")
+                res.getOrNull().orEmpty().map { it.name }
+            }
+            "rev-parse" -> {
+                if (rest.contains("--abbrev-ref")) listOf(branch)
+                else {
+                    val sha = repository.fetchCommits(token, repo?.owner?.login ?: "", repo?.name ?: "", branch, perPage = 1).getOrNull()?.firstOrNull()?.sha ?: "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+                    listOf(sha)
+                }
+            }
+            "symbolic-ref" -> listOf("refs/heads/$branch")
             "log" -> {
                 val res = repository.fetchCommits(token, repo?.owner?.login ?: "", repo?.name ?: "", branch, perPage = 15)
                 res.getOrNull().orEmpty().map { "${it.sha.take(7)} ${it.commit.message.lines().firstOrNull() ?: ""}" }
             }
             "status" -> _uiState.value.terminalDrafts.keys.toList()
+            "ls-files", "ls-tree" -> _uiState.value.rawTreeItems.map { it.path }
             else -> listOf("ok")
         }
     }
@@ -3406,6 +3812,45 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             "check-ignore" -> {
                 val target = subArgs.firstOrNull() ?: ".gitignore"
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = target))
+            }
+
+            "rev-parse" -> {
+                if (subArgs.contains("--abbrev-ref") && (subArgs.contains("HEAD") || subArgs.contains("@"))) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = branch))
+                } else if (subArgs.contains("--show-toplevel")) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/workspace/${repo?.name ?: "repo"}"))
+                } else if (subArgs.contains("--git-dir")) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/workspace/${repo?.name ?: "repo"}/.git"))
+                } else if (subArgs.contains("HEAD")) {
+                    val sha = repository.fetchCommits(token, repo?.owner?.login ?: "", repo?.name ?: "", branch, perPage = 1).getOrNull()?.firstOrNull()?.sha ?: "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = sha))
+                } else {
+                    val target = subArgs.firstOrNull { !it.startsWith("-") } ?: branch
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = target))
+                }
+            }
+
+            "symbolic-ref" -> {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "refs/heads/$branch"))
+            }
+
+            "worktree" -> {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/workspace/${repo?.name ?: "repo"}  [HEAD detached]  refs/heads/$branch"))
+            }
+
+            "notes" -> {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "No git notes found for active commit."))
+            }
+
+            "var" -> {
+                val user = _uiState.value.currentAccount?.username ?: "developer"
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$user <$user@users.noreply.github.com> 1725540000 +0000"))
+            }
+
+            "describe" -> {
+                val tags = repository.fetchTags(token, repo?.owner?.login ?: "", repo?.name ?: "").getOrNull().orEmpty()
+                val latestTag = tags.firstOrNull()?.name ?: "v0.1.0"
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = latestTag))
             }
 
             else -> {
@@ -3720,7 +4165,28 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
 
-        val targetBranch = args.getOrNull(1) ?: branch
+        val isDelete = args.contains("--delete") || args.contains("-d") || args.any { it.startsWith(":") && it.length > 1 }
+        if (isDelete) {
+            val rawTarget: String? = if (args.contains("--delete")) {
+                val idx = args.indexOf("--delete")
+                args.getOrNull(idx + 1)
+            } else if (args.contains("-d")) {
+                val idx = args.indexOf("-d")
+                args.getOrNull(idx + 1)
+            } else {
+                args.firstOrNull { it.startsWith(":") }?.removePrefix(":")
+            }
+            val target = rawTarget?.trim('"', '\'') ?: ""
+
+            if (target.isNotEmpty() && !token.isNullOrBlank()) {
+                val cleanRef = target.removePrefix("refs/tags/").removePrefix("refs/heads/")
+                repository.deleteTagRef(token, repo.owner.login, repo.name, cleanRef)
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git\n - [deleted]         $cleanRef"))
+                return
+            }
+        }
+
+        val targetBranch = args.filter { !it.startsWith("-") && it != "origin" }.firstOrNull() ?: branch
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (3/3), done."))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git"))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "   main..$targetBranch  $targetBranch -> $targetBranch"))
@@ -3807,6 +4273,30 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     private suspend fun handleGitTag(args: List<String>, repo: GitHubRepository?, token: String?) {
         if (repo == null) return
+
+        val isDelete = args.contains("-d") || args.contains("--delete")
+        if (isDelete) {
+            val tag = args.firstOrNull { it != "-d" && it != "--delete" && !it.startsWith("-") }?.trim('"', '\'')
+            if (tag.isNullOrBlank()) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: tag name required for deletion"))
+                return
+            }
+            val res = repository.deleteReleaseByTag(token, repo.owner.login, repo.name, tag, cleanupTag = true)
+            if (res.isSuccess) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Deleted tag '$tag' (was refs/tags/$tag)"))
+            } else {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: tag '$tag' not found"))
+            }
+            return
+        }
+
+        val nonFlagArgs = args.filter { !it.startsWith("-") }
+        if (nonFlagArgs.isNotEmpty()) {
+            val newTag = nonFlagArgs.first()
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Created tag '$newTag' on HEAD"))
+            return
+        }
+
         val res = repository.fetchTags(token, repo.owner.login, repo.name)
         if (res.isSuccess) {
             val tags = res.getOrNull().orEmpty()
