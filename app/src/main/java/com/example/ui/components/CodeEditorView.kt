@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -92,6 +93,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -249,32 +251,13 @@ fun CodeEditorView(
     var currentMatchIndex by rememberSaveable { mutableIntStateOf(0) }
     val searchFocusRequester = remember { FocusRequester() }
 
-    // Floating navigation button states: Down button shown initially, Up button shown when scrolling up
-    var showDownButton by remember(filePath) { mutableStateOf(true) }
-    var showUpButton by remember { mutableStateOf(false) }
-    var lastScrollUpTrigger by remember { mutableLongStateOf(0L) }
-    var previousScrollValue by remember { mutableIntStateOf(0) }
-
-    // Scroll listener for floating navigation buttons
-    LaunchedEffect(verticalScrollState) {
-        androidx.compose.runtime.snapshotFlow { verticalScrollState.value }
-            .collect { currentScroll ->
-                val delta = currentScroll - previousScrollValue
-                if (delta < -15 && currentScroll > 120) {
-                    showUpButton = true
-                    lastScrollUpTrigger = System.currentTimeMillis()
-                } else if (currentScroll <= 40) {
-                    showUpButton = false
-                }
-                previousScrollValue = currentScroll
-            }
-    }
-
-    // Auto-hide Up button after a few seconds
-    LaunchedEffect(lastScrollUpTrigger) {
-        if (showUpButton && lastScrollUpTrigger > 0L) {
-            delay(3500)
-            showUpButton = false
+    val density = LocalDensity.current
+    val wrapSymbolPaint = remember(fontSize) {
+        android.graphics.Paint().apply {
+            isAntiAlias = true
+            textSize = with(density) { (fontSize * 0.78f).sp.toPx() }
+            color = android.graphics.Color.parseColor("#98979F")
+            typeface = android.graphics.Typeface.MONOSPACE
         }
     }
 
@@ -1746,11 +1729,86 @@ fun CodeEditorView(
                                 .padding(top = 12.dp, start = 6.dp, end = 28.dp)
                         }
 
+                        val fontSizePx = with(density) { fontSize.sp.toPx() }
+                        val editorContentModifier = textModifier
+                            .drawWithContent {
+                                val layout = textLayoutResult
+                                if (layout != null && layout.lineCount > 0) {
+                                    val fullText = layout.layoutInput.text.text
+                                    if (fullText.isNotEmpty()) {
+                                        // 1. Draw Indentation Guide Lines (matching Screenshot 1)
+                                        val charWidth = if (fullText.length > 1) {
+                                            val w = layout.getHorizontalPosition(1, true) - layout.getHorizontalPosition(0, true)
+                                            if (w > 0f) w else (fontSizePx * 0.6f)
+                                        } else (fontSizePx * 0.6f)
+
+                                        val guideColor = Color(0x1F1E293B) // Hairline slate guide line
+                                        val strokeW = 1.2f
+
+                                        for (vLine in 0 until layout.lineCount) {
+                                            val lineStart = layout.getLineStart(vLine)
+                                            val isLogicalStart = vLine == 0 || (lineStart > 0 && lineStart <= fullText.length && fullText[lineStart - 1] == '\n')
+                                            if (isLogicalStart) {
+                                                val lineEnd = layout.getLineEnd(vLine)
+                                                var spaces = 0
+                                                for (cIdx in lineStart until lineEnd) {
+                                                    val ch = fullText[cIdx]
+                                                    if (ch == ' ') spaces++
+                                                    else if (ch == '\t') spaces += 4
+                                                    else break
+                                                }
+
+                                                if (spaces >= 2) {
+                                                    val yTop = layout.getLineTop(vLine)
+                                                    val yBottom = layout.getLineBottom(vLine)
+                                                    var col = 2
+                                                    while (col <= spaces) {
+                                                        val x = layout.getLineLeft(vLine) + (col * charWidth)
+                                                        drawLine(
+                                                            color = guideColor,
+                                                            start = Offset(x, yTop),
+                                                            end = Offset(x, yBottom),
+                                                            strokeWidth = strokeW
+                                                        )
+                                                        col += 2
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 2. Draw Code Text Content
+                                drawContent()
+
+                                // 3. Draw Soft-Wrap Continuation Indicators ("⤡" like Screenshot 1)
+                                if (isWordWrapEnabled && layout != null && layout.lineCount > 1) {
+                                    val fullText = layout.layoutInput.text.text
+                                    drawIntoCanvas { canvas ->
+                                        for (vLine in 0 until layout.lineCount - 1) {
+                                            val lineEnd = layout.getLineEnd(vLine)
+                                            if (lineEnd in 1..fullText.length && fullText[lineEnd - 1] != '\n') {
+                                                // ⤡ at end of line that wraps
+                                                val rightX = layout.getLineRight(vLine) + 4f * density.density
+                                                val baselineY = layout.getLineBaseline(vLine)
+                                                canvas.nativeCanvas.drawText("⤡", rightX, baselineY, wrapSymbolPaint)
+
+                                                // ⤡ at start of continuation line
+                                                val nextLine = vLine + 1
+                                                val leftX = (layout.getLineLeft(nextLine) - 13f * density.density).coerceAtLeast(0f)
+                                                val nextBaselineY = layout.getLineBaseline(nextLine)
+                                                canvas.nativeCanvas.drawText("⤡", leftX, nextBaselineY, wrapSymbolPaint)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
                         BasicTextField(
                             value = textFieldValue,
                             onValueChange = { handleEditorValueChange(it) },
                             onTextLayout = { textLayoutResult = it },
-                            modifier = textModifier.testTag("code_editor_textarea"),
+                            modifier = editorContentModifier.testTag("code_editor_textarea"),
                             readOnly = isFolderDrawerOpen,
                             enabled = !isFolderDrawerOpen,
                             textStyle = TextStyle(
@@ -1764,78 +1822,25 @@ fun CodeEditorView(
                         )
                     }
 
-                    // Floating Up / Down navigation buttons
-                    Box(
+                    // Floating Up / Down navigation buttons (isolated with derivedStateOf)
+                    EditorFloatingScrollButtons(
+                        verticalScrollState = verticalScrollState,
+                        onScrollToTop = {
+                            coroutineScope.launch {
+                                verticalScrollState.animateScrollTo(0)
+                            }
+                            textFieldValue = textFieldValue.copy(selection = TextRange.Zero)
+                        },
+                        onScrollToBottom = {
+                            coroutineScope.launch {
+                                verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
+                            }
+                            textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.text.length))
+                        },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
                             .padding(bottom = 20.dp, end = 24.dp)
-                    ) {
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = (showDownButton && verticalScrollState.value < (verticalScrollState.maxValue - 80).coerceAtLeast(0) && verticalScrollState.maxValue > 0) || (showUpButton && verticalScrollState.value > 80),
-                            enter = fadeIn() + scaleIn(),
-                            exit = fadeOut() + scaleOut()
-                        ) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                if (showUpButton && verticalScrollState.value > 80) {
-                                    Surface(
-                                        onClick = {
-                                            coroutineScope.launch {
-                                                verticalScrollState.animateScrollTo(0)
-                                            }
-                                            textFieldValue = textFieldValue.copy(selection = TextRange.Zero)
-                                            showUpButton = false
-                                        },
-                                        shape = CircleShape,
-                                        color = GitSurface,
-                                        border = BorderStroke(1.dp, GitBorderStrong),
-                                        shadowElevation = 6.dp,
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .testTag("editor_floating_up_button")
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.KeyboardArrowUp,
-                                                contentDescription = "Go to Top",
-                                                tint = GitText1,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                    }
-                                }
-
-                                if (showDownButton && verticalScrollState.value < (verticalScrollState.maxValue - 80).coerceAtLeast(0) && verticalScrollState.maxValue > 0) {
-                                    Surface(
-                                        onClick = {
-                                            coroutineScope.launch {
-                                                verticalScrollState.animateScrollTo(verticalScrollState.maxValue)
-                                            }
-                                            textFieldValue = textFieldValue.copy(selection = TextRange(textFieldValue.text.length))
-                                        },
-                                        shape = CircleShape,
-                                        color = GitSurface,
-                                        border = BorderStroke(1.dp, GitBorderStrong),
-                                        shadowElevation = 6.dp,
-                                        modifier = Modifier
-                                            .size(38.dp)
-                                            .testTag("editor_floating_down_button")
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = Icons.Default.KeyboardArrowDown,
-                                                contentDescription = "Go to File End Line",
-                                                tint = GitAccent,
-                                                modifier = Modifier.size(22.dp)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    )
 
                     // Interactive Draggable Vertical Scrollbar (Scrub, Drag, or Tap to jump)
                     EditorVerticalScrollbar(
@@ -1854,12 +1859,27 @@ fun CodeEditorView(
             }
         }
 
-        // BOTTOM STATUS BAR (Tied cleanly to IME)
+        // BOTTOM STATUS BAR & QUICK SYMBOLS BAR (Tied cleanly to IME)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
         ) {
+            // Quick Symbol Row (Screenshot 1: →, /, +, -, *, =, <, >, ", ')
+            if (!isLoading && !isImage && (!isMarkdown || !isMarkdownPreviewMode)) {
+                EditorQuickSymbolBar(
+                    onInsertSymbol = { symbol, offset ->
+                        val curText = textFieldValue.text
+                        val start = textFieldValue.selection.start
+                        val end = textFieldValue.selection.end
+                        val minSel = minOf(start, end).coerceIn(0, curText.length)
+                        val maxSel = maxOf(start, end).coerceIn(0, curText.length)
+                        val newText = curText.substring(0, minSel) + symbol + curText.substring(maxSel)
+                        val newSel = (minSel + offset).coerceIn(0, newText.length)
+                        handleEditorValueChange(textFieldValue.copy(text = newText, selection = TextRange(newSel)))
+                    }
+                )
+            }
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 color = GitSurface,
@@ -2143,6 +2163,9 @@ private fun androidx.compose.foundation.layout.BoxScope.EditorHorizontalScrollba
     }
 }
 
+// Pre-allocated cached number strings to completely eliminate string allocations during gutter drawing
+private val NUMBER_STRINGS = Array(10001) { it.toString() }
+
 @Composable
 private fun LineNumbersGutter(
     lineCount: Int,
@@ -2189,42 +2212,228 @@ private fun LineNumbersGutter(
                     strokeWidth = 1f
                 )
 
-                val scrollY = verticalScrollState.value
-                val viewportHeight = verticalScrollState.viewportSize.takeIf { it > 0 } ?: size.height.toInt()
-                val textRight = size.width - with(density) { 5.dp.toPx() }
+                val textRight = size.width - with(density) { 6.dp.toPx() }
                 val layout = textLayoutResult
 
-                drawIntoCanvas { canvas ->
+                // High-performance optimization: For files <= 1200 lines (e.g. 207-line file),
+                // line numbers are drawn once into the RenderNode without reading verticalScrollState.value!
+                // The GPU translates the display list during scroll with ZERO redraws and ZERO frame drops!
+                if (lineCount <= 1200) {
                     if (layout != null && layout.lineCount > 0) {
-                        val relScrollTop = (scrollY - topPaddingPx).coerceAtLeast(0f)
-                        val relScrollBottom = (scrollY + viewportHeight - topPaddingPx).coerceAtLeast(0f)
+                        val fullText = layout.layoutInput.text.text
+                        var logicalLine = 1
+                        drawIntoCanvas { canvas ->
+                            for (vLine in 0 until layout.lineCount) {
+                                val charStart = layout.getLineStart(vLine)
+                                val isStartOfLogicalLine = vLine == 0 || (charStart > 0 && charStart <= fullText.length && fullText[charStart - 1] == '\n')
+                                if (isStartOfLogicalLine) {
+                                    val baselineY = topPaddingPx + layout.getLineBaseline(vLine)
+                                    val numStr = if (logicalLine in NUMBER_STRINGS.indices) NUMBER_STRINGS[logicalLine] else logicalLine.toString()
+                                    canvas.nativeCanvas.drawText(numStr, textRight, baselineY, paint)
+                                    logicalLine++
+                                }
+                            }
+                        }
+                    } else if (lineCount >= 1) {
+                        val baselineOffset = fontSizePx * 0.84f
+                        drawIntoCanvas { canvas ->
+                            for (line in 1..lineCount) {
+                                val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
+                                val numStr = if (line in NUMBER_STRINGS.indices) NUMBER_STRINGS[line] else line.toString()
+                                canvas.nativeCanvas.drawText(numStr, textRight, y, paint)
+                            }
+                        }
+                    }
+                } else {
+                    // For large files (> 1200 lines), clip to viewport with zero substring allocations
+                    val scrollY = verticalScrollState.value
+                    val viewportHeight = verticalScrollState.viewportSize.takeIf { it > 0 } ?: size.height.toInt()
+                    val relScrollTop = (scrollY - topPaddingPx).coerceAtLeast(0f)
+                    val relScrollBottom = (scrollY + viewportHeight - topPaddingPx).coerceAtLeast(0f)
+
+                    if (layout != null && layout.lineCount > 0) {
                         val firstVisualLine = (layout.getLineForVerticalPosition(relScrollTop) - 2).coerceIn(0, layout.lineCount - 1)
                         val lastVisualLine = (layout.getLineForVerticalPosition(relScrollBottom) + 2).coerceIn(0, layout.lineCount - 1)
 
                         val fullText = layout.layoutInput.text.text
                         val startChar = layout.getLineStart(firstVisualLine)
-                        var logicalLine = 1 + fullText.take(startChar).count { it == '\n' }
 
-                        for (vLine in firstVisualLine..lastVisualLine) {
-                            val charStart = layout.getLineStart(vLine)
-                            val isStartOfLogicalLine = vLine == 0 || (charStart > 0 && fullText.getOrNull(charStart - 1) == '\n')
-                            if (isStartOfLogicalLine) {
-                                val baselineY = topPaddingPx + layout.getLineBaseline(vLine)
-                                canvas.nativeCanvas.drawText(logicalLine.toString(), textRight, baselineY, paint)
-                                logicalLine++
+                        var logicalLine = 1
+                        for (k in 0 until startChar.coerceAtMost(fullText.length)) {
+                            if (fullText[k] == '\n') logicalLine++
+                        }
+
+                        drawIntoCanvas { canvas ->
+                            for (vLine in firstVisualLine..lastVisualLine) {
+                                val charStart = layout.getLineStart(vLine)
+                                val isStartOfLogicalLine = vLine == 0 || (charStart > 0 && charStart <= fullText.length && fullText[charStart - 1] == '\n')
+                                if (isStartOfLogicalLine) {
+                                    val baselineY = topPaddingPx + layout.getLineBaseline(vLine)
+                                    val numStr = if (logicalLine in NUMBER_STRINGS.indices) NUMBER_STRINGS[logicalLine] else logicalLine.toString()
+                                    canvas.nativeCanvas.drawText(numStr, textRight, baselineY, paint)
+                                    logicalLine++
+                                }
                             }
                         }
                     } else if (lineCount >= 1) {
-                        val startLine = (((scrollY - topPaddingPx) / lineHeightPx).toInt() - 1).coerceIn(1, lineCount)
-                        val endLine = (((scrollY + viewportHeight - topPaddingPx) / lineHeightPx).toInt() + 2).coerceIn(1, lineCount)
+                        val startLine = (((relScrollTop) / lineHeightPx).toInt() - 1).coerceIn(1, lineCount)
+                        val endLine = (((relScrollBottom) / lineHeightPx).toInt() + 2).coerceIn(1, lineCount)
                         val baselineOffset = fontSizePx * 0.84f
 
-                        for (line in startLine..endLine) {
-                            val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
-                            canvas.nativeCanvas.drawText(line.toString(), textRight, y, paint)
+                        drawIntoCanvas { canvas ->
+                            for (line in startLine..endLine) {
+                                val y = topPaddingPx + ((line - 1) * lineHeightPx) + baselineOffset
+                                val numStr = if (line in NUMBER_STRINGS.indices) NUMBER_STRINGS[line] else line.toString()
+                                canvas.nativeCanvas.drawText(numStr, textRight, y, paint)
+                            }
                         }
                     }
                 }
             }
     )
+}
+
+@Composable
+private fun EditorFloatingScrollButtons(
+    verticalScrollState: androidx.compose.foundation.ScrollState,
+    onScrollToTop: () -> Unit,
+    onScrollToBottom: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val canScrollUp by remember(verticalScrollState) {
+        derivedStateOf { verticalScrollState.value > 120 }
+    }
+    val canScrollDown by remember(verticalScrollState) {
+        derivedStateOf {
+            verticalScrollState.maxValue > 0 && verticalScrollState.value < (verticalScrollState.maxValue - 120).coerceAtLeast(0)
+        }
+    }
+    val isVisible by remember(verticalScrollState) {
+        derivedStateOf { canScrollUp || canScrollDown }
+    }
+
+    Box(modifier = modifier) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = isVisible,
+            enter = fadeIn() + scaleIn(),
+            exit = fadeOut() + scaleOut()
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (canScrollUp) {
+                    Surface(
+                        onClick = onScrollToTop,
+                        shape = CircleShape,
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("editor_floating_up_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = "Go to Top",
+                                tint = GitText1,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+
+                if (canScrollDown) {
+                    Surface(
+                        onClick = onScrollToBottom,
+                        shape = CircleShape,
+                        color = GitSurface,
+                        border = BorderStroke(1.dp, GitBorderStrong),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .testTag("editor_floating_down_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Go to File End Line",
+                                tint = GitAccent,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EditorQuickSymbolBar(
+    onInsertSymbol: (symbol: String, cursorOffset: Int) -> Unit
+) {
+    val symbols = remember {
+        listOf(
+            "→" to Pair("    ", 4),
+            "/" to Pair("/", 1),
+            "+" to Pair("+", 1),
+            "-" to Pair("-", 1),
+            "*" to Pair("*", 1),
+            "=" to Pair("=", 1),
+            "<" to Pair("<", 1),
+            ">" to Pair(">", 1),
+            "\"" to Pair("\"\"", 1),
+            "'" to Pair("''", 1),
+            "(" to Pair("()", 1),
+            ")" to Pair(")", 1),
+            "{" to Pair("{}", 1),
+            "}" to Pair("}", 1),
+            "[" to Pair("[]", 1),
+            "]" to Pair("]", 1),
+            ":" to Pair(":", 1),
+            ";" to Pair(";", 1)
+        )
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = GitSurface,
+        border = BorderStroke(0.5.dp, GitBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            symbols.forEach { (label, insertion) ->
+                Surface(
+                    onClick = { onInsertSymbol(insertion.first, insertion.second) },
+                    shape = RoundedCornerShape(8.dp),
+                    color = GitSurface2,
+                    border = BorderStroke(0.5.dp, GitBorder),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .defaultMinSize(minWidth = 34.dp)
+                ) {
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.padding(horizontal = 10.dp)
+                    ) {
+                        Text(
+                            text = label,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            color = GitText1
+                        )
+                    }
+                }
+            }
+        }
+    }
 }

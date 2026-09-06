@@ -53,6 +53,8 @@ object SyntaxColors {
     val Annotation = Color(0xFFE11D48)     // Rose / Ruby
     val Property = Color(0xFF0D9488)       // Teal
     val Punctuation = Color(0xFF64748B)    // Cool Gray
+    val XmlTag = Color(0xFF1D4ED8)         // Royal Navy Blue
+    val XmlAttribute = Color(0xFF9333EA)   // Vivid Purple / Magenta
     val BracketHighlight = Color(0xFF0F9D74) // Emerald glow for matching bracket
     val BracketMatchBg = Color(0x330F9D74)  // Soft Emerald highlight box
 }
@@ -68,6 +70,8 @@ private object SyntaxStyles {
     val Annotation = SpanStyle(color = SyntaxColors.Annotation, fontWeight = FontWeight.SemiBold)
     val Property = SpanStyle(color = SyntaxColors.Property, fontWeight = FontWeight.Medium)
     val Punctuation = SpanStyle(color = SyntaxColors.Punctuation)
+    val XmlTag = SpanStyle(color = SyntaxColors.XmlTag, fontWeight = FontWeight.SemiBold)
+    val XmlAttribute = SpanStyle(color = SyntaxColors.XmlAttribute, fontWeight = FontWeight.Normal)
     val BracketHighlight = SpanStyle(
         color = SyntaxColors.BracketHighlight,
         background = SyntaxColors.BracketMatchBg,
@@ -254,14 +258,70 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
                     continue
                 }
 
-                // XML / HTML Tags (<tag ... > or </tag>)
-                if ((language == SupportedLanguage.XML_HTML) && (c == '<')) {
-                    val tagEnd = text.indexOf('>', i)
-                    if (tagEnd != -1 && tagEnd < scanLimit) {
-                        addStyle(SyntaxStyles.TypeName, i, tagEnd + 1)
-                        i = tagEnd + 1
-                        continue
+                // XML / HTML CDATA, DOCTYPE or Processing Instructions (<?xml ... ?>, <!DOCTYPE ...>)
+                if (language == SupportedLanguage.XML_HTML && c == '<' && (i + 1 < scanLimit) && (text[i + 1] == '?' || text[i + 1] == '!')) {
+                    val endChar = if (text[i + 1] == '?') "?>" else ">"
+                    val end = text.indexOf(endChar, i + 2).let { if (it == -1 || it + endChar.length > scanLimit) scanLimit else it + endChar.length }
+                    addStyle(SyntaxStyles.Comment, i, end)
+                    i = end
+                    continue
+                }
+
+                // XML / HTML Tags & Attributes (<intent ... >, </intent>, <action android:name="..." />)
+                if (language == SupportedLanguage.XML_HTML && c == '<') {
+                    val isClosing = (i + 1 < scanLimit && text[i + 1] == '/')
+                    val nameStart = if (isClosing) i + 2 else i + 1
+                    var nameEnd = nameStart
+                    while (nameEnd < scanLimit && (text[nameEnd].isLetterOrDigit() || text[nameEnd] == ':' || text[nameEnd] == '-' || text[nameEnd] == '_')) {
+                        nameEnd++
                     }
+                    if (nameEnd > nameStart) {
+                        addStyle(SyntaxStyles.XmlTag, nameStart, nameEnd)
+                    }
+
+                    // Parse attributes inside opening or self-closing tags
+                    var p = nameEnd
+                    while (p < scanLimit && text[p] != '>') {
+                        val ch = text[p]
+                        if (ch == '/' && p + 1 < scanLimit && text[p + 1] == '>') {
+                            p += 2
+                            break
+                        }
+                        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
+                            p++
+                            continue
+                        }
+                        if (ch == '=') {
+                            p++
+                            continue
+                        }
+                        // Attribute value in quotes ("..." or '...')
+                        if (ch == '"' || ch == '\'') {
+                            val quote = ch
+                            val valStart = p
+                            p++
+                            while (p < scanLimit && text[p] != quote && text[p] != '\n') {
+                                if (text[p] == '\\' && p + 1 < scanLimit) p += 2
+                                else p++
+                            }
+                            if (p < scanLimit && text[p] == quote) p++
+                            addStyle(SyntaxStyles.StringLiteral, valStart, p)
+                            continue
+                        }
+                        // Attribute name (e.g. android:name, xmlns:android, theme, id)
+                        if (ch.isLetter() || ch == '_' || ch == ':') {
+                            val attrStart = p
+                            while (p < scanLimit && (text[p].isLetterOrDigit() || text[p] == ':' || text[p] == '-' || text[p] == '_')) {
+                                p++
+                            }
+                            addStyle(SyntaxStyles.XmlAttribute, attrStart, p)
+                            continue
+                        }
+                        p++
+                    }
+                    if (p < scanLimit && text[p] == '>') p++
+                    i = p
+                    continue
                 }
 
                 // Annotations (@Something)
@@ -349,11 +409,6 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
 
                     i = end
                     continue
-                }
-
-                // Brackets & Punctuation
-                if (c in "{}[],();:") {
-                    addStyle(SyntaxStyles.Punctuation, i, i + 1)
                 }
 
                 i++
