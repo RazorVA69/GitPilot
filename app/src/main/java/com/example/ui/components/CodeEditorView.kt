@@ -150,6 +150,7 @@ import com.example.data.model.FileContentResponse
 import com.example.data.model.GitTreeItem
 import com.example.ui.components.editor.BracketMatcher
 import com.example.ui.components.editor.CodeSyntaxVisualTransformation
+import com.example.ui.components.editor.EditorBlockGuideHelper
 import com.example.ui.components.editor.EditorFontFamily
 import com.example.ui.components.editor.EditorTabsRow
 import com.example.ui.components.editor.EditorTypographyModal
@@ -242,6 +243,7 @@ fun CodeEditorView(
 
     var isWordWrapEnabled by rememberSaveable { mutableStateOf(false) }
     var showLineNumbers by rememberSaveable { mutableStateOf(true) }
+    var showQuickSymbolRow by rememberSaveable { mutableStateOf(false) }
 
     // Search and Replace State
     var isSearchVisible by rememberSaveable { mutableStateOf(false) }
@@ -261,15 +263,12 @@ fun CodeEditorView(
         }
     }
 
-    // When Search is opened, automatically focus the search box and open keyboard
-    LaunchedEffect(isSearchVisible) {
-        if (isSearchVisible) {
-            delay(150)
-            try {
-                searchFocusRequester.requestFocus()
-                keyboardController?.show()
-            } catch (_: Exception) {}
+    val spaceCharWidth = remember(fontSize, density) {
+        val p = android.graphics.Paint().apply {
+            textSize = with(density) { fontSize.sp.toPx() }
+            typeface = android.graphics.Typeface.MONOSPACE
         }
+        p.measureText(" ")
     }
 
     // Tab Position, Selection, and Scroll State Cache across tabs for instant differential tab switching
@@ -278,6 +277,11 @@ fun CodeEditorView(
     // Text Field Value State (Preserved across tab switches and updated differentially)
     var textFieldValue by remember {
         mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
+    }
+
+    // VSCode-style block guides computed only when source text changes
+    val blockGuides = remember(textFieldValue.text) {
+        EditorBlockGuideHelper.computeBlockGuides(textFieldValue.text)
     }
 
     // Previous active file path tracker for differential tab switching
@@ -1345,6 +1349,39 @@ fun CodeEditorView(
                                 }
                             )
 
+                            // Quick Symbol Row Toggle (Default Off)
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Quick Symbol Row", color = GitText1, fontSize = 13.sp)
+                                        if (showQuickSymbolRow) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = GitAccent,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.TextFields,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    showQuickSymbolRow = !showQuickSymbolRow
+                                    showMoreMenu = false
+                                }
+                            )
+
                             if (isMarkdown) {
                                 HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
@@ -1730,52 +1767,20 @@ fun CodeEditorView(
                         }
 
                         val fontSizePx = with(density) { fontSize.sp.toPx() }
+                        val editorAccentColor = GitAccent
                         val editorContentModifier = textModifier
                             .drawWithContent {
                                 val layout = textLayoutResult
                                 if (layout != null && layout.lineCount > 0) {
-                                    val fullText = layout.layoutInput.text.text
-                                    if (fullText.isNotEmpty()) {
-                                        // 1. Draw Indentation Guide Lines (matching Screenshot 1)
-                                        val charWidth = if (fullText.length > 1) {
-                                            val w = layout.getHorizontalPosition(1, true) - layout.getHorizontalPosition(0, true)
-                                            if (w > 0f) w else (fontSizePx * 0.6f)
-                                        } else (fontSizePx * 0.6f)
-
-                                        val guideColor = Color(0x1F1E293B) // Hairline slate guide line
-                                        val strokeW = 1.2f
-
-                                        for (vLine in 0 until layout.lineCount) {
-                                            val lineStart = layout.getLineStart(vLine)
-                                            val isLogicalStart = vLine == 0 || (lineStart > 0 && lineStart <= fullText.length && fullText[lineStart - 1] == '\n')
-                                            if (isLogicalStart) {
-                                                val lineEnd = layout.getLineEnd(vLine)
-                                                var spaces = 0
-                                                for (cIdx in lineStart until lineEnd) {
-                                                    val ch = fullText[cIdx]
-                                                    if (ch == ' ') spaces++
-                                                    else if (ch == '\t') spaces += 4
-                                                    else break
-                                                }
-
-                                                if (spaces >= 2) {
-                                                    val yTop = layout.getLineTop(vLine)
-                                                    val yBottom = layout.getLineBottom(vLine)
-                                                    var col = 2
-                                                    while (col <= spaces) {
-                                                        val x = layout.getLineLeft(vLine) + (col * charWidth)
-                                                        drawLine(
-                                                            color = guideColor,
-                                                            start = Offset(x, yTop),
-                                                            end = Offset(x, yBottom),
-                                                            strokeWidth = strokeW
-                                                        )
-                                                        col += 2
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
+                                    // 1. Draw VSCode-style Code Block Guides with start/end indicators and nesting
+                                    EditorBlockGuideHelper.renderBlockGuides(
+                                        drawScope = this,
+                                        layout = layout,
+                                        guides = blockGuides,
+                                        charWidth = spaceCharWidth,
+                                        cursorOffset = textFieldValue.selection.start,
+                                        accentColor = editorAccentColor
+                                    )
                                 }
 
                                 // 2. Draw Code Text Content
@@ -1865,8 +1870,8 @@ fun CodeEditorView(
                 .fillMaxWidth()
                 .imePadding()
         ) {
-            // Quick Symbol Row (Screenshot 1: →, /, +, -, *, =, <, >, ", ')
-            if (!isLoading && !isImage && (!isMarkdown || !isMarkdownPreviewMode)) {
+            // Quick Symbol Row (Toggled via 3-dot menu, default off)
+            if (showQuickSymbolRow && !isLoading && !isImage && (!isMarkdown || !isMarkdownPreviewMode)) {
                 EditorQuickSymbolBar(
                     onInsertSymbol = { symbol, offset ->
                         val curText = textFieldValue.text
