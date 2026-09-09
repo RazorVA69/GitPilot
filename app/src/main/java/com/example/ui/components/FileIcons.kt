@@ -2,6 +2,7 @@ package com.example.ui.components
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Android
+import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
@@ -101,7 +102,7 @@ object FileIcons {
 
             // Archives
             "zip", "tar", "gz", "rar", "7z", "tgz", "bz2", "jar" ->
-                FileTypeMeta(Icons.Outlined.FolderZip, Color(0xFFFFA726), "Archive")
+                FileTypeMeta(Icons.Outlined.Archive, Color(0xFFEA580C), "Archive")
 
             // Backup & Patches
             "bak", "old", "orig", "backup" ->

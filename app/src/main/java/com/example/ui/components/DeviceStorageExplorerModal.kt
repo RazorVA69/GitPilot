@@ -48,6 +48,7 @@ import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -64,10 +65,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -83,10 +87,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -109,6 +115,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.Locale
+import kotlin.math.roundToInt
 
 enum class DeviceFolderSortBy {
     NAME,
@@ -123,7 +130,8 @@ data class LocalFileItem(
     val isDirectory: Boolean,
     val size: Long,
     val lastModified: Long,
-    val extension: String
+    val extension: String,
+    val relativePath: String = ""
 )
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -151,8 +159,25 @@ fun DeviceStorageExplorerModal(
     var currentDir by remember { mutableStateOf(defaultRoot) }
     var fileList by remember { mutableStateOf<List<LocalFileItem>>(emptyList()) }
     var isLoadingFiles by remember { mutableStateOf(false) }
+
+    // Search state
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
+    var searchSubfolders by rememberSaveable { mutableStateOf(true) }
+    var isSearching by remember { mutableStateOf(false) }
+    var searchResults by remember { mutableStateOf<List<LocalFileItem>>(emptyList()) }
+
+    // View & UI Scale State - Remembered in SharedPreferences
+    var uiScalePercent by rememberSaveable {
+        mutableStateOf(prefs.getInt("explorer_ui_scale", 100))
+    }
+    var showViewScaleDialog by remember { mutableStateOf(false) }
+
+    fun updateUiScale(scale: Int) {
+        val clamped = scale.coerceIn(65, 140)
+        uiScalePercent = clamped
+        prefs.edit().putInt("explorer_ui_scale", clamped).apply()
+    }
 
     // Sorting State - Remembered in SharedPreferences
     var foldersFirst by rememberSaveable {
@@ -277,7 +302,8 @@ fun DeviceStorageExplorerModal(
                         isDirectory = f.isDirectory,
                         size = if (f.isFile) f.length() else 0L,
                         lastModified = f.lastModified(),
-                        extension = if (f.isFile && f.name.contains('.')) f.name.substringAfterLast('.').lowercase(Locale.ROOT) else ""
+                        extension = if (f.isFile && f.name.contains('.')) f.name.substringAfterLast('.').lowercase(Locale.ROOT) else "",
+                        relativePath = ""
                     )
                 } ?: emptyList()
             } catch (e: Exception) {
@@ -295,6 +321,75 @@ fun DeviceStorageExplorerModal(
     LaunchedEffect(currentDir) {
         isLoadingFiles = true
         refreshDirectory(currentDir)
+    }
+
+    // Deep / Recursive Search Engine that finds BOTH files and folders
+    LaunchedEffect(searchQuery, currentDir, searchSubfolders) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) {
+            isSearching = false
+            searchResults = emptyList()
+            return@LaunchedEffect
+        }
+
+        isSearching = true
+        delay(200) // Debounce rapid keystrokes
+
+        val results = withContext(Dispatchers.IO) {
+            val list = mutableListOf<LocalFileItem>()
+            val cleanQuery = query.lowercase(Locale.ROOT).removePrefix(".")
+            val baseDirCanonical = try { currentDir.canonicalPath } catch (_: Exception) { currentDir.absolutePath }
+
+            fun scan(dir: File, depth: Int) {
+                if (list.size >= 400) return // Safety ceiling for performance
+                val files = try { dir.listFiles() } catch (_: Exception) { null } ?: return
+                for (f in files) {
+                    val name = f.name
+                    val isDir = f.isDirectory
+                    val ext = if (f.isFile && name.contains('.')) name.substringAfterLast('.').lowercase(Locale.ROOT) else ""
+                    val lowerName = name.lowercase(Locale.ROOT)
+
+                    val matches = lowerName.contains(cleanQuery) ||
+                            ext.equals(cleanQuery, ignoreCase = true) ||
+                            (cleanQuery.startsWith(".") && lowerName.endsWith(cleanQuery))
+
+                    if (matches) {
+                        val relParent = try {
+                            val fCan = f.canonicalPath
+                            if (fCan.startsWith(baseDirCanonical)) {
+                                val rel = fCan.removePrefix(baseDirCanonical).trimStart(File.separatorChar)
+                                File(rel).parent ?: ""
+                            } else ""
+                        } catch (_: Exception) { "" }
+
+                        list.add(
+                            LocalFileItem(
+                                file = f,
+                                name = name,
+                                isDirectory = isDir,
+                                size = if (f.isFile) f.length() else 0L,
+                                lastModified = f.lastModified(),
+                                extension = ext,
+                                relativePath = relParent
+                            )
+                        )
+                    }
+
+                    // Recursively scan subfolders when enabled
+                    if (isDir && searchSubfolders && depth < 5) {
+                        if (!name.startsWith(".") && name != "Android") {
+                            scan(f, depth + 1)
+                        }
+                    }
+                }
+            }
+
+            scan(currentDir, 0)
+            list
+        }
+
+        searchResults = results
+        isSearching = false
     }
 
     // Automatic file discovery using FileObserver on currentDir
@@ -355,13 +450,20 @@ fun DeviceStorageExplorerModal(
         }
     }
 
-    // Filter & Sort with "Sort Folders By Name" and "Reverse inside Sort"
-    val displayedList = remember(fileList, searchQuery, sortBy, isSortReversed, foldersFirst, sortFoldersByName) {
-        val filtered = if (searchQuery.isBlank()) fileList
-        else fileList.filter { it.name.contains(searchQuery, ignoreCase = true) }
+    // Filter & Sort with "Sort Folders By Name", "Reverse inside Sort", and Recursive Search Results
+    val displayedList = remember(
+        fileList,
+        searchResults,
+        searchQuery,
+        sortBy,
+        isSortReversed,
+        foldersFirst,
+        sortFoldersByName
+    ) {
+        val rawSource = if (searchQuery.isNotBlank()) searchResults else fileList
 
         if (foldersFirst) {
-            val (folders, files) = filtered.partition { it.isDirectory }
+            val (folders, files) = rawSource.partition { it.isDirectory }
             val sortedFolders = if (sortFoldersByName) {
                 folders.sortedBy { it.name.lowercase(Locale.ROOT) }
             } else {
@@ -385,10 +487,10 @@ fun DeviceStorageExplorerModal(
             finalFolders + finalFiles
         } else {
             val sorted = when (sortBy) {
-                DeviceFolderSortBy.NAME -> filtered.sortedBy { it.name.lowercase(Locale.ROOT) }
-                DeviceFolderSortBy.DATE_MODIFIED -> filtered.sortedByDescending { it.lastModified }
-                DeviceFolderSortBy.SIZE -> filtered.sortedByDescending { it.size }
-                DeviceFolderSortBy.TYPE -> filtered.sortedWith(compareBy({ !it.isDirectory }, { it.extension }, { it.name.lowercase(Locale.ROOT) }))
+                DeviceFolderSortBy.NAME -> rawSource.sortedBy { it.name.lowercase(Locale.ROOT) }
+                DeviceFolderSortBy.DATE_MODIFIED -> rawSource.sortedByDescending { it.lastModified }
+                DeviceFolderSortBy.SIZE -> rawSource.sortedByDescending { it.size }
+                DeviceFolderSortBy.TYPE -> rawSource.sortedWith(compareBy({ !it.isDirectory }, { it.extension }, { it.name.lowercase(Locale.ROOT) }))
             }
             if (isSortReversed) sorted.reversed() else sorted
         }
@@ -455,7 +557,17 @@ fun DeviceStorageExplorerModal(
         }
     }
 
-    // Full-screen Dialog with natural comfortable sizing and safe back navigation
+    // Dynamic UI Scale via CompositionLocalProvider
+    val baseDensity = LocalDensity.current
+    val currentScaleFactor = uiScalePercent / 100f
+    val dynamicDensity = remember(baseDensity, currentScaleFactor) {
+        Density(
+            density = baseDensity.density * currentScaleFactor,
+            fontScale = baseDensity.fontScale * currentScaleFactor
+        )
+    }
+
+    // Full-screen Dialog with customizable UI Scale and safe back navigation
     Dialog(
         onDismissRequest = { handleBackNavigation() },
         properties = DialogProperties(
@@ -469,723 +581,1002 @@ fun DeviceStorageExplorerModal(
             handleBackNavigation()
         }
 
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(GitSurface)
-                .statusBarsPadding()
-                .navigationBarsPadding()
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // Top Bar with Close button, Navigation Back, and Sort
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = GitSurface
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Back Arrow Button when navigated into a subfolder
-                            if (canNavigateUpFrom(currentDir)) {
-                                IconButton(
-                                    onClick = { handleBackNavigation() },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "Back out path",
-                                        tint = GitText1,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(6.dp))
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = GitAccentSoft,
-                                modifier = Modifier.size(38.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.Smartphone,
-                                        contentDescription = null,
-                                        tint = GitAccent,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Device File Explorer",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GitText1,
-                                    fontSize = 15.5.sp
-                                )
-                                Text(
-                                    text = "Select files or folders to upload",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = GitText2,
-                                    fontSize = 12.sp
-                                )
-                            }
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            // Search toggle
-                            IconButton(
-                                onClick = { isSearchExpanded = !isSearchExpanded },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
-                                    contentDescription = "Search",
-                                    tint = if (isSearchExpanded) GitAccent else GitText2,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.width(4.dp))
-
-                            // Sort Menu (Reverse is inside Sort, Folders By Name option added)
-                            Box {
-                                IconButton(
-                                    onClick = { showSortDropdown = true },
-                                    modifier = Modifier.size(36.dp).testTag("sort_menu_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Sort,
-                                        contentDescription = "Sort Options",
-                                        tint = GitText2,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-
-                                DropdownMenu(
-                                    expanded = showSortDropdown,
-                                    onDismissRequest = { showSortDropdown = false },
-                                    containerColor = GitSurface,
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    // Option 1: Folders First
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("Folders First", fontSize = 13.5.sp, color = GitText1)
-                                                if (foldersFirst) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newFoldersFirst = !foldersFirst)
-                                        }
-                                    )
-
-                                    // Option 2: Sort Folders By Name (Ticked by default)
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("Sort Folders By Name", fontSize = 13.5.sp, color = GitText1)
-                                                if (sortFoldersByName) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newSortFoldersByName = !sortFoldersByName)
-                                        }
-                                    )
-
-                                    HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-
-                                    // Sort Criteria: Name
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("Name", fontSize = 13.5.sp, color = GitText1)
-                                                if (sortBy == DeviceFolderSortBy.NAME) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newSortBy = DeviceFolderSortBy.NAME)
-                                            showSortDropdown = false
-                                        }
-                                    )
-
-                                    // Sort Criteria: Date Modified
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("Date Modified", fontSize = 13.5.sp, color = GitText1)
-                                                if (sortBy == DeviceFolderSortBy.DATE_MODIFIED) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newSortBy = DeviceFolderSortBy.DATE_MODIFIED)
-                                            showSortDropdown = false
-                                        }
-                                    )
-
-                                    // Sort Criteria: Size
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("Size", fontSize = 13.5.sp, color = GitText1)
-                                                if (sortBy == DeviceFolderSortBy.SIZE) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newSortBy = DeviceFolderSortBy.SIZE)
-                                            showSortDropdown = false
-                                        }
-                                    )
-
-                                    // Sort Criteria: File Type
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Text("File Type", fontSize = 13.5.sp, color = GitText1)
-                                                if (sortBy == DeviceFolderSortBy.TYPE) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newSortBy = DeviceFolderSortBy.TYPE)
-                                            showSortDropdown = false
-                                        }
-                                    )
-
-                                    HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
-
-                                    // Reverse Order Toggle (Inside Sort dropdown!)
-                                    DropdownMenuItem(
-                                        text = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween
-                                            ) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.SwapVert,
-                                                        contentDescription = null,
-                                                        tint = if (isSortReversed) GitAccent else GitText2,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = "Reverse Order",
-                                                        fontSize = 13.5.sp,
-                                                        color = if (isSortReversed) GitAccent else GitText1
-                                                    )
-                                                }
-                                                if (isSortReversed) {
-                                                    Spacer(modifier = Modifier.width(10.dp))
-                                                    Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
-                                                }
-                                            }
-                                        },
-                                        onClick = {
-                                            updateSort(newSortReversed = !isSortReversed)
-                                        }
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.width(6.dp))
-
-                            // Top Right Button to Close the File Explorer directly
-                            IconButton(
-                                onClick = onDismiss,
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .testTag("close_device_explorer_button")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Close File Explorer",
-                                    tint = GitText1,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-
-                HorizontalDivider(color = GitBorder, thickness = 1.dp)
-
-                // Permission Banner (if not yet full access)
-                if (!hasAllFilesPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        CompositionLocalProvider(LocalDensity provides dynamicDensity) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(GitSurface)
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
+                    // Top Bar with View (Scale), Sort, Search, and Close
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        color = Color(0xFFFFF3E0),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D))
+                        color = GitSurface
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Security,
-                                    contentDescription = null,
-                                    tint = Color(0xFFE65100),
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "All files access recommended for full storage browsing",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF5D4037)
-                                )
-                            }
-
-                            TextButton(
-                                onClick = { requestManageStoragePermission() },
-                                colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE65100)),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-                            ) {
-                                Text("Grant", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                            }
-                        }
-                    }
-                    HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
-                }
-
-                // Pinned Folders Quick Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(GitSurface)
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.PushPin,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = GitText2
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Pinned:",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = GitText2
-                        )
-                    }
-
-                    // Render Pinned Folder Pills
-                    pinnedFolderPaths.forEach { path ->
-                        val file = File(path)
-                        val label = if (path == defaultRoot.absolutePath) "Storage Root" else file.name
-                        val isCurrent = currentDir.absolutePath == path
-
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    if (file.exists() && file.canRead()) {
-                                        currentDir = file
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Back Arrow Button when navigated into a subfolder
+                                if (canNavigateUpFrom(currentDir)) {
+                                    IconButton(
+                                        onClick = { handleBackNavigation() },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                            contentDescription = "Back out path",
+                                            tint = GitText1,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     }
-                                },
-                            color = if (isCurrent) GitAccentSoft else GitSurface,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isCurrent) GitAccent else GitBorderStrong
-                            ),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(15.dp),
-                                    tint = if (isCurrent) GitAccent else Color(0xFFD97706)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = label,
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isCurrent) GitAccent else GitText1
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Unpin",
-                                    modifier = Modifier
-                                        .size(14.dp)
-                                        .clip(CircleShape)
-                                        .clickable { folderToUnpinPrompt = path },
-                                    tint = GitText3
-                                )
-                            }
-                        }
-                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
 
-                    // Button to Pin Current Directory
-                    val isAlreadyPinned = pinnedFolderPaths.contains(currentDir.absolutePath)
-                    if (!isAlreadyPinned) {
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { pinCurrentFolder() },
-                            color = GitAccentSoft,
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GitAccent.copy(alpha = 0.4f)),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    tint = GitAccent,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Pin Current",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = GitAccent
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // Search Bar (if visible)
-                AnimatedVisibility(visible = isSearchExpanded) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp),
-                        placeholder = { Text("Filter items in folder...", fontSize = 13.sp, color = GitText3) },
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp), tint = GitText2) },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp), tint = GitText2)
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = GitAccentSoft,
+                                    modifier = Modifier.size(38.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Smartphone,
+                                            contentDescription = null,
+                                            tint = GitAccent,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Device File Explorer",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GitText1,
+                                        fontSize = 15.5.sp
+                                    )
+                                    Text(
+                                        text = "Select files or folders to upload",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = GitText2,
+                                        fontSize = 12.sp
+                                    )
                                 }
                             }
-                        },
-                        shape = RoundedCornerShape(10.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = GitSurface,
-                            unfocusedContainerColor = GitSurface,
-                            focusedBorderColor = GitAccent,
-                            unfocusedBorderColor = GitBorderStrong
-                        )
-                    )
-                }
 
-                // Path Breadcrumbs & Up Button
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(GitSurface)
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    val canGoUp = canNavigateUpFrom(currentDir)
-                    IconButton(
-                        onClick = { handleBackNavigation() },
-                        enabled = canGoUp,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Parent Directory",
-                            tint = if (canGoUp) GitAccent else GitText3,
-                            modifier = Modifier.size(16.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Text(
-                        text = currentDir.absolutePath.replace("/storage/emulated/0", "Internal Storage"),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.SemiBold,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.5.sp,
-                        color = GitText1
-                    )
-                }
-
-                HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
-
-                // Selection Summary Bar & Select All
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = "${selectedPaths.size} selected",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selectedPaths.isNotEmpty()) GitAccent else GitText2,
-                            fontSize = 13.sp
-                        )
-                        if (selectedPaths.isNotEmpty()) {
-                            Spacer(modifier = Modifier.width(12.dp))
-                            TextButton(
-                                onClick = { selectedPaths.clear() },
-                                contentPadding = PaddingValues(0.dp)
-                            ) {
-                                Text("Clear", fontSize = 12.5.sp, color = GitText2)
-                            }
-                        }
-                    }
-
-                    TextButton(
-                        onClick = {
-                            val allInDir = displayedList.map { it.file.absolutePath }
-                            if (selectedPaths.containsAll(allInDir)) {
-                                selectedPaths.removeAll(allInDir.toSet())
-                            } else {
-                                allInDir.forEach { if (!selectedPaths.contains(it)) selectedPaths.add(it) }
-                            }
-                        },
-                        contentPadding = PaddingValues(0.dp)
-                    ) {
-                        Text("Select All in Folder", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = GitAccent)
-                    }
-                }
-
-                HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
-
-                // Main File & Folder List
-                Box(modifier = Modifier.weight(1f)) {
-                    if (isLoadingFiles) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(34.dp))
-                        }
-                    } else if (displayedList.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(Icons.Default.Folder, contentDescription = null, tint = GitText3, modifier = Modifier.size(44.dp))
-                                Spacer(modifier = Modifier.height(10.dp))
-                                Text("Folder is empty or unreadable", color = GitText2, fontSize = 13.5.sp)
-                            }
-                        }
-                    } else {
-                        LazyColumn(modifier = Modifier.fillMaxSize()) {
-                            items(displayedList, key = { it.file.absolutePath }) { item ->
-                                val isSelected = selectedPaths.contains(item.file.absolutePath)
-
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            if (item.isDirectory) {
-                                                currentDir = item.file
-                                            } else {
-                                                if (isSelected) selectedPaths.remove(item.file.absolutePath)
-                                                else selectedPaths.add(item.file.absolutePath)
-                                            }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Search toggle
+                                IconButton(
+                                    onClick = {
+                                        isSearchExpanded = !isSearchExpanded
+                                        if (!isSearchExpanded) {
+                                            searchQuery = ""
                                         }
-                                        .padding(horizontal = 16.dp, vertical = 9.dp),
+                                    },
+                                    modifier = Modifier.size(36.dp).testTag("search_toggle_button")
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSearchExpanded) Icons.Default.Close else Icons.Default.Search,
+                                        contentDescription = "Search",
+                                        tint = if (isSearchExpanded) GitAccent else GitText2,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // View Button: Adjust UI Scale larger or smaller
+                                IconButton(
+                                    onClick = { showViewScaleDialog = true },
+                                    modifier = Modifier.size(36.dp).testTag("view_scale_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = "View & UI Scale",
+                                        tint = if (uiScalePercent != 100) GitAccent else GitText2,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(4.dp))
+
+                                // Sort Menu (Reverse is inside Sort, Folders By Name option added)
+                                Box {
+                                    IconButton(
+                                        onClick = { showSortDropdown = true },
+                                        modifier = Modifier.size(36.dp).testTag("sort_menu_button")
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sort,
+                                            contentDescription = "Sort Options",
+                                            tint = GitText2,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+
+                                    DropdownMenu(
+                                        expanded = showSortDropdown,
+                                        onDismissRequest = { showSortDropdown = false },
+                                        containerColor = GitSurface,
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        // Option 1: Folders First
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Folders First", fontSize = 13.5.sp, color = GitText1)
+                                                    if (foldersFirst) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newFoldersFirst = !foldersFirst)
+                                            }
+                                        )
+
+                                        // Option 2: Sort Folders By Name (Ticked by default)
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Sort Folders By Name", fontSize = 13.5.sp, color = GitText1)
+                                                    if (sortFoldersByName) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newSortFoldersByName = !sortFoldersByName)
+                                            }
+                                        )
+
+                                        HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                                        // Sort Criteria: Name
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Name", fontSize = 13.5.sp, color = GitText1)
+                                                    if (sortBy == DeviceFolderSortBy.NAME) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newSortBy = DeviceFolderSortBy.NAME)
+                                                showSortDropdown = false
+                                            }
+                                        )
+
+                                        // Sort Criteria: Date Modified
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Date Modified", fontSize = 13.5.sp, color = GitText1)
+                                                    if (sortBy == DeviceFolderSortBy.DATE_MODIFIED) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newSortBy = DeviceFolderSortBy.DATE_MODIFIED)
+                                                showSortDropdown = false
+                                            }
+                                        )
+
+                                        // Sort Criteria: Size
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("Size", fontSize = 13.5.sp, color = GitText1)
+                                                    if (sortBy == DeviceFolderSortBy.SIZE) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newSortBy = DeviceFolderSortBy.SIZE)
+                                                showSortDropdown = false
+                                            }
+                                        )
+
+                                        // Sort Criteria: File Type
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text("File Type", fontSize = 13.5.sp, color = GitText1)
+                                                    if (sortBy == DeviceFolderSortBy.TYPE) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newSortBy = DeviceFolderSortBy.TYPE)
+                                                showSortDropdown = false
+                                            }
+                                        )
+
+                                        HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
+                                        // Reverse Order Toggle (Inside Sort dropdown!)
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.SwapVert,
+                                                            contentDescription = null,
+                                                            tint = if (isSortReversed) GitAccent else GitText2,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "Reverse Order",
+                                                            fontSize = 13.5.sp,
+                                                            color = if (isSortReversed) GitAccent else GitText1
+                                                        )
+                                                    }
+                                                    if (isSortReversed) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(Icons.Default.Check, contentDescription = null, tint = GitAccent, modifier = Modifier.size(16.dp))
+                                                    }
+                                                }
+                                            },
+                                            onClick = {
+                                                updateSort(newSortReversed = !isSortReversed)
+                                            }
+                                        )
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(6.dp))
+
+                                // Top Right Button to Close the File Explorer directly
+                                IconButton(
+                                    onClick = onDismiss,
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .testTag("close_device_explorer_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Close File Explorer",
+                                        tint = GitText1,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(color = GitBorder, thickness = 1.dp)
+
+                    // Permission Banner (if not yet full access)
+                    if (!hasAllFilesPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color(0xFFFFF3E0),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Security,
+                                        contentDescription = null,
+                                        tint = Color(0xFFE65100),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "All files access recommended for full storage browsing",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF5D4037)
+                                    )
+                                }
+
+                                TextButton(
+                                    onClick = { requestManageStoragePermission() },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFE65100)),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Grant", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                        HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
+                    }
+
+                    // Pinned Folders Quick Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(GitSurface)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.PushPin,
+                                contentDescription = null,
+                                modifier = Modifier.size(14.dp),
+                                tint = GitText2
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Pinned:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GitText2
+                            )
+                        }
+
+                        // Render Pinned Folder Pills with theme-adaptive Folder icon
+                        pinnedFolderPaths.forEach { path ->
+                            val file = File(path)
+                            val label = if (path == defaultRoot.absolutePath) "Storage Root" else file.name
+                            val isCurrent = currentDir.absolutePath == path
+
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable {
+                                        if (file.exists() && file.canRead()) {
+                                            currentDir = file
+                                        }
+                                    },
+                                color = if (isCurrent) GitAccentSoft else GitSurface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    if (isCurrent) GitAccent else GitBorderStrong
+                                ),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    // Multi-select Checkbox on BOTH files and folders
+                                    Icon(
+                                        imageVector = Icons.Default.Folder,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(15.dp),
+                                        tint = GitAccent
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = label,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isCurrent) GitAccent else GitText1
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Unpin",
+                                        modifier = Modifier
+                                            .size(14.dp)
+                                            .clip(CircleShape)
+                                            .clickable { folderToUnpinPrompt = path },
+                                        tint = GitText3
+                                    )
+                                }
+                            }
+                        }
+
+                        // Button to Pin Current Directory
+                        val isAlreadyPinned = pinnedFolderPaths.contains(currentDir.absolutePath)
+                        if (!isAlreadyPinned) {
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { pinCurrentFolder() },
+                                color = GitAccentSoft,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GitAccent.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Pin Current",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = GitAccent
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Search Bar & Subfolder toggle (Deep search finds BOTH files and folders)
+                    AnimatedVisibility(visible = isSearchExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(GitSurface)
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = searchQuery,
+                                onValueChange = { searchQuery = it },
+                                modifier = Modifier.fillMaxWidth().testTag("explorer_search_field"),
+                                placeholder = { Text("Search files & folders (e.g. apk, zip, pdf)...", fontSize = 13.sp, color = GitText3) },
+                                singleLine = true,
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Search,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                        tint = if (searchQuery.isNotEmpty()) GitAccent else GitText2
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(onClick = { searchQuery = "" }) {
+                                            Icon(Icons.Default.Close, contentDescription = "Clear", modifier = Modifier.size(18.dp), tint = GitText2)
+                                        }
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedContainerColor = GitSurface,
+                                    unfocusedContainerColor = GitSurface,
+                                    focusedBorderColor = GitAccent,
+                                    unfocusedBorderColor = GitBorderStrong
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                // Subfolder toggle
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { searchSubfolders = !searchSubfolders }
+                                        .padding(vertical = 2.dp)
+                                ) {
                                     Checkbox(
-                                        checked = isSelected,
-                                        onCheckedChange = { checked ->
-                                            if (checked == true) {
-                                                if (!selectedPaths.contains(item.file.absolutePath)) {
-                                                    selectedPaths.add(item.file.absolutePath)
-                                                }
-                                            } else {
-                                                selectedPaths.remove(item.file.absolutePath)
-                                            }
-                                        },
+                                        checked = searchSubfolders,
+                                        onCheckedChange = { searchSubfolders = it },
                                         colors = CheckboxDefaults.colors(
                                             checkedColor = GitAccent,
                                             uncheckedColor = GitBorderStrong
                                         ),
-                                        modifier = Modifier.size(24.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
-
-                                    Spacer(modifier = Modifier.width(12.dp))
-
-                                    // Dynamic File Icon with real APK icon loading & extension badges
-                                    LocalFileItemIcon(
-                                        file = item.file,
-                                        name = item.name,
-                                        isDirectory = item.isDirectory,
-                                        extension = item.extension,
-                                        modifier = Modifier.size(38.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Search in Subfolders",
+                                        fontSize = 12.sp,
+                                        color = if (searchSubfolders) GitText1 else GitText2
                                     )
+                                }
 
-                                    Spacer(modifier = Modifier.width(14.dp))
-
-                                    // Name & Meta
-                                    Column(modifier = Modifier.weight(1f)) {
+                                // Search results status
+                                if (searchQuery.isNotBlank()) {
+                                    if (isSearching) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            CircularProgressIndicator(
+                                                color = GitAccent,
+                                                modifier = Modifier.size(13.dp),
+                                                strokeWidth = 1.6.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Scanning...", fontSize = 11.5.sp, color = GitText2)
+                                        }
+                                    } else {
+                                        val fileCount = searchResults.count { !it.isDirectory }
+                                        val dirCount = searchResults.count { it.isDirectory }
                                         Text(
-                                            text = item.name,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = if (item.isDirectory) FontWeight.SemiBold else FontWeight.Medium,
-                                            color = GitText1,
-                                            fontSize = 14.sp,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
+                                            text = "Found ${searchResults.size} ($fileCount files, $dirCount dirs)",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = GitAccent
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Path Breadcrumbs & Up Button
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(GitSurface)
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        val canGoUp = canNavigateUpFrom(currentDir)
+                        IconButton(
+                            onClick = { handleBackNavigation() },
+                            enabled = canGoUp,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Parent Directory",
+                                tint = if (canGoUp) GitAccent else GitText3,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        Text(
+                            text = currentDir.absolutePath.replace("/storage/emulated/0", "Internal Storage"),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.SemiBold,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.5.sp,
+                            color = GitText1
+                        )
+                    }
+
+                    HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
+
+                    // Selection Summary Bar & Select All
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = "${selectedPaths.size} selected",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedPaths.isNotEmpty()) GitAccent else GitText2,
+                                fontSize = 13.sp
+                            )
+                            if (selectedPaths.isNotEmpty()) {
+                                Spacer(modifier = Modifier.width(12.dp))
+                                TextButton(
+                                    onClick = { selectedPaths.clear() },
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text("Clear", fontSize = 12.5.sp, color = GitText2)
+                                }
+                            }
+                        }
+
+                        TextButton(
+                            onClick = {
+                                val allInView = displayedList.map { it.file.absolutePath }
+                                if (selectedPaths.containsAll(allInView)) {
+                                    selectedPaths.removeAll(allInView.toSet())
+                                } else {
+                                    allInView.forEach { if (!selectedPaths.contains(it)) selectedPaths.add(it) }
+                                }
+                            },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text(
+                                text = if (searchQuery.isNotBlank()) "Select All in Results" else "Select All in Folder",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = GitAccent
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
+
+                    // Main File & Folder List
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (isLoadingFiles && searchQuery.isBlank()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(34.dp))
+                            }
+                        } else if (displayedList.isEmpty()) {
+                            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Icon(
+                                        imageVector = if (searchQuery.isNotBlank()) Icons.Default.Search else Icons.Default.Folder,
+                                        contentDescription = null,
+                                        tint = GitText3,
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = if (searchQuery.isNotBlank()) "No files or folders match \"$searchQuery\"" else "Folder is empty or unreadable",
+                                        color = GitText2,
+                                        fontSize = 13.5.sp
+                                    )
+                                }
+                            }
+                        } else {
+                            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                                items(displayedList, key = { it.file.absolutePath }) { item ->
+                                    val isSelected = selectedPaths.contains(item.file.absolutePath)
+
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                if (item.isDirectory) {
+                                                    currentDir = item.file
+                                                    if (searchQuery.isNotBlank()) {
+                                                        searchQuery = ""
+                                                    }
+                                                } else {
+                                                    if (isSelected) selectedPaths.remove(item.file.absolutePath)
+                                                    else selectedPaths.add(item.file.absolutePath)
+                                                }
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Multi-select Checkbox on BOTH files and folders
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = { checked ->
+                                                if (checked == true) {
+                                                    if (!selectedPaths.contains(item.file.absolutePath)) {
+                                                        selectedPaths.add(item.file.absolutePath)
+                                                    }
+                                                } else {
+                                                    selectedPaths.remove(item.file.absolutePath)
+                                                }
+                                            },
+                                            colors = CheckboxDefaults.colors(
+                                                checkedColor = GitAccent,
+                                                uncheckedColor = GitBorderStrong
+                                            ),
+                                            modifier = Modifier.size(24.dp)
                                         )
 
-                                        if (!item.isDirectory) {
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        // Dynamic File Icon with real APK icon loading & theme-adaptive folders
+                                        LocalFileItemIcon(
+                                            file = item.file,
+                                            name = item.name,
+                                            isDirectory = item.isDirectory,
+                                            extension = item.extension,
+                                            modifier = Modifier.size(38.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.width(14.dp))
+
+                                        // Name & Meta (with subfolder path display when searching)
+                                        Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = formatFileSize(item.size),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = GitText2,
-                                                fontSize = 12.sp
+                                                text = item.name,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (item.isDirectory) FontWeight.SemiBold else FontWeight.Medium,
+                                                color = GitText1,
+                                                fontSize = 14.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            ) {
+                                                if (!item.isDirectory) {
+                                                    Text(
+                                                        text = formatFileSize(item.size),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = GitText2,
+                                                        fontSize = 12.sp
+                                                    )
+                                                }
+
+                                                // Subfolder location path when found in child directories
+                                                if (item.relativePath.isNotBlank()) {
+                                                    if (!item.isDirectory) {
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "•",
+                                                            color = GitBorderStrong,
+                                                            fontSize = 10.sp
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                    }
+                                                    Text(
+                                                        text = "in ${item.relativePath}/",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = GitAccent,
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontSize = 11.sp,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (item.isDirectory) {
+                                            Icon(
+                                                imageVector = Icons.Default.ChevronRight,
+                                                contentDescription = "Open",
+                                                tint = GitText2,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         }
                                     }
 
-                                    if (item.isDirectory) {
-                                        Icon(
-                                            imageVector = Icons.Default.ChevronRight,
-                                            contentDescription = "Open",
-                                            tint = GitText2,
-                                            modifier = Modifier.size(18.dp)
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = 66.dp),
+                                        color = GitBorder,
+                                        thickness = 0.5.dp
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Bottom Confirmation Action Bar
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = GitSurface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = onDismiss,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(46.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
+                            ) {
+                                Text("Cancel", fontWeight = FontWeight.Medium, fontSize = 14.sp)
+                            }
+
+                            Button(
+                                onClick = { stageAndConfirmSelection() },
+                                enabled = selectedPaths.isNotEmpty() && !isCollectingFiles,
+                                modifier = Modifier
+                                    .weight(1.5f)
+                                    .height(46.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = GitButtonPrimary,
+                                    contentColor = Color.White,
+                                    disabledContainerColor = GitBorder,
+                                    disabledContentColor = GitText3
+                                ),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                if (isCollectingFiles) {
+                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Reading Files...", fontSize = 13.5.sp)
+                                } else {
+                                    Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Select ${selectedPaths.size} Item(s)",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // View & UI Scale Dialog: Lets the user reduce or increase the UI scale freely
+            if (showViewScaleDialog) {
+                AlertDialog(
+                    onDismissRequest = { showViewScaleDialog = false },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = GitSurface,
+                    title = {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = GitAccent,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "UI Scale & Display",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    color = GitText1
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = GitAccentSoft
+                            ) {
+                                Text(
+                                    text = "$uiScalePercent%",
+                                    fontWeight = FontWeight.Bold,
+                                    color = GitAccent,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    },
+                    text = {
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                text = "Reduce or increase the File Explorer size to your preference:",
+                                fontSize = 12.5.sp,
+                                color = GitText2
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // Quick Adjust Buttons Row (-5%, Reset, +5%)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                OutlinedButton(
+                                    onClick = { updateUiScale(uiScalePercent - 5) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Text("- 5%", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = GitText1)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { updateUiScale(100) },
+                                    modifier = Modifier.weight(1.2f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Reset (100%)", fontSize = 12.sp, color = GitText2)
+                                }
+
+                                OutlinedButton(
+                                    onClick = { updateUiScale(uiScalePercent + 5) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    Text("+ 5%", fontWeight = FontWeight.Bold, fontSize = 12.5.sp, color = GitText1)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // Smooth Slider
+                            Slider(
+                                value = uiScalePercent.toFloat(),
+                                onValueChange = { updateUiScale(it.roundToInt()) },
+                                valueRange = 65f..140f,
+                                steps = 14,
+                                colors = SliderDefaults.colors(
+                                    thumbColor = GitAccent,
+                                    activeTrackColor = GitAccent,
+                                    inactiveTrackColor = GitBorderStrong
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            // Presets Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                listOf(75 to "75%", 85 to "85%", 100 to "100%", 115 to "115%", 130 to "130%").forEach { (scale, label) ->
+                                    val isSelected = uiScalePercent == scale
+                                    Surface(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { updateUiScale(scale) },
+                                        color = if (isSelected) GitAccentSoft else GitSurface,
+                                        border = androidx.compose.foundation.BorderStroke(
+                                            1.dp,
+                                            if (isSelected) GitAccent else GitBorderStrong
+                                        ),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 11.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) GitAccent else GitText1,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp)
                                         )
                                     }
                                 }
-
-                                HorizontalDivider(
-                                    modifier = Modifier.padding(start = 66.dp),
-                                    color = GitBorder,
-                                    thickness = 0.5.dp
-                                )
                             }
                         }
-                    }
-                }
-
-                // Bottom Confirmation Action Bar
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = GitSurface,
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GitBorder)
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(46.dp),
-                            shape = RoundedCornerShape(10.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = GitText1)
-                        ) {
-                            Text("Cancel", fontWeight = FontWeight.Medium, fontSize = 14.sp)
-                        }
-
+                    },
+                    confirmButton = {
                         Button(
-                            onClick = { stageAndConfirmSelection() },
-                            enabled = selectedPaths.isNotEmpty() && !isCollectingFiles,
-                            modifier = Modifier
-                                .weight(1.5f)
-                                .height(46.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = GitButtonPrimary,
-                                contentColor = Color.White,
-                                disabledContainerColor = GitBorder,
-                                disabledContentColor = GitText3
-                            ),
-                            shape = RoundedCornerShape(10.dp)
+                            onClick = { showViewScaleDialog = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
+                            shape = RoundedCornerShape(8.dp)
                         ) {
-                            if (isCollectingFiles) {
-                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Reading Files...", fontSize = 13.5.sp)
-                            } else {
-                                Icon(Icons.Default.CloudUpload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "Select ${selectedPaths.size} Item(s)",
-                                    fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
-                                )
-                            }
+                            Text("Done", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                         }
                     }
-                }
+                )
             }
         }
     }
@@ -1225,9 +1616,10 @@ fun DeviceStorageExplorerModal(
 
 /**
  * Dedicated item icon with support for:
- * 1. Folders: Warm amber folder icon with container
- * 2. APKs: Direct application icon extraction from package archive via PackageManager with Android robot fallback
- * 3. File types: Type-based colored badges for PDF, ZIP, code, media, configs, etc.
+ * 1. Folders: Dynamically adopts the active App Theme (GitAccent / GitAccentSoft)
+ * 2. Archives (ZIP, TAR, 7Z, etc.): Dedicated Archive Drawer Icon in distinct deep orange/coral Color(0xFFEA580C)
+ * 3. APKs: Direct application icon extraction from package archive via PackageManager with Android robot fallback
+ * 4. File types: Type-based colored badges for PDF, code, media, patches, backups, etc.
  */
 @Composable
 fun LocalFileItemIcon(
@@ -1238,17 +1630,18 @@ fun LocalFileItemIcon(
     modifier: Modifier = Modifier
 ) {
     if (isDirectory) {
+        // Theme-adaptive Folder Icon and Container
         Surface(
             shape = RoundedCornerShape(8.dp),
-            color = Color(0xFFFEF3C7),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFDE68A)),
+            color = GitAccentSoft,
+            border = androidx.compose.foundation.BorderStroke(1.dp, GitAccent.copy(alpha = 0.30f)),
             modifier = modifier
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Default.Folder,
                     contentDescription = "Folder",
-                    tint = Color(0xFFD97706),
+                    tint = GitAccent,
                     modifier = Modifier.size(22.dp)
                 )
             }
