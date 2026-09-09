@@ -10,7 +10,11 @@ import com.example.data.local.CachedFileBlobEntity
 import com.example.data.local.FileDraftEntity
 import com.example.data.local.SavedRepoEntity
 import com.example.data.model.CommitResultResponse
+import com.example.data.model.CreateBlobPayload
+import com.example.data.model.CreateCommitPayload
 import com.example.data.model.CreateOrUpdateFilePayload
+import com.example.data.model.CreateTreeItemPayload
+import com.example.data.model.CreateTreePayload
 import com.example.data.model.DeleteFilePayload
 import com.example.data.model.DeviceCodeRequest
 import com.example.data.model.DeviceCodeResponse
@@ -22,6 +26,7 @@ import com.example.data.model.GitHubUser
 import com.example.data.model.GitTreeItem
 import com.example.data.model.OAuthTokenRequest
 import com.example.data.model.OAuthTokenResponse
+import com.example.data.model.UpdateRefPayload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -430,6 +435,132 @@ class GitHubRepository(
             branch = branch,
             fileSha = sha
         )
+    }
+
+    suspend fun commitMultipleFilesBatch(
+        token: String?,
+        owner: String,
+        repo: String,
+        branch: String,
+        message: String,
+        files: List<Pair<String, ByteArray>>,
+        onProgress: ((current: Int, total: Int, fileName: String) -> Unit)? = null
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            if (token.isNullOrBlank()) {
+                return@withContext Result.failure(Exception("Authentication token required to upload"))
+            }
+            if (files.isEmpty()) {
+                return@withContext Result.failure(Exception("No files to commit"))
+            }
+
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Invalid authentication token"))
+
+            // 1. Fetch latest commit on branch to find parent commit and base tree
+            val latestCommitResp = apiService.getCommitDetail(authHeader, owner, repo, branch)
+            if (!latestCommitResp.isSuccessful || latestCommitResp.body() == null) {
+                return@withContext Result.failure(
+                    Exception("Failed to get latest branch commit: ${latestCommitResp.message()} (${latestCommitResp.code()})")
+                )
+            }
+
+            val parentCommit = latestCommitResp.body()!!
+            val parentSha = parentCommit.sha
+            val baseTreeSha = parentCommit.commit.tree?.sha
+
+            // 2. Create blobs for each file
+            val treeItems = mutableListOf<CreateTreeItemPayload>()
+            val totalCount = files.size
+
+            for ((idx, filePair) in files.withIndex()) {
+                val (filePath, fileBytes) = filePair
+                val displayName = filePath.substringAfterLast('/')
+                onProgress?.invoke(idx + 1, totalCount, displayName)
+
+                val b64 = Base64.encodeToString(fileBytes, Base64.NO_WRAP)
+                val blobResp = apiService.createBlob(
+                    authHeader = authHeader,
+                    owner = owner,
+                    repo = repo,
+                    payload = CreateBlobPayload(content = b64, encoding = "base64")
+                )
+
+                if (!blobResp.isSuccessful || blobResp.body() == null) {
+                    return@withContext Result.failure(
+                        Exception("Failed to create git blob for $displayName (${blobResp.code()})")
+                    )
+                }
+
+                val blobSha = blobResp.body()!!.sha
+                treeItems.add(
+                    CreateTreeItemPayload(
+                        path = filePath.trimStart('/'),
+                        mode = "100644",
+                        type = "blob",
+                        sha = blobSha
+                    )
+                )
+            }
+
+            // 3. Create tree containing all new files
+            val treeResp = apiService.createTree(
+                authHeader = authHeader,
+                owner = owner,
+                repo = repo,
+                payload = CreateTreePayload(
+                    baseTree = baseTreeSha,
+                    tree = treeItems
+                )
+            )
+
+            if (!treeResp.isSuccessful || treeResp.body() == null) {
+                return@withContext Result.failure(
+                    Exception("Failed to create git tree (${treeResp.code()}): ${treeResp.message()}")
+                )
+            }
+
+            val newTreeSha = treeResp.body()!!.sha
+
+            // 4. Create single commit pointing to new tree
+            val commitResp = apiService.createCommit(
+                authHeader = authHeader,
+                owner = owner,
+                repo = repo,
+                payload = CreateCommitPayload(
+                    message = message.ifBlank { "Upload ${files.size} file(s)" },
+                    tree = newTreeSha,
+                    parents = listOf(parentSha)
+                )
+            )
+
+            if (!commitResp.isSuccessful || commitResp.body() == null) {
+                return@withContext Result.failure(
+                    Exception("Failed to create commit (${commitResp.code()}): ${commitResp.message()}")
+                )
+            }
+
+            val newCommitSha = commitResp.body()!!.sha
+
+            // 5. Update branch ref
+            val refResp = apiService.updateBranchRef(
+                authHeader = authHeader,
+                owner = owner,
+                repo = repo,
+                branch = branch,
+                payload = UpdateRefPayload(sha = newCommitSha, force = false)
+            )
+
+            if (!refResp.isSuccessful) {
+                return@withContext Result.failure(
+                    Exception("Failed to update branch reference (${refResp.code()})")
+                )
+            }
+
+            Result.success(newCommitSha)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun commitFileChanges(

@@ -143,7 +143,59 @@ data class CommitInfo(
     val message: String = "",
     val author: GitAuthorInfo? = null,
     val committer: GitAuthorInfo? = null,
-    @Json(name = "comment_count") val commentCount: Int = 0
+    @Json(name = "comment_count") val commentCount: Int = 0,
+    val tree: BranchCommit? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateBlobPayload(
+    val content: String,
+    val encoding: String = "base64"
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateBlobResponse(
+    val sha: String = "",
+    val url: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateTreePayload(
+    @Json(name = "base_tree") val baseTree: String? = null,
+    val tree: List<CreateTreeItemPayload>
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateTreeItemPayload(
+    val path: String,
+    val mode: String = "100644",
+    val type: String = "blob",
+    val sha: String
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateTreeResponse(
+    val sha: String = "",
+    val url: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateCommitPayload(
+    val message: String,
+    val tree: String,
+    val parents: List<String>
+)
+
+@JsonClass(generateAdapter = true)
+data class CreateCommitResponse(
+    val sha: String = "",
+    @Json(name = "html_url") val htmlUrl: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class UpdateRefPayload(
+    val sha: String,
+    val force: Boolean = false
 )
 
 @JsonClass(generateAdapter = true)

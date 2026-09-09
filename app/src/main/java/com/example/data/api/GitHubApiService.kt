@@ -2,8 +2,14 @@ package com.example.data.api
 
 import com.example.data.model.CommitResultResponse
 import com.example.data.model.CompareResponse
+import com.example.data.model.CreateBlobPayload
+import com.example.data.model.CreateBlobResponse
+import com.example.data.model.CreateCommitPayload
+import com.example.data.model.CreateCommitResponse
 import com.example.data.model.CreateOrUpdateFilePayload
 import com.example.data.model.CreateRefPayload
+import com.example.data.model.CreateTreePayload
+import com.example.data.model.CreateTreeResponse
 import com.example.data.model.DeleteFilePayload
 import com.example.data.model.FileContentResponse
 import com.example.data.model.GitHubBranch
@@ -12,6 +18,7 @@ import com.example.data.model.GitHubRepository
 import com.example.data.model.GitHubTagItem
 import com.example.data.model.GitHubUser
 import com.example.data.model.GitTreeResponse
+import com.example.data.model.UpdateRefPayload
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Body
@@ -19,6 +26,7 @@ import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.HTTP
 import retrofit2.http.Header
+import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
@@ -125,6 +133,39 @@ interface GitHubApiService {
         @Path("repo") repo: String,
         @Body payload: CreateRefPayload
     ): Response<Any>
+
+    @POST("repos/{owner}/{repo}/git/blobs")
+    suspend fun createBlob(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body payload: CreateBlobPayload
+    ): Response<CreateBlobResponse>
+
+    @POST("repos/{owner}/{repo}/git/trees")
+    suspend fun createTree(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body payload: CreateTreePayload
+    ): Response<CreateTreeResponse>
+
+    @POST("repos/{owner}/{repo}/git/commits")
+    suspend fun createCommit(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body payload: CreateCommitPayload
+    ): Response<CreateCommitResponse>
+
+    @PATCH("repos/{owner}/{repo}/git/refs/heads/{branch}")
+    suspend fun updateBranchRef(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "branch", encoded = true) branch: String,
+        @Body payload: UpdateRefPayload
+    ): Response<ResponseBody>
 
     @DELETE("repos/{owner}/{repo}/git/refs/heads/{branch}")
     suspend fun deleteBranchRef(

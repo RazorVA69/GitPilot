@@ -1,12 +1,18 @@
 package com.example.ui.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Article
+import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
+import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.FolderZip
 import androidx.compose.material.icons.outlined.Image
+import androidx.compose.material.icons.outlined.PictureAsPdf
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Terminal
+import androidx.compose.material.icons.outlined.VideoFile
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -37,24 +43,61 @@ object FileIcons {
         val lowerName = fileName.lowercase()
 
         if (lowerName.startsWith(".env") || lowerName == ".gitignore" || lowerName == ".gitattributes" || lowerName == ".editorconfig") {
-            return FileTypeMeta(Icons.Outlined.Description, GitText2, "Config")
+            return FileTypeMeta(Icons.Outlined.Settings, Color(0xFFE26D5C), "Config")
         }
 
-        if (lowerName.endsWith(".properties") || lowerName.endsWith(".pro")) {
-            return FileTypeMeta(Icons.Outlined.Settings, GitText2, "Config")
+        if (lowerName.contains("dockerfile") || lowerName.contains("makefile")) {
+            return FileTypeMeta(Icons.Outlined.Terminal, Color(0xFF00ADD8), "Build")
+        }
+
+        if (lowerName.endsWith(".properties") || lowerName.endsWith(".pro") || lowerName.endsWith(".conf")) {
+            return FileTypeMeta(Icons.Outlined.Settings, Color(0xFFE26D5C), "Config")
         }
 
         return when (ext) {
-            "kt", "kts", "java", "js", "jsx", "mjs", "ts", "tsx", "py", "go", "rs", "cpp", "c", "h", "hpp", "html", "htm", "css", "scss", "sass", "less", "json", "gradle" ->
-                FileTypeMeta(Icons.Outlined.Code, GitText2, "Code")
-            "xml", "yaml", "yml", "toml", "properties", "pro" ->
-                FileTypeMeta(Icons.Outlined.Settings, GitText2, "Config")
-            "md", "markdown", "txt", "rst", "log" ->
-                FileTypeMeta(Icons.Outlined.Description, GitText2, "Doc")
-            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico" ->
-                FileTypeMeta(Icons.Outlined.Image, GitText2, "Image")
-            "sh", "bash", "zsh", "bat", "cmd" ->
-                FileTypeMeta(Icons.Outlined.Terminal, GitText2, "Script")
+            // Programming languages
+            "kt", "kts" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFA97BFF), "Kotlin")
+            "java", "class" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFB07219), "Java")
+            "py", "pyw", "ipynb" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFF3572A5), "Python")
+            "js", "jsx", "mjs", "cjs" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFF1E05A), "JavaScript")
+            "ts", "tsx" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFF3178C6), "TypeScript")
+            "html", "htm", "xhtml" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFE34C26), "HTML")
+            "css", "scss", "sass", "less" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFF563D7C), "CSS")
+            "go" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFF00ADD8), "Go")
+            "rs" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFDEA584), "Rust")
+            "cpp", "c", "h", "hpp", "cc" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFF34B7D), "C/C++")
+            "cs" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFF178600), "C#")
+            "swift" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFFF05138), "Swift")
+            "dart" -> FileTypeMeta(Icons.Outlined.Code, Color(0xFF00B4AB), "Dart")
+            "sh", "bash", "zsh", "bat", "cmd", "ps1" -> FileTypeMeta(Icons.Outlined.Terminal, Color(0xFF4CAF50), "Script")
+            "gradle" -> FileTypeMeta(Icons.Outlined.Settings, Color(0xFF02569B), "Gradle")
+
+            // Data & Config
+            "json" -> FileTypeMeta(Icons.Outlined.DataObject, Color(0xFFCBCB41), "JSON")
+            "xml", "yaml", "yml", "toml", "properties", "pro", "ini", "cfg" ->
+                FileTypeMeta(Icons.Outlined.Settings, Color(0xFFE26D5C), "Config")
+            "sql", "db", "sqlite" ->
+                FileTypeMeta(Icons.Outlined.DataObject, Color(0xFF336791), "Database")
+
+            // Documents
+            "md", "markdown", "rst" -> FileTypeMeta(Icons.Outlined.Description, Color(0xFF42A5F5), "Markdown")
+            "pdf" -> FileTypeMeta(Icons.Outlined.PictureAsPdf, Color(0xFFE53935), "PDF")
+            "txt", "log", "csv", "tsv" -> FileTypeMeta(Icons.Outlined.Article, Color(0xFF78909C), "Text")
+
+            // Images
+            "png", "jpg", "jpeg", "gif", "svg", "webp", "ico", "bmp", "avif" ->
+                FileTypeMeta(Icons.Outlined.Image, Color(0xFF26A69A), "Image")
+
+            // Media
+            "mp4", "mkv", "mov", "avi", "webm", "flv", "3gp" ->
+                FileTypeMeta(Icons.Outlined.VideoFile, Color(0xFFAB47BC), "Video")
+            "mp3", "wav", "ogg", "m4a", "flac", "aac" ->
+                FileTypeMeta(Icons.Outlined.AudioFile, Color(0xFFEC407A), "Audio")
+
+            // Archives
+            "zip", "tar", "gz", "rar", "7z", "apk", "aab", "tgz", "bz2", "jar" ->
+                FileTypeMeta(Icons.Outlined.FolderZip, Color(0xFFFFA726), "Archive")
+
             else ->
                 FileTypeMeta(Icons.Outlined.Description, GitText2, "File")
         }

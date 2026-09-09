@@ -1610,46 +1610,82 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update {
                 it.copy(
                     isUploadingFiles = true,
-                    uploadProgress = Triple(0, files.size, "Starting batch upload...")
+                    uploadProgress = Triple(0, files.size, "Preparing upload of ${files.size} file(s)...")
                 )
             }
 
             val token = _uiState.value.currentAccount?.token
-            var successCount = 0
-            var failedCount = 0
-
-            for ((index, filePair) in files.withIndex()) {
-                val (relativePath, bytes) = filePair
+            val preparedFiles = files.map { (relativePath, bytes) ->
                 val fullPath = if (cleanDir.isEmpty()) relativePath else "$cleanDir/$relativePath"
+                fullPath to bytes
+            }
+
+            val finalMsg = commitMessage.ifBlank { "Upload ${files.size} file(s)" }
+
+            // Attempt single atomic commit via Git Data API
+            val batchResult = repository.commitMultipleFilesBatch(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                branch = branch,
+                message = finalMsg,
+                files = preparedFiles,
+                onProgress = { current, total, fileName ->
+                    _uiState.update {
+                        it.copy(uploadProgress = Triple(current, total, "Uploading $fileName ($current/$total)..."))
+                    }
+                }
+            )
+
+            if (batchResult.isSuccess) {
                 _uiState.update {
-                    it.copy(uploadProgress = Triple(index, files.size, "Uploading $relativePath..."))
+                    it.copy(
+                        isUploadingFiles = false,
+                        uploadProgress = null,
+                        showCreateUploadDialog = false,
+                        toastOrMessage = "Successfully created single commit with ${files.size} file(s)"
+                    )
+                }
+                syncActiveRepository(isSilent = false)
+            } else {
+                // Fallback: commit individually if Git Data API fails (e.g. empty repository without commits)
+                var successCount = 0
+                var failedCount = 0
+
+                for ((index, filePair) in preparedFiles.withIndex()) {
+                    val (fullPath, bytes) = filePair
+                    val displayName = fullPath.substringAfterLast('/')
+                    _uiState.update {
+                        it.copy(uploadProgress = Triple(index + 1, preparedFiles.size, "Uploading $displayName (${index + 1}/${preparedFiles.size})..."))
+                    }
+
+                    val existingSha = _uiState.value.rawTreeItems.find { it.path == fullPath }?.sha
+                    val singleMsg = if (preparedFiles.size == 1) finalMsg else "Add $displayName"
+                    val result = repository.commitRawFileBytes(
+                        token = token,
+                        owner = repo.owner.login,
+                        repo = repo.name,
+                        path = fullPath,
+                        bytes = bytes,
+                        message = singleMsg,
+                        sha = existingSha,
+                        branch = branch
+                    )
+
+                    if (result.isSuccess) successCount++
+                    else failedCount++
                 }
 
-                val existingSha = _uiState.value.rawTreeItems.find { it.path == fullPath }?.sha
-                val result = repository.commitRawFileBytes(
-                    token = token,
-                    owner = repo.owner.login,
-                    repo = repo.name,
-                    path = fullPath,
-                    bytes = bytes,
-                    message = commitMessage.ifBlank { "Upload $relativePath" },
-                    sha = existingSha,
-                    branch = branch
-                )
-
-                if (result.isSuccess) successCount++
-                else failedCount++
+                _uiState.update {
+                    it.copy(
+                        isUploadingFiles = false,
+                        uploadProgress = null,
+                        showCreateUploadDialog = false,
+                        toastOrMessage = "Uploaded $successCount file(s)" + if (failedCount > 0) " ($failedCount failed)" else ""
+                    )
+                }
+                syncActiveRepository(isSilent = false)
             }
-
-            _uiState.update {
-                it.copy(
-                    isUploadingFiles = false,
-                    uploadProgress = null,
-                    showCreateUploadDialog = false,
-                    toastOrMessage = "Uploaded $successCount file(s)" + if (failedCount > 0) " ($failedCount failed)" else ""
-                )
-            }
-            syncActiveRepository(isSilent = false)
         }
     }
 
