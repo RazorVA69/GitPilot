@@ -1,6 +1,7 @@
 package com.example.ui.components
 
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.outlined.Article
 import androidx.compose.material.icons.outlined.AudioFile
 import androidx.compose.material.icons.outlined.Code
@@ -94,9 +95,19 @@ object FileIcons {
             "mp3", "wav", "ogg", "m4a", "flac", "aac" ->
                 FileTypeMeta(Icons.Outlined.AudioFile, Color(0xFFEC407A), "Audio")
 
+            // Android App Packages
+            "apk", "aab", "apks", "xapk" ->
+                FileTypeMeta(Icons.Filled.Android, Color(0xFF0F9D58), "Android App")
+
             // Archives
-            "zip", "tar", "gz", "rar", "7z", "apk", "aab", "tgz", "bz2", "jar" ->
+            "zip", "tar", "gz", "rar", "7z", "tgz", "bz2", "jar" ->
                 FileTypeMeta(Icons.Outlined.FolderZip, Color(0xFFFFA726), "Archive")
+
+            // Backup & Patches
+            "bak", "old", "orig", "backup" ->
+                FileTypeMeta(Icons.Outlined.Description, Color(0xFF64748B), "Backup")
+            "mpp", "patch", "diff" ->
+                FileTypeMeta(Icons.Outlined.DataObject, Color(0xFF0284C7), "Patch")
 
             else ->
                 FileTypeMeta(Icons.Outlined.Description, GitText2, "File")
