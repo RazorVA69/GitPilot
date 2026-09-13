@@ -14,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -576,9 +578,13 @@ fun DeviceStorageExplorerModal(
             decorFitsSystemWindows = false
         )
     ) {
-        // Intercept Back Press: backs out path if in subfolder, closes only at root path
+        // Intercept Back Press: dismisses UI scale dialog if open, backs out path if in subfolder, closes only at root path
         BackHandler(enabled = true) {
-            handleBackNavigation()
+            if (showViewScaleDialog) {
+                showViewScaleDialog = false
+            } else {
+                handleBackNavigation()
+            }
         }
 
         CompositionLocalProvider(LocalDensity provides dynamicDensity) {
@@ -1434,56 +1440,88 @@ fun DeviceStorageExplorerModal(
                     }
                 }
             }
+        }
 
-            // View & UI Scale Dialog: Lets the user reduce or increase the UI scale freely
-            if (showViewScaleDialog) {
-                AlertDialog(
-                    onDismissRequest = { showViewScaleDialog = false },
-                    shape = RoundedCornerShape(16.dp),
-                    containerColor = GitSurface,
-                    title = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+        // View & UI Scale Overlay Modal:
+        // Rendered with baseDensity so moving the slider never resizes or recreates the dialog window,
+        // and never causes it to close/reappear!
+        if (showViewScaleDialog) {
+            CompositionLocalProvider(LocalDensity provides baseDensity) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.52f))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Tune,
-                                    contentDescription = null,
-                                    tint = GitAccent,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "UI Scale & Display",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = GitText1
-                                )
+                            showViewScaleDialog = false
+                        }
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 420.dp)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { /* intercept click inside card */ },
+                        shape = RoundedCornerShape(16.dp),
+                        color = GitSurface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
+                        shadowElevation = 8.dp
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(20.dp)
+                        ) {
+                            // Dialog Title & Current Scale Badge
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Tune,
+                                        contentDescription = null,
+                                        tint = GitAccent,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "UI Scale & Display",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = GitText1
+                                    )
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = GitAccentSoft
+                                ) {
+                                    Text(
+                                        text = "$uiScalePercent%",
+                                        fontWeight = FontWeight.Bold,
+                                        color = GitAccent,
+                                        fontSize = 13.sp,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
 
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = GitAccentSoft
-                            ) {
-                                Text(
-                                    text = "$uiScalePercent%",
-                                    fontWeight = FontWeight.Bold,
-                                    color = GitAccent,
-                                    fontSize = 13.sp,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                )
-                            }
-                        }
-                    },
-                    text = {
-                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Spacer(modifier = Modifier.height(14.dp))
+
                             Text(
                                 text = "Reduce or increase the File Explorer size to your preference:",
                                 fontSize = 12.5.sp,
                                 color = GitText2
                             )
+
                             Spacer(modifier = Modifier.height(14.dp))
 
                             // Quick Adjust Buttons Row (-5%, Reset, +5%)
@@ -1520,12 +1558,20 @@ fun DeviceStorageExplorerModal(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(14.dp))
 
-                            // Smooth Slider
+                            // Smooth Slider (Live responsive scaling without close or re-appearance!)
                             Slider(
                                 value = uiScalePercent.toFloat(),
-                                onValueChange = { updateUiScale(it.roundToInt()) },
+                                onValueChange = { newValue ->
+                                    val rounded = newValue.roundToInt().coerceIn(65, 140)
+                                    if (rounded != uiScalePercent) {
+                                        uiScalePercent = rounded
+                                    }
+                                },
+                                onValueChangeFinished = {
+                                    prefs.edit().putInt("explorer_ui_scale", uiScalePercent).apply()
+                                },
                                 valueRange = 65f..140f,
                                 steps = 14,
                                 colors = SliderDefaults.colors(
@@ -1535,9 +1581,9 @@ fun DeviceStorageExplorerModal(
                                 )
                             )
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
 
-                            // Presets Row
+                            // Presets Row (Clicking any percentage sets scale AND closes the dialog immediately!)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
@@ -1547,7 +1593,10 @@ fun DeviceStorageExplorerModal(
                                     Surface(
                                         modifier = Modifier
                                             .clip(RoundedCornerShape(8.dp))
-                                            .clickable { updateUiScale(scale) },
+                                            .clickable {
+                                                updateUiScale(scale)
+                                                showViewScaleDialog = false
+                                            },
                                         color = if (isSelected) GitAccentSoft else GitSurface,
                                         border = androidx.compose.foundation.BorderStroke(
                                             1.dp,
@@ -1565,18 +1614,28 @@ fun DeviceStorageExplorerModal(
                                     }
                                 }
                             }
-                        }
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = { showViewScaleDialog = false },
-                            colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text("Done", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            // Confirm Button Row
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Button(
+                                    onClick = {
+                                        prefs.edit().putInt("explorer_ui_scale", uiScalePercent).apply()
+                                        showViewScaleDialog = false
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = GitButtonPrimary),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Text("Done", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                                }
+                            }
                         }
                     }
-                )
+                }
             }
         }
     }

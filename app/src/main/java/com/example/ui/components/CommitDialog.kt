@@ -148,6 +148,23 @@ fun CommitDialog(
                     .fillMaxWidth()
                     .testTag("commit_message_input"),
                 placeholder = { Text("Describe changes...", color = GitText3, fontSize = 13.sp) },
+                trailingIcon = {
+                    if (commitMessage.isNotEmpty()) {
+                        IconButton(
+                            onClick = { commitMessage = "" },
+                            modifier = Modifier
+                                .size(28.dp)
+                                .testTag("clear_commit_message_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Clear commit message",
+                                tint = GitText2,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                },
                 maxLines = 3,
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
