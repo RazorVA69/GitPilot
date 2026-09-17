@@ -408,7 +408,8 @@ fun GitExplorerApp(
             selectedBranch = uiState.selectedBranch,
             isLoading = uiState.isLoadingBranches,
             onDismiss = { viewModel.setShowBranchSelector(false) },
-            onSelectBranch = viewModel::selectBranch
+            onSelectBranch = viewModel::selectBranch,
+            onRefresh = viewModel::reloadBranches
         )
     }
 

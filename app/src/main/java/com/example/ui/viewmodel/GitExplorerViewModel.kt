@@ -983,7 +983,16 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         syncActiveRepository(isSilent = false)
     }
 
+    fun reloadBranches() {
+        val repo = _uiState.value.selectedRepo ?: return
+        loadBranches(repo.owner.login, repo.name)
+    }
+
     fun refreshTree() {
+        val repo = _uiState.value.selectedRepo
+        if (repo != null) {
+            loadBranches(repo.owner.login, repo.name)
+        }
         syncActiveRepository(isSilent = false)
     }
 
@@ -2322,6 +2331,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     fun setShowBranchSelector(show: Boolean) {
         _uiState.update { it.copy(showBranchSelector = show) }
+        if (show) {
+            reloadBranches()
+        }
     }
 
     fun clearToast() {

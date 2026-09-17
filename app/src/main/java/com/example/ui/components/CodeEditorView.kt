@@ -113,6 +113,13 @@ import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -1543,21 +1550,35 @@ fun CodeEditorView(
                             Icon(Icons.Default.KeyboardArrowDown, contentDescription = "Next Match", modifier = Modifier.size(20.dp), tint = GitText1)
                         }
 
-                        // Close Search
+                        // Close / Clear Search
                         IconButton(
                             onClick = {
-                                isSearchVisible = false
-                                searchQuery = ""
-                                replaceQuery = ""
-                                if (!textFieldValue.selection.collapsed) {
-                                    textFieldValue = textFieldValue.copy(
-                                        selection = TextRange(textFieldValue.selection.start)
-                                    )
+                                if (searchQuery.isNotEmpty()) {
+                                    searchQuery = ""
+                                    currentMatchIndex = 0
+                                    if (!textFieldValue.selection.collapsed) {
+                                        textFieldValue = textFieldValue.copy(
+                                            selection = TextRange(textFieldValue.selection.start)
+                                        )
+                                    }
+                                } else {
+                                    isSearchVisible = false
+                                    replaceQuery = ""
+                                    if (!textFieldValue.selection.collapsed) {
+                                        textFieldValue = textFieldValue.copy(
+                                            selection = TextRange(textFieldValue.selection.start)
+                                        )
+                                    }
                                 }
                             },
                             modifier = Modifier.size(36.dp)
                         ) {
-                            Icon(Icons.Default.Close, contentDescription = "Close Find", modifier = Modifier.size(18.dp), tint = GitText2)
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = if (searchQuery.isNotEmpty()) "Clear Search" else "Close Find",
+                                modifier = Modifier.size(18.dp),
+                                tint = GitText2
+                            )
                         }
                     }
 
@@ -1750,6 +1771,7 @@ fun CodeEditorView(
                                 fontSize = fontSize,
                                 fontFamily = selectedFontFamily.fontFamily,
                                 editorBorderColor = editorBorderColor,
+                                editorBgColor = editorBgColor,
                                 verticalScrollState = verticalScrollState
                             )
                         }
@@ -1758,12 +1780,13 @@ fun CodeEditorView(
                         val textModifier = if (isWordWrapEnabled) {
                             Modifier
                                 .fillMaxWidth()
-                                .padding(top = 12.dp, start = 6.dp, end = 20.dp)
+                                .padding(top = 12.dp, start = 14.dp, end = 20.dp)
                         } else {
                             Modifier
                                 .fillMaxWidth()
+                                .clipToBounds()
                                 .horizontalScroll(horizontalScrollState)
-                                .padding(top = 12.dp, start = 6.dp, end = 28.dp)
+                                .padding(top = 12.dp, start = 14.dp, end = 28.dp)
                         }
 
                         val fontSizePx = with(density) { fontSize.sp.toPx() }
@@ -1813,7 +1836,54 @@ fun CodeEditorView(
                             value = textFieldValue,
                             onValueChange = { handleEditorValueChange(it) },
                             onTextLayout = { textLayoutResult = it },
-                            modifier = editorContentModifier.testTag("code_editor_textarea"),
+                            modifier = editorContentModifier
+                                .testTag("code_editor_textarea")
+                                .onPreviewKeyEvent { event ->
+                                    if (event.type == KeyEventType.KeyDown) {
+                                        when (event.key) {
+                                            Key.DirectionLeft -> {
+                                                val isShift = event.isShiftPressed || (event.nativeKeyEvent.metaState and android.view.KeyEvent.META_SHIFT_MASK) != 0
+                                                val sel = textFieldValue.selection
+                                                if (isShift) {
+                                                    val newEnd = (sel.end - 1).coerceAtLeast(0)
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, newEnd))
+                                                    true
+                                                } else {
+                                                    val cur = if (!sel.collapsed) sel.min else sel.end
+                                                    if (cur > 0) {
+                                                        val newPos = cur - 1
+                                                        textFieldValue = textFieldValue.copy(selection = TextRange(newPos))
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                }
+                                            }
+                                            Key.DirectionRight -> {
+                                                val isShift = event.isShiftPressed || (event.nativeKeyEvent.metaState and android.view.KeyEvent.META_SHIFT_MASK) != 0
+                                                val textLen = textFieldValue.text.length
+                                                val sel = textFieldValue.selection
+                                                if (isShift) {
+                                                    val newEnd = (sel.end + 1).coerceAtMost(textLen)
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, newEnd))
+                                                    true
+                                                } else {
+                                                    val cur = if (!sel.collapsed) sel.max else sel.end
+                                                    if (cur < textLen) {
+                                                        val newPos = cur + 1
+                                                        textFieldValue = textFieldValue.copy(selection = TextRange(newPos))
+                                                        true
+                                                    } else {
+                                                        false
+                                                    }
+                                                }
+                                            }
+                                            else -> false
+                                        }
+                                    } else {
+                                        false
+                                    }
+                                },
                             readOnly = isFolderDrawerOpen,
                             enabled = !isFolderDrawerOpen,
                             textStyle = TextStyle(
@@ -1823,7 +1893,7 @@ fun CodeEditorView(
                                 lineHeight = (fontSize * 1.5).sp
                             ),
                             visualTransformation = visualTransformation,
-                            cursorBrush = if (isFolderDrawerOpen || showTypographyModal || showGoToLineDialog || showMoreMenu || isSearchVisible) SolidColor(Color.Transparent) else SolidColor(GitAccent)
+                            cursorBrush = if (isFolderDrawerOpen || showTypographyModal || showGoToLineDialog || showMoreMenu) SolidColor(Color.Transparent) else SolidColor(GitAccent)
                         )
                     }
 
@@ -2178,6 +2248,7 @@ private fun LineNumbersGutter(
     fontSize: Float,
     fontFamily: androidx.compose.ui.text.font.FontFamily,
     editorBorderColor: Color,
+    editorBgColor: Color,
     verticalScrollState: androidx.compose.foundation.ScrollState,
     modifier: Modifier = Modifier
 ) {
@@ -2208,6 +2279,7 @@ private fun LineNumbersGutter(
         modifier = modifier
             .width(gutterWidth)
             .height(totalHeightDp)
+            .background(editorBgColor)
             .drawBehind {
                 // Hairline separator on right
                 drawLine(
