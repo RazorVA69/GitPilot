@@ -207,212 +207,243 @@ class SyntaxHighlighter(private val language: SupportedLanguage) {
             return AnnotatedString(text)
         }
 
-        // Bound scanning to 120,000 characters for instant sub-millisecond execution even on huge files
-        val scanLimit = text.length.coerceAtMost(120_000)
-
         return buildAnnotatedString {
             append(text)
 
-            var i = 0
+            if (language == SupportedLanguage.XML_HTML) {
+                highlightXml(text, this)
+            } else {
+                highlightGeneral(text, this)
+            }
+        }
+    }
 
-            while (i < scanLimit) {
-                val c = text[i]
+    private fun highlightXml(text: String, builder: AnnotatedString.Builder) {
+        val scanLimit = text.length.coerceAtMost(60_000)
+        var i = 0
+        var spansCount = 0
+        val maxSpans = 1800
 
-                // Line comment (//)
-                if (c == '/' && i + 1 < scanLimit && text[i + 1] == '/' && language != SupportedLanguage.CSS) {
-                    val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
-                    addStyle(SyntaxStyles.Comment, i, end)
-                    i = end
+        while (i < scanLimit && spansCount < maxSpans) {
+            val nextLt = text.indexOf('<', i)
+            if (nextLt == -1 || nextLt >= scanLimit) break
+            i = nextLt
+
+            // XML Comment (<!-- ... -->)
+            if (i + 3 < scanLimit && text.startsWith("<!--", i)) {
+                val end = text.indexOf("-->", i + 4).let { if (it == -1 || it + 3 > scanLimit) scanLimit else it + 3 }
+                builder.addStyle(SyntaxStyles.Comment, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // XML CDATA, DOCTYPE or Processing Instructions (<?xml ... ?>, <!DOCTYPE ...>)
+            if (i + 1 < scanLimit && (text[i + 1] == '?' || text[i + 1] == '!')) {
+                val endChar = if (text[i + 1] == '?') "?>" else ">"
+                val end = text.indexOf(endChar, i + 2).let { if (it == -1 || it + endChar.length > scanLimit) scanLimit else it + endChar.length }
+                builder.addStyle(SyntaxStyles.Comment, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // XML Tags & Attributes (<intent ... >, </intent>, <string name="...">)
+            val isClosing = (i + 1 < scanLimit && text[i + 1] == '/')
+            val nameStart = if (isClosing) i + 2 else i + 1
+            var nameEnd = nameStart
+            while (nameEnd < scanLimit && (text[nameEnd].isLetterOrDigit() || text[nameEnd] == ':' || text[nameEnd] == '-' || text[nameEnd] == '_')) {
+                nameEnd++
+            }
+            if (nameEnd > nameStart) {
+                builder.addStyle(SyntaxStyles.XmlTag, nameStart, nameEnd)
+                spansCount++
+            }
+
+            // Parse attributes inside tag up to '>'
+            var p = nameEnd
+            while (p < scanLimit && text[p] != '>' && spansCount < maxSpans) {
+                val ch = text[p]
+                if (ch == '/' && p + 1 < scanLimit && text[p + 1] == '>') {
+                    p += 2
+                    break
+                }
+                if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '=') {
+                    p++
                     continue
                 }
-
-                // Hash comment (#) for Python, Shell, YAML
-                if (c == '#' && (language == SupportedLanguage.PYTHON || language == SupportedLanguage.SHELL || language == SupportedLanguage.YAML)) {
-                    val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
-                    addStyle(SyntaxStyles.Comment, i, end)
-                    i = end
-                    continue
-                }
-
-                // SQL comment (--)
-                if (c == '-' && i + 1 < scanLimit && text[i + 1] == '-' && language == SupportedLanguage.SQL) {
-                    val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
-                    addStyle(SyntaxStyles.Comment, i, end)
-                    i = end
-                    continue
-                }
-
-                // Block comment (/* ... */)
-                if (c == '/' && i + 1 < scanLimit && text[i + 1] == '*') {
-                    val end = text.indexOf("*/", i + 2).let { if (it == -1 || it + 2 > scanLimit) scanLimit else it + 2 }
-                    addStyle(SyntaxStyles.Comment, i, end)
-                    i = end
-                    continue
-                }
-
-                // XML/HTML Comment (<!-- ... -->)
-                if (c == '<' && i + 3 < scanLimit && text.startsWith("<!--", i)) {
-                    val end = text.indexOf("-->", i + 4).let { if (it == -1 || it + 3 > scanLimit) scanLimit else it + 3 }
-                    addStyle(SyntaxStyles.Comment, i, end)
-                    i = end
-                    continue
-                }
-
-                // XML / HTML CDATA, DOCTYPE or Processing Instructions (<?xml ... ?>, <!DOCTYPE ...>)
-                if (language == SupportedLanguage.XML_HTML && c == '<' && (i + 1 < scanLimit) && (text[i + 1] == '?' || text[i + 1] == '!')) {
-                    val endChar = if (text[i + 1] == '?') "?>" else ">"
-                    val end = text.indexOf(endChar, i + 2).let { if (it == -1 || it + endChar.length > scanLimit) scanLimit else it + endChar.length }
-                    addStyle(SyntaxStyles.Comment, i, end)
-                    i = end
-                    continue
-                }
-
-                // XML / HTML Tags & Attributes (<intent ... >, </intent>, <action android:name="..." />)
-                if (language == SupportedLanguage.XML_HTML && c == '<') {
-                    val isClosing = (i + 1 < scanLimit && text[i + 1] == '/')
-                    val nameStart = if (isClosing) i + 2 else i + 1
-                    var nameEnd = nameStart
-                    while (nameEnd < scanLimit && (text[nameEnd].isLetterOrDigit() || text[nameEnd] == ':' || text[nameEnd] == '-' || text[nameEnd] == '_')) {
-                        nameEnd++
+                // Attribute value in quotes ("..." or '...')
+                if (ch == '"' || ch == '\'') {
+                    val quote = ch
+                    val valStart = p
+                    p++
+                    while (p < scanLimit && text[p] != quote && text[p] != '\n') {
+                        if (text[p] == '\\' && p + 1 < scanLimit) p += 2
+                        else p++
                     }
-                    if (nameEnd > nameStart) {
-                        addStyle(SyntaxStyles.XmlTag, nameStart, nameEnd)
-                    }
-
-                    // Parse attributes inside opening or self-closing tags
-                    var p = nameEnd
-                    while (p < scanLimit && text[p] != '>') {
-                        val ch = text[p]
-                        if (ch == '/' && p + 1 < scanLimit && text[p + 1] == '>') {
-                            p += 2
-                            break
-                        }
-                        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') {
-                            p++
-                            continue
-                        }
-                        if (ch == '=') {
-                            p++
-                            continue
-                        }
-                        // Attribute value in quotes ("..." or '...')
-                        if (ch == '"' || ch == '\'') {
-                            val quote = ch
-                            val valStart = p
-                            p++
-                            while (p < scanLimit && text[p] != quote && text[p] != '\n') {
-                                if (text[p] == '\\' && p + 1 < scanLimit) p += 2
-                                else p++
-                            }
-                            if (p < scanLimit && text[p] == quote) p++
-                            addStyle(SyntaxStyles.StringLiteral, valStart, p)
-                            continue
-                        }
-                        // Attribute name (e.g. android:name, xmlns:android, theme, id)
-                        if (ch.isLetter() || ch == '_' || ch == ':') {
-                            val attrStart = p
-                            while (p < scanLimit && (text[p].isLetterOrDigit() || text[p] == ':' || text[p] == '-' || text[p] == '_')) {
-                                p++
-                            }
-                            addStyle(SyntaxStyles.XmlAttribute, attrStart, p)
-                            continue
-                        }
+                    if (p < scanLimit && text[p] == quote) p++
+                    builder.addStyle(SyntaxStyles.StringLiteral, valStart, p)
+                    spansCount++
+                    continue
+                }
+                // Attribute name (e.g. android:name, xmlns:android, theme, id)
+                if (ch.isLetter() || ch == '_' || ch == ':') {
+                    val attrStart = p
+                    while (p < scanLimit && (text[p].isLetterOrDigit() || text[p] == ':' || text[p] == '-' || text[p] == '_')) {
                         p++
                     }
-                    if (p < scanLimit && text[p] == '>') p++
-                    i = p
+                    builder.addStyle(SyntaxStyles.XmlAttribute, attrStart, p)
+                    spansCount++
                     continue
                 }
-
-                // Annotations (@Something)
-                if (c == '@' && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.PYTHON)) {
-                    var end = i + 1
-                    while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
-                        end++
-                    }
-                    if (end > i + 1) {
-                        addStyle(SyntaxStyles.Annotation, i, end)
-                        i = end
-                        continue
-                    }
-                }
-
-                // Strings ("..." or '...' or `...`)
-                if (c == '"' || c == '\'' || c == '`') {
-                    val quote = c
-                    val isTriple = i + 2 < scanLimit && text[i + 1] == quote && text[i + 2] == quote
-                    if (isTriple) {
-                        val triple = "$quote$quote$quote"
-                        val end = text.indexOf(triple, i + 3).let { if (it == -1 || it + 3 > scanLimit) scanLimit else it + 3 }
-                        addStyle(SyntaxStyles.StringLiteral, i, end)
-                        i = end
-                        continue
-                    } else {
-                        var end = i + 1
-                        while (end < scanLimit) {
-                            if (text[end] == '\\') {
-                                end += 2
-                                continue
-                            }
-                            if (text[end] == quote || text[end] == '\n') {
-                                if (text[end] == quote) end++
-                                break
-                            }
-                            end++
-                        }
-                        addStyle(SyntaxStyles.StringLiteral, i, end.coerceAtMost(scanLimit))
-                        i = end
-                        continue
-                    }
-                }
-
-                // Numbers (0-9)
-                if (c.isDigit() && (i == 0 || !text[i - 1].isLetterOrDigit() && text[i - 1] != '_')) {
-                    var end = i + 1
-                    while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
-                        end++
-                    }
-                    addStyle(SyntaxStyles.NumberLiteral, i, end)
-                    i = end
-                    continue
-                }
-
-                // Words / Identifiers / Keywords
-                if (c.isLetter() || c == '_') {
-                    var end = i + 1
-                    while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '_')) {
-                        end++
-                    }
-                    val wordLength = end - i
-
-                    // Quick length check to prevent useless string allocations
-                    if (wordLength in 2..18) {
-                        val word = text.substring(i, end)
-                        if (keywords.contains(word) || (language == SupportedLanguage.SQL && keywords.contains(word.lowercase()))) {
-                            addStyle(SyntaxStyles.Keyword, i, end)
-                        } else if (word[0].isUpperCase() && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.RUST)) {
-                            addStyle(SyntaxStyles.TypeName, i, end)
-                        } else if (end < scanLimit && text[end] == '(') {
-                            addStyle(SyntaxStyles.FunctionName, i, end)
-                        } else if ((language == SupportedLanguage.JSON || language == SupportedLanguage.YAML) && end < scanLimit) {
-                            var checkPos = end
-                            while (checkPos < scanLimit && (text[checkPos] == ' ' || text[checkPos] == '\t')) {
-                                checkPos++
-                            }
-                            if (checkPos < scanLimit && text[checkPos] == ':') {
-                                addStyle(SyntaxStyles.Property, i, end)
-                            }
-                        }
-                    } else if (end < scanLimit && text[end] == '(') {
-                        addStyle(SyntaxStyles.FunctionName, i, end)
-                    }
-
-                    i = end
-                    continue
-                }
-
-                i++
+                p++
             }
+            if (p < scanLimit && text[p] == '>') p++
+            i = p
+        }
+    }
+
+    private fun highlightGeneral(text: String, builder: AnnotatedString.Builder) {
+        val scanLimit = text.length.coerceAtMost(50_000)
+        var i = 0
+        var spansCount = 0
+        val maxSpans = 1800
+
+        while (i < scanLimit && spansCount < maxSpans) {
+            val c = text[i]
+
+            // Line comment (//)
+            if (c == '/' && i + 1 < scanLimit && text[i + 1] == '/' && language != SupportedLanguage.CSS) {
+                val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
+                builder.addStyle(SyntaxStyles.Comment, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // Hash comment (#) for Python, Shell, YAML
+            if (c == '#' && (language == SupportedLanguage.PYTHON || language == SupportedLanguage.SHELL || language == SupportedLanguage.YAML)) {
+                val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
+                builder.addStyle(SyntaxStyles.Comment, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // SQL comment (--)
+            if (c == '-' && i + 1 < scanLimit && text[i + 1] == '-' && language == SupportedLanguage.SQL) {
+                val end = text.indexOf('\n', i).let { if (it == -1 || it > scanLimit) scanLimit else it }
+                builder.addStyle(SyntaxStyles.Comment, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // Block comment (/* ... */)
+            if (c == '/' && i + 1 < scanLimit && text[i + 1] == '*') {
+                val end = text.indexOf("*/", i + 2).let { if (it == -1 || it + 2 > scanLimit) scanLimit else it + 2 }
+                builder.addStyle(SyntaxStyles.Comment, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // Annotations (@Something)
+            if (c == '@' && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.PYTHON)) {
+                var end = i + 1
+                while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
+                    end++
+                }
+                if (end > i + 1) {
+                    builder.addStyle(SyntaxStyles.Annotation, i, end)
+                    spansCount++
+                    i = end
+                    continue
+                }
+            }
+
+            // Strings ("..." or '...' or `...`)
+            if (c == '"' || c == '\'' || c == '`') {
+                val quote = c
+                val isTriple = i + 2 < scanLimit && text[i + 1] == quote && text[i + 2] == quote
+                if (isTriple) {
+                    val triple = "$quote$quote$quote"
+                    val end = text.indexOf(triple, i + 3).let { if (it == -1 || it + 3 > scanLimit) scanLimit else it + 3 }
+                    builder.addStyle(SyntaxStyles.StringLiteral, i, end)
+                    spansCount++
+                    i = end
+                    continue
+                } else {
+                    var end = i + 1
+                    while (end < scanLimit) {
+                        if (text[end] == '\\') {
+                            end += 2
+                            continue
+                        }
+                        if (text[end] == quote || text[end] == '\n') {
+                            if (text[end] == quote) end++
+                            break
+                        }
+                        end++
+                    }
+                    builder.addStyle(SyntaxStyles.StringLiteral, i, end.coerceAtMost(scanLimit))
+                    spansCount++
+                    i = end
+                    continue
+                }
+            }
+
+            // Numbers (0-9)
+            if (c.isDigit() && (i == 0 || !text[i - 1].isLetterOrDigit() && text[i - 1] != '_')) {
+                var end = i + 1
+                while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '.' || text[end] == '_')) {
+                    end++
+                }
+                builder.addStyle(SyntaxStyles.NumberLiteral, i, end)
+                spansCount++
+                i = end
+                continue
+            }
+
+            // Words / Identifiers / Keywords
+            if (c.isLetter() || c == '_') {
+                var end = i + 1
+                while (end < scanLimit && (text[end].isLetterOrDigit() || text[end] == '_')) {
+                    end++
+                }
+                val wordLength = end - i
+
+                if (wordLength in 2..18) {
+                    val word = text.substring(i, end)
+                    if (keywords.contains(word) || (language == SupportedLanguage.SQL && keywords.contains(word.lowercase()))) {
+                        builder.addStyle(SyntaxStyles.Keyword, i, end)
+                        spansCount++
+                    } else if (word[0].isUpperCase() && (language == SupportedLanguage.KOTLIN || language == SupportedLanguage.JAVA || language == SupportedLanguage.TYPESCRIPT || language == SupportedLanguage.RUST)) {
+                        builder.addStyle(SyntaxStyles.TypeName, i, end)
+                        spansCount++
+                    } else if (end < scanLimit && text[end] == '(') {
+                        builder.addStyle(SyntaxStyles.FunctionName, i, end)
+                        spansCount++
+                    } else if ((language == SupportedLanguage.JSON || language == SupportedLanguage.YAML) && end < scanLimit) {
+                        var checkPos = end
+                        while (checkPos < scanLimit && (text[checkPos] == ' ' || text[checkPos] == '\t')) {
+                            checkPos++
+                        }
+                        if (checkPos < scanLimit && text[checkPos] == ':') {
+                            builder.addStyle(SyntaxStyles.Property, i, end)
+                            spansCount++
+                        }
+                    }
+                } else if (end < scanLimit && text[end] == '(') {
+                    builder.addStyle(SyntaxStyles.FunctionName, i, end)
+                    spansCount++
+                }
+
+                i = end
+                continue
+            }
+
+            i++
         }
     }
 }
@@ -423,50 +454,23 @@ object SyntaxHighlighterRegistry {
 }
 
 class CodeSyntaxVisualTransformation(
-    private val language: SupportedLanguage,
-    private val matchingBracketIndices: Pair<Int, Int>? = null
+    val language: SupportedLanguage
 ) : VisualTransformation {
     private val highlighter = SyntaxHighlighterRegistry.get(language)
 
-    // Fast memory cache for transformed text to prevent rebuilding on repeated layout passes
-    private var lastRawText: String? = null
-    private var lastBracketPair: Pair<Int, Int>? = null
-    private var lastResult: TransformedText? = null
-
     override fun filter(text: AnnotatedString): TransformedText {
         val raw = text.text
-        if (raw == lastRawText && matchingBracketIndices == lastBracketPair && lastResult != null) {
-            return lastResult!!
-        }
-
         val base = BaseSyntaxCache.getOrCreate(language, raw, highlighter)
-
-        val result: TransformedText
-        if (matchingBracketIndices == null) {
-            result = TransformedText(base, OffsetMapping.Identity)
-        } else {
-            val (first, second) = matchingBracketIndices
-            val hasFirst = first in raw.indices
-            val hasSecond = second in raw.indices
-            if (!hasFirst && !hasSecond) {
-                result = TransformedText(base, OffsetMapping.Identity)
-            } else {
-                val builder = AnnotatedString.Builder(base)
-                if (hasFirst) {
-                    builder.addStyle(SyntaxStyles.BracketHighlight, first, first + 1)
-                }
-                if (hasSecond) {
-                    builder.addStyle(SyntaxStyles.BracketHighlight, second, second + 1)
-                }
-                result = TransformedText(builder.toAnnotatedString(), OffsetMapping.Identity)
-            }
-        }
-
-        lastRawText = raw
-        lastBracketPair = matchingBracketIndices
-        lastResult = result
-        return result
+        return TransformedText(base, OffsetMapping.Identity)
     }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is CodeSyntaxVisualTransformation) return false
+        return language == other.language
+    }
+
+    override fun hashCode(): Int = language.hashCode()
 }
 
 // Bounded Bracket Matching Utilities for High Performance

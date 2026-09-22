@@ -51,6 +51,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentCut
 import androidx.compose.material.icons.filled.ContentPaste
@@ -125,6 +126,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
@@ -163,6 +165,7 @@ import com.example.ui.components.editor.EditorTabsRow
 import com.example.ui.components.editor.EditorTypographyModal
 import com.example.ui.components.editor.FolderFilesDrawer
 import com.example.ui.components.editor.SupportedLanguage
+import com.example.ui.components.editor.SyntaxColors
 import com.example.ui.theme.GitAccent
 import com.example.ui.theme.GitAccentSoft
 import com.example.ui.theme.GitAppBg
@@ -248,9 +251,14 @@ fun CodeEditorView(
         }
     }
 
+    val context = LocalContext.current
+    val editorPrefs = remember { context.getSharedPreferences("code_editor_settings", android.content.Context.MODE_PRIVATE) }
     var isWordWrapEnabled by rememberSaveable { mutableStateOf(false) }
     var showLineNumbers by rememberSaveable { mutableStateOf(true) }
     var showQuickSymbolRow by rememberSaveable { mutableStateOf(false) }
+    var isSyntaxHighlightingEnabled by rememberSaveable {
+        mutableStateOf(editorPrefs.getBoolean("syntax_highlighting_enabled", true))
+    }
 
     // Search and Replace State
     var isSearchVisible by rememberSaveable { mutableStateOf(false) }
@@ -286,13 +294,26 @@ fun CodeEditorView(
         mutableStateOf(TextFieldValue(text = content, selection = TextRange(content.length)))
     }
 
-    // VSCode-style block guides computed only when source text changes
-    val blockGuides = remember(textFieldValue.text) {
-        EditorBlockGuideHelper.computeBlockGuides(textFieldValue.text)
+    // Language-aware Syntax Highlighting
+    val language = remember(filePath) {
+        SupportedLanguage.fromFileName(filePath.substringAfterLast('/'))
+    }
+
+    // VSCode-style block guides computed only when source text changes (skip on XML/plain text/huge files for instant responsiveness)
+    val blockGuides = remember(textFieldValue.text, language) {
+        if (language == SupportedLanguage.XML_HTML || language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN || textFieldValue.text.length > 50_000) {
+            emptyList()
+        } else {
+            EditorBlockGuideHelper.computeBlockGuides(textFieldValue.text)
+        }
     }
 
     // Previous active file path tracker for differential tab switching
     var previousFilePath by remember { mutableStateOf(filePath) }
+
+    // Track paste operations to avoid jumping to lines below
+    var lastEditIsPaste by remember { mutableStateOf(false) }
+    var lastEditStart by remember { mutableIntStateOf(0) }
 
     // Differential tab switching: When switching tabs, update textFieldValue and scroll positions immediately without recreating state
     LaunchedEffect(filePath) {
@@ -365,21 +386,16 @@ fun CodeEditorView(
         }
     }
 
-    // Language-aware Syntax Highlighting & Bracket Matching
-    val language = remember(filePath) {
-        SupportedLanguage.fromFileName(filePath.substringAfterLast('/'))
-    }
-
-    val matchingBracketIndices = remember(language, textFieldValue.text, textFieldValue.selection) {
-        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) null
+    val matchingBracketIndices = remember(language, textFieldValue.text, textFieldValue.selection, isSyntaxHighlightingEnabled) {
+        if (!isSyntaxHighlightingEnabled || language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN || textFieldValue.text.length > 60_000) null
         else BracketMatcher.findMatchingBracket(textFieldValue.text, textFieldValue.selection.start)
     }
 
-    val visualTransformation = remember(language, matchingBracketIndices) {
-        if (language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) {
+    val visualTransformation = remember(language, isSyntaxHighlightingEnabled) {
+        if (!isSyntaxHighlightingEnabled || language == SupportedLanguage.PLAIN_TEXT || language == SupportedLanguage.MARKDOWN) {
             androidx.compose.ui.text.input.VisualTransformation.None
         } else {
-            CodeSyntaxVisualTransformation(language, matchingBracketIndices)
+            CodeSyntaxVisualTransformation(language)
         }
     }
 
@@ -478,6 +494,14 @@ fun CodeEditorView(
         val oldSelection = textFieldValue.selection
         var adjustedTfv = newTfv
 
+        // If text was pasted or multi-character replaced, mark paste tracking to prevent jumping
+        val isPasteOrReplace = (newText.length - oldText.length > 1) ||
+            (!oldSelection.collapsed && newText != oldText)
+        if (isPasteOrReplace) {
+            lastEditIsPaste = true
+            lastEditStart = oldSelection.min
+        }
+
         // If a single character was typed
         if (newText.length == oldText.length + 1 && newTfv.selection.collapsed) {
             val cursor = newTfv.selection.start
@@ -575,6 +599,8 @@ fun CodeEditorView(
         val clip = clipboardManager.getText()?.text
         if (!clip.isNullOrEmpty()) {
             val prevSelection = textFieldValue.selection
+            lastEditIsPaste = true
+            lastEditStart = prevSelection.min
             if (hasSelection) {
                 val start = textFieldValue.selection.min
                 val end = textFieldValue.selection.max
@@ -1344,7 +1370,7 @@ fun CodeEditorView(
                                 },
                                 leadingIcon = {
                                     Icon(
-                                        Icons.Default.WrapText,
+                                        Icons.Default.FormatListNumbered,
                                         contentDescription = null,
                                         tint = GitText2,
                                         modifier = Modifier.size(18.dp)
@@ -1352,6 +1378,41 @@ fun CodeEditorView(
                                 },
                                 onClick = {
                                     showLineNumbers = !showLineNumbers
+                                    showMoreMenu = false
+                                }
+                            )
+
+                            // Syntax Highlighting Toggle
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text("Syntax Highlighting", color = GitText1, fontSize = 13.sp)
+                                        if (isSyntaxHighlightingEnabled) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = GitAccent,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        Icons.Default.Code,
+                                        contentDescription = null,
+                                        tint = GitText2,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                },
+                                onClick = {
+                                    val newVal = !isSyntaxHighlightingEnabled
+                                    isSyntaxHighlightingEnabled = newVal
+                                    editorPrefs.edit().putBoolean("syntax_highlighting_enabled", newVal).apply()
                                     showMoreMenu = false
                                 }
                             )
@@ -1700,8 +1761,36 @@ fun CodeEditorView(
                 val topMarginPx = with(density) { 20.dp.toPx() }.toInt()
 
                 // Instantly and accurately keep active cursor in view when selection changes
-                LaunchedEffect(filePath, textFieldValue.selection) {
+                LaunchedEffect(filePath, textFieldValue.selection, textLayoutResult) {
                     val layout = textLayoutResult ?: return@LaunchedEffect
+                    // Guard against querying stale layout when text has just changed
+                    if (layout.layoutInput.text.text != textFieldValue.text) return@LaunchedEffect
+
+                    val viewportHeight = verticalScrollState.viewportSize
+                    if (viewportHeight <= 0) return@LaunchedEffect
+
+                    val curScroll = verticalScrollState.value
+                    val maxScroll = verticalScrollState.maxValue
+
+                    if (lastEditIsPaste) {
+                        lastEditIsPaste = false
+                        // When text is pasted, keep the insertion start point visible without jumping to lines below!
+                        val insertOffset = lastEditStart.coerceIn(0, layout.layoutInput.text.length)
+                        val insertRect = try { layout.getCursorRect(insertOffset) } catch (_: Exception) { null }
+                        if (insertRect != null) {
+                            val insertTop = (insertRect.top + topPaddingPx).toInt()
+                            val insertBottom = (insertRect.bottom + topPaddingPx).toInt()
+
+                            // If insertion point is already visible within the viewport, DO NOT SCROLL AT ALL!
+                            val isInsertVisible = insertTop >= curScroll && insertBottom <= curScroll + viewportHeight
+                            if (!isInsertVisible) {
+                                val target = (insertTop - topMarginPx).coerceIn(0, maxScroll)
+                                verticalScrollState.scrollTo(target)
+                            }
+                            return@LaunchedEffect
+                        }
+                    }
+
                     val sel = textFieldValue.selection
                     val cursor = sel.end.coerceIn(0, textFieldValue.text.length)
                     if (cursor > layout.layoutInput.text.length) return@LaunchedEffect
@@ -1712,13 +1801,8 @@ fun CodeEditorView(
                         return@LaunchedEffect
                     }
 
-                    val viewportHeight = verticalScrollState.viewportSize
-                    if (viewportHeight <= 0) return@LaunchedEffect
-
                     val cursorTop = (cursorRect.top + topPaddingPx).toInt()
                     val cursorBottom = (cursorRect.bottom + topPaddingPx).toInt()
-                    val curScroll = verticalScrollState.value
-                    val maxScroll = verticalScrollState.maxValue
 
                     if (cursorBottom > curScroll + viewportHeight - safetyMarginPx) {
                         val target = (cursorBottom + safetyMarginPx - viewportHeight).coerceIn(0, maxScroll)
@@ -1735,6 +1819,7 @@ fun CodeEditorView(
                     if (isImeVisible) {
                         delay(120L)
                         val layout = textLayoutResult ?: return@LaunchedEffect
+                        if (layout.layoutInput.text.text != textFieldValue.text) return@LaunchedEffect
                         val cursor = textFieldValue.selection.end.coerceIn(0, textFieldValue.text.length)
                         if (cursor <= layout.layoutInput.text.length) {
                             val cursorRect = try { layout.getCursorRect(cursor) } catch (_: Exception) { null }
@@ -1796,24 +1881,49 @@ fun CodeEditorView(
                                 val layout = textLayoutResult
                                 if (layout != null && layout.lineCount > 0) {
                                     // 1. Draw VSCode-style Code Block Guides with start/end indicators and nesting
-                                    EditorBlockGuideHelper.renderBlockGuides(
-                                        drawScope = this,
-                                        layout = layout,
-                                        guides = blockGuides,
-                                        charWidth = spaceCharWidth,
-                                        cursorOffset = textFieldValue.selection.start,
-                                        accentColor = editorAccentColor
-                                    )
+                                    if (blockGuides.isNotEmpty()) {
+                                        EditorBlockGuideHelper.renderBlockGuides(
+                                            drawScope = this,
+                                            layout = layout,
+                                            guides = blockGuides,
+                                            charWidth = spaceCharWidth,
+                                            cursorOffset = textFieldValue.selection.start,
+                                            accentColor = editorAccentColor
+                                        )
+                                    }
+
+                                    // 1b. Draw matching bracket highlight on canvas (zero re-layout, zero lag)
+                                    if (matchingBracketIndices != null && isSyntaxHighlightingEnabled) {
+                                        val (bFirst, bSecond) = matchingBracketIndices
+                                        val textLen = layout.layoutInput.text.length
+                                        val bracketBg = SyntaxColors.BracketMatchBg
+                                        val bracketBorder = SyntaxColors.BracketHighlight
+                                        if (bFirst in 0 until textLen) {
+                                            val box = layout.getBoundingBox(bFirst)
+                                            drawRect(color = bracketBg, topLeft = box.topLeft, size = box.size)
+                                            drawRect(color = bracketBorder, topLeft = box.topLeft, size = box.size, style = Stroke(width = 1.5f))
+                                        }
+                                        if (bSecond in 0 until textLen) {
+                                            val box = layout.getBoundingBox(bSecond)
+                                            drawRect(color = bracketBg, topLeft = box.topLeft, size = box.size)
+                                            drawRect(color = bracketBorder, topLeft = box.topLeft, size = box.size, style = Stroke(width = 1.5f))
+                                        }
+                                    }
                                 }
 
                                 // 2. Draw Code Text Content
                                 drawContent()
 
-                                // 3. Draw Soft-Wrap Continuation Indicators ("⤡" like Screenshot 1)
+                                // 3. Draw Soft-Wrap Continuation Indicators ("⤡") - Viewport-bounded for 60 FPS
                                 if (isWordWrapEnabled && layout != null && layout.lineCount > 1) {
                                     val fullText = layout.layoutInput.text.text
+                                    val scrollY = verticalScrollState.value
+                                    val viewportHeight = verticalScrollState.viewportSize.takeIf { it > 0 } ?: 2000
+                                    val firstVisibleLine = (layout.getLineForVerticalPosition(scrollY.toFloat()) - 1).coerceIn(0, layout.lineCount - 1)
+                                    val lastVisibleLine = (layout.getLineForVerticalPosition((scrollY + viewportHeight).toFloat()) + 1).coerceIn(0, layout.lineCount - 1)
+
                                     drawIntoCanvas { canvas ->
-                                        for (vLine in 0 until layout.lineCount - 1) {
+                                        for (vLine in firstVisibleLine..lastVisibleLine) {
                                             val lineEnd = layout.getLineEnd(vLine)
                                             if (lineEnd in 1..fullText.length && fullText[lineEnd - 1] != '\n') {
                                                 // ⤡ at end of line that wraps
@@ -1823,9 +1933,11 @@ fun CodeEditorView(
 
                                                 // ⤡ at start of continuation line
                                                 val nextLine = vLine + 1
-                                                val leftX = (layout.getLineLeft(nextLine) - 13f * density.density).coerceAtLeast(0f)
-                                                val nextBaselineY = layout.getLineBaseline(nextLine)
-                                                canvas.nativeCanvas.drawText("⤡", leftX, nextBaselineY, wrapSymbolPaint)
+                                                if (nextLine < layout.lineCount) {
+                                                    val leftX = (layout.getLineLeft(nextLine) - 13f * density.density).coerceAtLeast(0f)
+                                                    val nextBaselineY = layout.getLineBaseline(nextLine)
+                                                    canvas.nativeCanvas.drawText("⤡", leftX, nextBaselineY, wrapSymbolPaint)
+                                                }
                                             }
                                         }
                                     }
@@ -1840,10 +1952,21 @@ fun CodeEditorView(
                                 .testTag("code_editor_textarea")
                                 .onPreviewKeyEvent { event ->
                                     if (event.type == KeyEventType.KeyDown) {
-                                        when (event.key) {
-                                            Key.DirectionLeft -> {
-                                                val isShift = event.isShiftPressed || (event.nativeKeyEvent.metaState and android.view.KeyEvent.META_SHIFT_MASK) != 0
-                                                val sel = textFieldValue.selection
+                                        val nativeEvent = event.nativeKeyEvent
+                                        val metaState = nativeEvent.metaState
+                                        val isShift = event.isShiftPressed ||
+                                            (metaState and android.view.KeyEvent.META_SHIFT_MASK) != 0 ||
+                                            (metaState and android.view.KeyEvent.META_SHIFT_ON) != 0
+                                        val isCtrl = (metaState and android.view.KeyEvent.META_CTRL_MASK) != 0 ||
+                                            (metaState and android.view.KeyEvent.META_CTRL_ON) != 0
+                                        val keyCode = nativeEvent.keyCode
+                                        val sel = textFieldValue.selection
+                                        val text = textFieldValue.text
+                                        val textLen = text.length
+
+                                        when {
+                                            // 1. Left Arrow (<)
+                                            event.key == Key.DirectionLeft || keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
                                                 if (isShift) {
                                                     val newEnd = (sel.end - 1).coerceAtLeast(0)
                                                     textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, newEnd))
@@ -1859,10 +1982,9 @@ fun CodeEditorView(
                                                     }
                                                 }
                                             }
-                                            Key.DirectionRight -> {
-                                                val isShift = event.isShiftPressed || (event.nativeKeyEvent.metaState and android.view.KeyEvent.META_SHIFT_MASK) != 0
-                                                val textLen = textFieldValue.text.length
-                                                val sel = textFieldValue.selection
+
+                                            // 2. Right Arrow (>)
+                                            event.key == Key.DirectionRight || keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> {
                                                 if (isShift) {
                                                     val newEnd = (sel.end + 1).coerceAtMost(textLen)
                                                     textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, newEnd))
@@ -1878,6 +2000,183 @@ fun CodeEditorView(
                                                     }
                                                 }
                                             }
+
+                                            // 3. Up Arrow (^)
+                                            event.key == Key.DirectionUp || keyCode == android.view.KeyEvent.KEYCODE_DPAD_UP -> {
+                                                val curPos = sel.end.coerceIn(0, textLen)
+                                                val layout = textLayoutResult
+                                                val targetOffset = if (layout != null && curPos <= layout.layoutInput.text.length && layout.lineCount > 0) {
+                                                    val currentLine = layout.getLineForOffset(curPos)
+                                                    if (currentLine > 0) {
+                                                        val targetLine = currentLine - 1
+                                                        val curX = layout.getCursorRect(curPos).left
+                                                        val targetY = (layout.getLineTop(targetLine) + layout.getLineBottom(targetLine)) / 2f
+                                                        layout.getOffsetForPosition(Offset(curX, targetY))
+                                                    } else {
+                                                        0
+                                                    }
+                                                } else {
+                                                    val prevNewline = text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0))
+                                                    if (prevNewline >= 0) {
+                                                        val lineStart = prevNewline + 1
+                                                        val col = curPos - lineStart
+                                                        val lineAboveEnd = prevNewline
+                                                        val lineAboveStart = text.lastIndexOf('\n', (lineAboveEnd - 1).coerceAtLeast(0)) + 1
+                                                        minOf(lineAboveStart + col, lineAboveEnd)
+                                                    } else {
+                                                        0
+                                                    }
+                                                }
+
+                                                if (isShift) {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, targetOffset))
+                                                } else {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(targetOffset))
+                                                }
+                                                true
+                                            }
+
+                                            // 4. Down Arrow (v)
+                                            event.key == Key.DirectionDown || keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN -> {
+                                                val curPos = sel.end.coerceIn(0, textLen)
+                                                val layout = textLayoutResult
+                                                val targetOffset = if (layout != null && curPos <= layout.layoutInput.text.length && layout.lineCount > 0) {
+                                                    val currentLine = layout.getLineForOffset(curPos)
+                                                    if (currentLine < layout.lineCount - 1) {
+                                                        val targetLine = currentLine + 1
+                                                        val curX = layout.getCursorRect(curPos).left
+                                                        val targetY = (layout.getLineTop(targetLine) + layout.getLineBottom(targetLine)) / 2f
+                                                        layout.getOffsetForPosition(Offset(curX, targetY))
+                                                    } else {
+                                                        textLen
+                                                    }
+                                                } else {
+                                                    val nextNewline = text.indexOf('\n', curPos)
+                                                    if (nextNewline >= 0) {
+                                                        val lineStart = text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0)) + 1
+                                                        val col = curPos - lineStart
+                                                        val lineBelowStart = nextNewline + 1
+                                                        val lineBelowEnd = text.indexOf('\n', lineBelowStart).takeIf { it >= 0 } ?: textLen
+                                                        minOf(lineBelowStart + col, lineBelowEnd)
+                                                    } else {
+                                                        textLen
+                                                    }
+                                                }
+
+                                                if (isShift) {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, targetOffset))
+                                                } else {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(targetOffset))
+                                                }
+                                                true
+                                            }
+
+                                            // 5. Jump to Line Start / Text Start (|<-)
+                                            event.key == Key.MoveHome || event.key == Key.PageUp ||
+                                            keyCode == android.view.KeyEvent.KEYCODE_MOVE_HOME || keyCode == android.view.KeyEvent.KEYCODE_PAGE_UP -> {
+                                                val curPos = sel.end.coerceIn(0, textLen)
+                                                val prevNewline = text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0))
+                                                val lineStart = if (prevNewline == -1) 0 else prevNewline + 1
+                                                val targetOffset = if (curPos == lineStart) 0 else lineStart
+
+                                                if (isShift) {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, targetOffset))
+                                                } else {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(targetOffset))
+                                                }
+                                                true
+                                            }
+
+                                            // 6. Jump to Line End / Text End (->|)
+                                            event.key == Key.MoveEnd || event.key == Key.PageDown ||
+                                            keyCode == android.view.KeyEvent.KEYCODE_MOVE_END || keyCode == android.view.KeyEvent.KEYCODE_PAGE_DOWN -> {
+                                                val curPos = sel.end.coerceIn(0, textLen)
+                                                val nextNewline = text.indexOf('\n', curPos)
+                                                val lineEnd = if (nextNewline == -1) textLen else nextNewline
+                                                val targetOffset = if (curPos == lineEnd) textLen else lineEnd
+
+                                                if (isShift) {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, targetOffset))
+                                                } else {
+                                                    textFieldValue = textFieldValue.copy(selection = TextRange(targetOffset))
+                                                }
+                                                true
+                                            }
+
+                                            // 7. Select All
+                                            keyCode == 288 /* KEYCODE_SELECT_ALL */ || (event.key == Key.A && isCtrl) -> {
+                                                selectAllText()
+                                                true
+                                            }
+
+                                            // 8. Copy
+                                            event.key == Key.Copy || keyCode == 277 /* KEYCODE_COPY */ || (event.key == Key.C && isCtrl) -> {
+                                                copyText()
+                                                true
+                                            }
+
+                                            // 9. Cut
+                                            event.key == Key.Cut || keyCode == 278 /* KEYCODE_CUT */ || (event.key == Key.X && isCtrl) -> {
+                                                cutText()
+                                                true
+                                            }
+
+                                            // 10. Paste
+                                            event.key == Key.Paste || keyCode == 279 /* KEYCODE_PASTE */ || (event.key == Key.V && isCtrl) -> {
+                                                pasteText()
+                                                true
+                                            }
+
+                                            // 11. Undo / Redo with Ctrl
+                                            isCtrl && event.key == Key.Z -> {
+                                                if (isShift) performRedo() else performUndo()
+                                                true
+                                            }
+                                            isCtrl && event.key == Key.Y -> {
+                                                performRedo()
+                                                true
+                                            }
+
+                                            // 12. Gboard Select Button Toggle
+                                            keyCode == 214 /* KEYCODE_SELECT */ || keyCode == 96 /* KEYCODE_BUTTON_SELECT */ -> {
+                                                textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, sel.end))
+                                                true
+                                            }
+
+                                            // 13. Backspace / Delete
+                                            event.key == Key.Backspace || keyCode == android.view.KeyEvent.KEYCODE_DEL -> {
+                                                if (hasSelection) {
+                                                    val start = sel.min
+                                                    val end = sel.max
+                                                    val prevSelection = sel
+                                                    val newText = text.removeRange(start, end)
+                                                    textFieldValue = textFieldValue.copy(
+                                                        text = newText,
+                                                        selection = TextRange(start)
+                                                    )
+                                                    handleTextChange(newText, prevSelection, immediate = true)
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            }
+                                            event.key == Key.Delete || keyCode == android.view.KeyEvent.KEYCODE_FORWARD_DEL -> {
+                                                if (hasSelection) {
+                                                    val start = sel.min
+                                                    val end = sel.max
+                                                    val prevSelection = sel
+                                                    val newText = text.removeRange(start, end)
+                                                    textFieldValue = textFieldValue.copy(
+                                                        text = newText,
+                                                        selection = TextRange(start)
+                                                    )
+                                                    handleTextChange(newText, prevSelection, immediate = true)
+                                                    true
+                                                } else {
+                                                    false
+                                                }
+                                            }
+
                                             else -> false
                                         }
                                     } else {
@@ -2275,6 +2574,22 @@ private fun LineNumbersGutter(
         (topPaddingPx + baseHeight + 60.dp.toPx()).toDp()
     }
 
+    val fullTextStr = textLayoutResult?.layoutInput?.text?.text ?: ""
+    val lineStartOffsets = remember(fullTextStr, lineCount) {
+        if (lineCount > 1200) {
+            val list = ArrayList<Int>(lineCount + 2)
+            list.add(0)
+            for (idx in fullTextStr.indices) {
+                if (fullTextStr[idx] == '\n') {
+                    list.add(idx + 1)
+                }
+            }
+            list.toIntArray()
+        } else {
+            null
+        }
+    }
+
     Box(
         modifier = modifier
             .width(gutterWidth)
@@ -2335,9 +2650,17 @@ private fun LineNumbersGutter(
                         val fullText = layout.layoutInput.text.text
                         val startChar = layout.getLineStart(firstVisualLine)
 
-                        var logicalLine = 1
-                        for (k in 0 until startChar.coerceAtMost(fullText.length)) {
-                            if (fullText[k] == '\n') logicalLine++
+                        val offsets = lineStartOffsets
+                        var logicalLine = if (offsets != null) {
+                            val binIdx = offsets.binarySearch(startChar)
+                            val line = if (binIdx >= 0) binIdx + 1 else (-binIdx - 1)
+                            line.coerceIn(1, lineCount)
+                        } else {
+                            var count = 1
+                            for (k in 0 until startChar.coerceAtMost(fullText.length)) {
+                                if (fullText[k] == '\n') count++
+                            }
+                            count
                         }
 
                         drawIntoCanvas { canvas ->
