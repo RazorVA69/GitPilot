@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.VerticalAlignBottom
 import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WrapText
 import androidx.compose.material.icons.filled.ZoomIn
 import androidx.compose.material.icons.filled.ZoomOut
@@ -155,6 +156,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import androidx.compose.foundation.gestures.detectTransformGestures
+import com.example.data.model.ConflictResolverUtil
 import com.example.data.model.FileContentResponse
 import com.example.data.model.GitTreeItem
 import com.example.ui.components.editor.BracketMatcher
@@ -1525,6 +1527,115 @@ fun CodeEditorView(
         }
 
         HorizontalDivider(color = GitBorder, thickness = 0.5.dp)
+
+        // INLINE CONFLICT RESOLUTION BANNER
+        val currentEditorText = textFieldValue.text
+        val hasConflict = remember(currentEditorText) {
+            ConflictResolverUtil.hasConflictMarkers(currentEditorText)
+        }
+
+        if (hasConflict) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                color = Color(0xFFFEF2F2),
+                border = BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                shape = RoundedCornerShape(6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = Md3LightError,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Merge conflict markers in file",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Md3LightError
+                        )
+                    }
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            onClick = {
+                                val resolved = ConflictResolverUtil.resolveText(currentEditorText, "ours")
+                                textFieldValue = textFieldValue.copy(text = resolved, selection = TextRange(0))
+                                onContentChange(resolved)
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorder)
+                        ) {
+                            Text(
+                                text = "Accept Current",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = GitAccent,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Surface(
+                            onClick = {
+                                val resolved = ConflictResolverUtil.resolveText(currentEditorText, "theirs")
+                                textFieldValue = textFieldValue.copy(text = resolved, selection = TextRange(0))
+                                onContentChange(resolved)
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorder)
+                        ) {
+                            Text(
+                                text = "Accept Incoming",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF2563EB),
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+
+                        Surface(
+                            onClick = {
+                                val resolved = ConflictResolverUtil.resolveText(currentEditorText, "both")
+                                textFieldValue = textFieldValue.copy(text = resolved, selection = TextRange(0))
+                                onContentChange(resolved)
+                            },
+                            shape = RoundedCornerShape(4.dp),
+                            color = GitSurface,
+                            border = BorderStroke(1.dp, GitBorder)
+                        ) {
+                            Text(
+                                text = "Accept Both",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = GitText1,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         // EXPANDABLE SEARCH & REPLACE BAR
         AnimatedVisibility(

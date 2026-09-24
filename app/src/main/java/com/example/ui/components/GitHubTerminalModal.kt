@@ -35,15 +35,23 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.CallSplit
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,14 +84,17 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.data.model.GitConflict
 import com.example.data.model.GitHubRepository
 import kotlinx.coroutines.launch
 
@@ -134,6 +145,14 @@ fun GitHubTerminalModal(
     currentPath: String,
     terminalLines: List<TerminalLine>,
     isExecuting: Boolean,
+    conflictedFiles: List<GitConflict> = emptyList(),
+    isMergeConflict: Boolean = false,
+    isRebaseConflict: Boolean = false,
+    pendingCommands: List<String> = emptyList(),
+    onResolveConflict: (String, String) -> Unit = { _, _ -> },
+    onOpenInEditor: (String) -> Unit = {},
+    onResumePendingQueue: () -> Unit = {},
+    onAbortConflict: () -> Unit = {},
     onExecuteCommand: (String) -> Unit,
     onClearTerminal: () -> Unit,
     onDismiss: () -> Unit,
@@ -143,10 +162,17 @@ fun GitHubTerminalModal(
     val coroutineScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
 
-    var inputCommand by remember { mutableStateOf("") }
+    var inputCommandValue by remember { mutableStateOf(TextFieldValue("")) }
+    val inputCommand = inputCommandValue.text
+    var showScriptPreviewModal by remember { mutableStateOf(false) }
     val commandHistory = remember { mutableStateListOf<String>() }
     var historyIndex by remember { mutableIntStateOf(-1) }
     var isFullscreen by remember { mutableStateOf(false) }
+
+    fun setInputText(text: String, keepTop: Boolean = false) {
+        val selection = if (keepTop || text.contains('\n')) TextRange(0) else TextRange(text.length)
+        inputCommandValue = TextFieldValue(text = text, selection = selection)
+    }
 
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -169,22 +195,26 @@ fun GitHubTerminalModal(
 
     val quickCommands = remember {
         listOf(
-            "gh pr list",
-            "gh issue list",
-            "gh repo view",
-            "gh run list",
-            "gh auth status",
-            "gh pr list --state open --json number --jq '.[].number' | xargs -I {} gh pr merge {} --merge",
+            "git remote add upstream https://github.com/MorpheApp/morphe-manager.git",
+            "git fetch upstream",
+            "git checkout dev",
+            "git merge upstream/dev",
+            "git rebase upstream/dev",
+            "git rebase --continue",
+            "git push origin dev --force",
+            "git checkout --ours",
+            "git checkout --theirs",
             "git status",
-            "git update-index --chmod=+x gradlew",
-            "chmod +x gradlew",
-            "git commit -am \"fix: update\"",
+            "git add .",
+            "git commit",
             "git pull",
             "git push",
             "git log --oneline -n 5",
             "git diff",
             "git grep",
             "git branch -a",
+            "gh pr list",
+            "gh repo view",
             "ls -la",
             "pwd",
             "help"
@@ -193,22 +223,24 @@ fun GitHubTerminalModal(
 
     val mobileShortcuts = remember {
         listOf(
-            "gh", "pr", "issue", "merge", "run", "repo", "auth", "xargs", "jq", "|", "&&",
-            "git", "status", "update-index", "--chmod=+x", "commit", "-am \"\"",
-            "pull", "push", "branch", "log", "diff", "grep", "add .", "chmod +x",
-            "checkout", "revert", "clear", "help", "/", "-", "~", "origin", "main"
+            "upstream", "rebase", "--continue", "--abort", "--force", "remote", "fetch",
+            "checkout", "--ours", "--theirs", "git", "status", "add .", "commit",
+            "pull", "push", "branch", "log", "diff", "origin", "dev", "main",
+            "gh", "pr", "issue", "merge", "run", "repo", "auth", "|", "&&",
+            "clear", "help"
         )
     }
 
     fun submitCurrentCommand() {
-        val cmd = inputCommand.trim()
+        val cmd = inputCommandValue.text.trim()
         if (cmd.isNotBlank() && !isExecuting) {
             if (commandHistory.isEmpty() || commandHistory.last() != cmd) {
                 commandHistory.add(cmd)
             }
             historyIndex = -1
             onExecuteCommand(cmd)
-            inputCommand = ""
+            inputCommandValue = TextFieldValue("")
+            showScriptPreviewModal = false
         }
     }
 
@@ -328,7 +360,8 @@ fun GitHubTerminalModal(
                                 onClick = {
                                     val clipText = clipboardManager.getText()?.text?.trim()
                                     if (!clipText.isNullOrEmpty()) {
-                                        inputCommand = if (inputCommand.isEmpty()) clipText else "$inputCommand $clipText"
+                                        val combined = if (inputCommand.isEmpty()) clipText else "$inputCommand\n$clipText"
+                                        setInputText(combined, keepTop = true)
                                         focusRequester.requestFocus()
                                         keyboardController?.show()
                                     }
@@ -427,7 +460,7 @@ fun GitHubTerminalModal(
                             color = TermSurface,
                             border = BorderStroke(1.dp, TermSurfaceBorder),
                             modifier = Modifier.clickable {
-                                inputCommand = cmd
+                                setInputText(cmd, keepTop = false)
                                 focusRequester.requestFocus()
                                 keyboardController?.show()
                             }
@@ -517,7 +550,8 @@ fun GitHubTerminalModal(
                             onClick = {
                                 val clip = clipboardManager.getText()?.text
                                 if (!clip.isNullOrEmpty()) {
-                                    inputCommand = if (inputCommand.isEmpty()) clip else "$inputCommand $clip"
+                                    val combined = if (inputCommand.isEmpty()) clip else "$inputCommand\n$clip"
+                                    setInputText(combined, keepTop = true)
                                     focusRequester.requestFocus()
                                     keyboardController?.show()
                                 }
@@ -552,13 +586,14 @@ fun GitHubTerminalModal(
                         mobileShortcuts.forEach { token ->
                             Surface(
                                 onClick = {
-                                    inputCommand = if (inputCommand.isEmpty()) {
+                                    val newText = if (inputCommand.isEmpty()) {
                                         token
                                     } else if (inputCommand.endsWith(" ") || token.startsWith("-") || token.startsWith("/") || token.startsWith("|")) {
                                         "$inputCommand$token"
                                     } else {
                                         "$inputCommand $token"
                                     }
+                                    setInputText(newText, keepTop = false)
                                     focusRequester.requestFocus()
                                     keyboardController?.show()
                                 },
@@ -586,45 +621,186 @@ fun GitHubTerminalModal(
 
                 HorizontalDivider(color = TermSurfaceBorder)
 
-                // 5. Multi-Line Notice if input has multiple lines
-                val lineCount = remember(inputCommand) {
-                    inputCommand.lines().count { it.isNotBlank() }
+                // 4.5 Interactive Conflict Resolution Section
+                if (isMergeConflict || isRebaseConflict || conflictedFiles.isNotEmpty()) {
+                    TerminalConflictResolutionCard(
+                        conflicts = conflictedFiles,
+                        isMergeConflict = isMergeConflict,
+                        isRebaseConflict = isRebaseConflict,
+                        pendingCommandCount = pendingCommands.size,
+                        onResolveConflict = onResolveConflict,
+                        onOpenInEditor = onOpenInEditor,
+                        onResumePending = onResumePendingQueue,
+                        onAbort = onAbortConflict
+                    )
+                    HorizontalDivider(color = TermSurfaceBorder)
+                } else if (pendingCommands.isNotEmpty()) {
+                    TerminalPendingQueueCard(
+                        pendingCount = pendingCommands.size,
+                        onResume = onResumePendingQueue
+                    )
+                    HorizontalDivider(color = TermSurfaceBorder)
                 }
+
+                // 5. Multi-Line Script Notice if input has multiple lines
+                val nonBlankLines = remember(inputCommand) {
+                    inputCommand.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                }
+                val lineCount = nonBlankLines.size
 
                 if (lineCount > 1) {
                     Surface(
                         color = TermSurface,
-                        modifier = Modifier.fillMaxWidth()
+                        border = BorderStroke(1.dp, TermPromptUser.copy(alpha = 0.25f)),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(8.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.PlayArrow,
-                                    contentDescription = null,
-                                    tint = TermSuccess,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text(
-                                    text = "Multi-Line: $lineCount commands ready",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    color = TermSuccess,
-                                    fontWeight = FontWeight.Bold
-                                )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.PlayArrow,
+                                        contentDescription = null,
+                                        tint = TermPromptUser,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Script: $lineCount commands ready",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        color = TermPromptUser,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    // Jump to Top cursor button
+                                    Surface(
+                                        onClick = {
+                                            inputCommandValue = inputCommandValue.copy(selection = TextRange(0))
+                                        },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = TermSurface2,
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Top", modifier = Modifier.size(14.dp), tint = TermText)
+                                            Text("Top", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = TermText)
+                                        }
+                                    }
+
+                                    // Jump to End cursor button
+                                    Surface(
+                                        onClick = {
+                                            inputCommandValue = inputCommandValue.copy(selection = TextRange(inputCommand.length))
+                                        },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = TermSurface2,
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.KeyboardArrowDown, contentDescription = "End", modifier = Modifier.size(14.dp), tint = TermText)
+                                            Text("End", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = TermText)
+                                        }
+                                    }
+
+                                    // Preview Steps toggle
+                                    Surface(
+                                        onClick = { showScriptPreviewModal = !showScriptPreviewModal },
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = if (showScriptPreviewModal) TermPromptUser.copy(alpha = 0.15f) else TermSurface2,
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (showScriptPreviewModal) "Hide Steps" else "Preview Steps",
+                                                fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (showScriptPreviewModal) TermPromptUser else TermText
+                                            )
+                                        }
+                                    }
+
+                                    // Clear button
+                                    TextButton(
+                                        onClick = { inputCommandValue = TextFieldValue("") },
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                        modifier = Modifier.height(24.dp)
+                                    ) {
+                                        Text("Clear", fontSize = 11.sp, color = TermError)
+                                    }
+                                }
                             }
 
-                            TextButton(
-                                onClick = { inputCommand = "" },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                            ) {
-                                Text("Clear", fontSize = 11.sp, color = TermError)
+                            // If preview is expanded, show the numbered list of commands
+                            if (showScriptPreviewModal) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Surface(
+                                    color = TermSurface2,
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "Commands will execute 1-by-1 sequentially (auto-pausing if a conflict occurs):",
+                                            fontSize = 10.sp,
+                                            color = TermDim,
+                                            modifier = Modifier.padding(bottom = 4.dp)
+                                        )
+                                        nonBlankLines.forEachIndexed { idx, line ->
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(vertical = 1.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "${(idx + 1).toString().padStart(2, '0')}: ",
+                                                    fontSize = 10.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = TermDim,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = line,
+                                                    fontSize = 11.sp,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    color = if (line.startsWith("#")) TermDim else TermText,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -657,8 +833,23 @@ fun GitHubTerminalModal(
 
                             // Command Text Field with clear high contrast text
                             OutlinedTextField(
-                                value = inputCommand,
-                                onValueChange = { inputCommand = it },
+                                value = inputCommandValue,
+                                onValueChange = { newTfv ->
+                                    val oldText = inputCommandValue.text
+                                    val newText = newTfv.text
+                                    // Gboard Paste or clipboard paste detection:
+                                    // When user taps Gboard paste suggestion button, Gboard inserts the text
+                                    // and places the selection at the very end of the text.
+                                    // If the text contains multiple lines, this normally causes the text field to
+                                    // scroll to the bottom lines (disorienting the user).
+                                    // By setting selection to TextRange(0) upon pasting multi-line text,
+                                    // the field stays pinned at line 1 (the top)!
+                                    if (newText.length > oldText.length + 1 && newText.contains('\n')) {
+                                        inputCommandValue = newTfv.copy(selection = TextRange(0))
+                                    } else {
+                                        inputCommandValue = newTfv
+                                    }
+                                },
                                 placeholder = {
                                     Text(
                                         text = "Type or paste command (e.g. git status)...",
@@ -677,7 +868,7 @@ fun GitHubTerminalModal(
                                     Row(verticalAlignment = Alignment.CenterVertically) {
                                         if (inputCommand.isNotEmpty()) {
                                             IconButton(
-                                                onClick = { inputCommand = "" },
+                                                onClick = { inputCommandValue = TextFieldValue("") },
                                                 modifier = Modifier.size(24.dp)
                                             ) {
                                                 Icon(
@@ -690,9 +881,9 @@ fun GitHubTerminalModal(
                                         }
                                     }
                                 },
-                                maxLines = if (isFullscreen) 5 else 3,
+                                maxLines = if (isFullscreen) 6 else 4,
                                 keyboardOptions = KeyboardOptions(
-                                    imeAction = ImeAction.Send,
+                                    imeAction = if (inputCommand.contains('\n')) ImeAction.Default else ImeAction.Send,
                                     keyboardType = KeyboardType.Text,
                                     autoCorrect = false
                                 ),
@@ -731,7 +922,8 @@ fun GitHubTerminalModal(
                                     .clickable {
                                         val clip = clipboardManager.getText()?.text
                                         if (!clip.isNullOrEmpty()) {
-                                            inputCommand = if (inputCommand.isEmpty()) clip else "$inputCommand $clip"
+                                            val combined = if (inputCommand.isEmpty()) clip else "$inputCommand\n$clip"
+                                            setInputText(combined, keepTop = true)
                                             focusRequester.requestFocus()
                                             keyboardController?.show()
                                         }
@@ -765,7 +957,8 @@ fun GitHubTerminalModal(
                                                 historyIndex--
                                             }
                                             if (historyIndex in commandHistory.indices) {
-                                                inputCommand = commandHistory[historyIndex]
+                                                val histCmd = commandHistory[historyIndex]
+                                                inputCommandValue = TextFieldValue(histCmd, selection = TextRange(histCmd.length))
                                             }
                                         }
                                 ) {
@@ -966,4 +1159,453 @@ private fun TerminalLineItem(line: TerminalLine, username: String = "user") {
         }
     }
 }
+
+@Composable
+fun TerminalConflictResolutionCard(
+    conflicts: List<GitConflict>,
+    isMergeConflict: Boolean,
+    isRebaseConflict: Boolean,
+    pendingCommandCount: Int,
+    onResolveConflict: (String, String) -> Unit,
+    onOpenInEditor: (String) -> Unit,
+    onResumePending: () -> Unit,
+    onAbort: () -> Unit
+) {
+    val allResolved = conflicts.isNotEmpty() && conflicts.all { it.isResolved }
+
+    Surface(
+        color = TermSurface,
+        border = BorderStroke(1.dp, if (allResolved) TermSuccess.copy(alpha = 0.4f) else TermWarning.copy(alpha = 0.4f)),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .testTag("terminal_conflict_resolution_card")
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp)
+        ) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (allResolved) Icons.Default.Check else Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = if (allResolved) TermSuccess else TermWarning,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (allResolved) {
+                            "All Conflicts Resolved"
+                        } else if (isRebaseConflict) {
+                            "Rebase Conflict Detected"
+                        } else {
+                            "Merge Conflict Detected"
+                        },
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (allResolved) TermSuccess else TermText
+                    )
+                    if (pendingCommandCount > 0) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            color = TermPromptUser.copy(alpha = 0.12f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "$pendingCommandCount queued",
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = TermPromptUser,
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Abort action
+                Surface(
+                    onClick = onAbort,
+                    shape = RoundedCornerShape(4.dp),
+                    color = TermSurface2,
+                    border = BorderStroke(1.dp, TermSurfaceBorder),
+                    modifier = Modifier.height(24.dp)
+                ) {
+                    Text(
+                        text = if (isRebaseConflict) "Abort Rebase" else "Abort Merge",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = TermError,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            if (!allResolved) {
+                Text(
+                    text = "Git halted sequential execution because conflicting changes were found. Choose a resolution version below:",
+                    style = MaterialTheme.typography.bodySmall,
+                    fontSize = 11.sp,
+                    color = TermDim
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            // Conflicted files list
+            conflicts.forEach { conflict ->
+                Surface(
+                    color = TermBg,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, if (conflict.isResolved) TermSuccess.copy(alpha = 0.3f) else TermSurfaceBorder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = if (conflict.isResolved) Icons.Default.Check else Icons.Default.CallSplit,
+                                    contentDescription = null,
+                                    tint = if (conflict.isResolved) TermSuccess else TermPromptPath,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = conflict.filePath,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TermText
+                                )
+                            }
+
+                            if (conflict.isResolved) {
+                                Surface(
+                                    color = TermSuccess.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "✓ Resolved (${conflict.resolutionType ?: "ours"})",
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = TermSuccess,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        if (!conflict.isResolved) {
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            // Snippet Preview
+                            if (conflict.oursSnippet.isNotEmpty() || conflict.theirsSnippet.isNotEmpty()) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 6.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    if (conflict.oursSnippet.isNotEmpty()) {
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .background(TermDiffAdd.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                                                .padding(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "HEAD / dev (Ours)",
+                                                fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TermDiffAdd
+                                            )
+                                            Text(
+                                                text = conflict.oursSnippet,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = TermText,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    if (conflict.theirsSnippet.isNotEmpty()) {
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .background(TermInfo.copy(alpha = 0.08f), RoundedCornerShape(4.dp))
+                                                .padding(6.dp)
+                                        ) {
+                                            Text(
+                                                text = "upstream/dev (Theirs)",
+                                                fontSize = 10.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TermInfo
+                                            )
+                                            Text(
+                                                text = conflict.theirsSnippet,
+                                                fontSize = 11.sp,
+                                                fontFamily = FontFamily.Monospace,
+                                                color = TermText,
+                                                maxLines = 2,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Quick Resolution Buttons
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Surface(
+                                    onClick = { onResolveConflict(conflict.filePath, "ours") },
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = TermSurface,
+                                    border = BorderStroke(1.dp, TermSurfaceBorder),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(28.dp)
+                                        .testTag("resolve_ours_${conflict.filePath}")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "Accept Ours",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TermDiffAdd
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = { onResolveConflict(conflict.filePath, "theirs") },
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = TermSurface,
+                                    border = BorderStroke(1.dp, TermSurfaceBorder),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(28.dp)
+                                        .testTag("resolve_theirs_${conflict.filePath}")
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "Accept Theirs",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TermInfo
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = { onResolveConflict(conflict.filePath, "both") },
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = TermSurface,
+                                    border = BorderStroke(1.dp, TermSurfaceBorder),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(28.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Text(
+                                            text = "Accept Both",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TermText
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    onClick = { onOpenInEditor(conflict.filePath) },
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = TermSurface,
+                                    border = BorderStroke(1.dp, TermSurfaceBorder),
+                                    modifier = Modifier
+                                        .weight(1.1f)
+                                        .height(28.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(12.dp), tint = TermText)
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = "In Editor",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold,
+                                            color = TermText
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            // Already resolved - option to change or open in editor
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                TextButton(
+                                    onClick = { onOpenInEditor(conflict.filePath) },
+                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Text("Open in Editor", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = TermPromptUser)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Bottom CTA: If all resolved and pending commands exist, allow 1-tap resume
+            if (allResolved && pendingCommandCount > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    onClick = onResumePending,
+                    shape = RoundedCornerShape(6.dp),
+                    color = TermText,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .testTag("terminal_resume_script_btn")
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PlayArrow,
+                            contentDescription = "Resume",
+                            tint = Color.White,
+                            modifier = Modifier.size(15.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Resume Remaining $pendingCommandCount Command(s) in Queue",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun TerminalPendingQueueCard(
+    pendingCount: Int,
+    onResume: () -> Unit
+) {
+    Surface(
+        color = Color(0xFFF0FDF4),
+        border = BorderStroke(1.dp, Color(0xFF86EFAC)),
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .testTag("terminal_pending_queue_card")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = TermPromptUser,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "$pendingCount command(s) pending in queue",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = TermText
+                    )
+                    Text(
+                        text = "Paused after conflict resolution. Ready to proceed.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TermDim
+                    )
+                }
+            }
+
+            Surface(
+                onClick = onResume,
+                shape = RoundedCornerShape(6.dp),
+                color = TermText,
+                modifier = Modifier.testTag("resume_pending_btn")
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PlayArrow,
+                        contentDescription = "Resume",
+                        tint = Color.White,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Resume",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
 

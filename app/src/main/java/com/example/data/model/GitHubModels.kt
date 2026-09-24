@@ -358,3 +358,57 @@ data class RepoFileGroupedMatches(
     val fileName: String,
     val matches: List<RepoFileSearchMatch>
 )
+
+// Git Conflict Resolution Models
+data class GitConflict(
+    val filePath: String,
+    val conflictMarkerCount: Int = 1,
+    val oursSnippet: String = "",
+    val theirsSnippet: String = "",
+    val fullOursText: String = "",
+    val fullTheirsText: String = "",
+    val fullBothText: String = "",
+    val isResolved: Boolean = false,
+    val resolutionType: String? = null
+)
+
+object ConflictResolverUtil {
+    private val CONFLICT_REGEX = Regex(
+        """<<<<<<<[^\r\n]*\r?\n([\s\S]*?)=======\r?\n([\s\S]*?)>>>>>>>[^\r\n]*\r?\n?""",
+        RegexOption.MULTILINE
+    )
+
+    fun hasConflictMarkers(content: String): Boolean {
+        return content.contains("<<<<<<<") && content.contains("=======") && content.contains(">>>>>>>")
+    }
+
+    fun parseConflict(filePath: String, content: String): GitConflict? {
+        val match = CONFLICT_REGEX.find(content) ?: return null
+        val ours = match.groupValues[1]
+        val theirs = match.groupValues[2]
+        val markerCount = CONFLICT_REGEX.findAll(content).count()
+        val fullOurs = CONFLICT_REGEX.replace(content) { m -> m.groupValues[1] }
+        val fullTheirs = CONFLICT_REGEX.replace(content) { m -> m.groupValues[2] }
+        val fullBoth = CONFLICT_REGEX.replace(content) { m -> m.groupValues[1] + m.groupValues[2] }
+
+        return GitConflict(
+            filePath = filePath,
+            conflictMarkerCount = markerCount,
+            oursSnippet = ours.trim(),
+            theirsSnippet = theirs.trim(),
+            fullOursText = fullOurs,
+            fullTheirsText = fullTheirs,
+            fullBothText = fullBoth,
+            isResolved = false
+        )
+    }
+
+    fun resolveText(content: String, resolution: String): String {
+        return when (resolution) {
+            "ours" -> CONFLICT_REGEX.replace(content) { it.groupValues[1] }
+            "theirs" -> CONFLICT_REGEX.replace(content) { it.groupValues[2] }
+            "both" -> CONFLICT_REGEX.replace(content) { it.groupValues[1] + it.groupValues[2] }
+            else -> content
+        }
+    }
+}

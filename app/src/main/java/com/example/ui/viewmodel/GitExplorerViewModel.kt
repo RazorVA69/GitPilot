@@ -8,9 +8,11 @@ import androidx.lifecycle.viewModelScope
 import com.example.data.local.AccountEntity
 import com.example.data.local.AppDatabase
 import com.example.data.local.SavedRepoEntity
+import com.example.data.model.ConflictResolverUtil
 import com.example.data.model.DeviceCodeResponse
 import com.example.data.model.ExplorerNode
 import com.example.data.model.FileContentResponse
+import com.example.data.model.GitConflict
 import com.example.data.model.GitHubBranch
 import com.example.data.model.GitHubRepository
 import com.example.data.model.GitTreeItem
@@ -179,6 +181,16 @@ data class GitExplorerUiState(
     val isTerminalExecuting: Boolean = false,
     val terminalStagedFiles: Set<String> = emptySet(),
     val terminalDrafts: Map<String, String> = emptyMap(),
+
+    // Git Remotes, Conflicts & Script Execution
+    val gitRemotes: Map<String, String> = emptyMap(),
+    val fetchedRemoteBranches: Map<String, List<String>> = emptyMap(),
+    val activeMergeConflict: Boolean = false,
+    val activeRebaseInProgress: Boolean = false,
+    val rebaseHeadCommit: String? = null,
+    val mergeSourceBranch: String? = null,
+    val conflictedFiles: List<GitConflict> = emptyList(),
+    val pendingCommandQueue: List<String> = emptyList(),
 
     // Feedback
     val toastOrMessage: String? = null,
@@ -2506,10 +2518,26 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     data class ShellCommandStep(
         val command: String,
+        val isComment: Boolean = false,
+        val commentText: String = "",
         val suppressStderr: Boolean = false,
         val suppressStdout: Boolean = false,
         val ignoreFailure: Boolean = false
     )
+
+    private fun stripInlineComment(line: String): String {
+        var inSingleQuote = false
+        var inDoubleQuote = false
+        for (i in line.indices) {
+            val c = line[i]
+            if (c == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote
+            if (c == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote
+            if (c == '#' && !inSingleQuote && !inDoubleQuote) {
+                return line.substring(0, i).trim()
+            }
+        }
+        return line.trim()
+    }
 
     private fun parseShellModifiers(raw: String): ShellCommandStep {
         var cmd = raw.trim()
@@ -2579,16 +2607,26 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun addRawCommands(scriptPart: String, dest: MutableList<ShellCommandStep>) {
-        val lines = scriptPart.lines()
-            .flatMap { it.split(';') }
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
+        val rawLines = scriptPart.lines()
 
-        for (line in lines) {
-            if (line.equals("do", ignoreCase = true) || line.equals("done", ignoreCase = true)) {
+        for (rawLine in rawLines) {
+            val trimmed = rawLine.trim()
+            if (trimmed.isEmpty()) continue
+
+            if (trimmed.startsWith("#")) {
+                dest.add(ShellCommandStep(command = trimmed, isComment = true, commentText = trimmed))
                 continue
             }
-            dest.add(parseShellModifiers(line))
+
+            val parts = trimmed.split(';')
+            for (part in parts) {
+                val cleaned = stripInlineComment(part)
+                if (cleaned.isEmpty()) continue
+                if (cleaned.equals("do", ignoreCase = true) || cleaned.equals("done", ignoreCase = true)) {
+                    continue
+                }
+                dest.add(parseShellModifiers(cleaned))
+            }
         }
     }
 
@@ -2648,7 +2686,21 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         viewModelScope.launch {
             _uiState.update { it.copy(isTerminalExecuting = true) }
 
-            for (step in steps) {
+            for (i in steps.indices) {
+                val step = steps[i]
+                if (step.isComment) {
+                    appendTerminalLine(
+                        TerminalLine(
+                            type = TerminalLineType.OUTPUT_INFO,
+                            text = step.commentText,
+                            workingDir = _uiState.value.terminalWorkingDir,
+                            branch = _uiState.value.selectedBranch
+                        )
+                    )
+                    delay(30L)
+                    continue
+                }
+
                 // Check if variable assignment: VAR=val
                 val assignRegex = Regex("""^([a-zA-Z_][a-zA-Z0-9_]*)=(.*)$""")
                 val assignMatch = assignRegex.find(step.command.trim())
@@ -2670,27 +2722,48 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 // Variable substitution
                 val substitutedCommand = substituteSessionVariables(step.command)
 
-                // Support conditional chaining via &&
-                if (substitutedCommand.contains("&&")) {
+                val success = if (substitutedCommand.contains("&&")) {
+                    var allOk = true
                     val subCommands = substitutedCommand.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
                     for (cmd in subCommands) {
-                        val success = executePipedOrSingleCommand(
+                        val ok = executePipedOrSingleCommand(
                             cmd,
                             suppressStderr = step.suppressStderr,
                             suppressStdout = step.suppressStdout,
                             ignoreFailure = step.ignoreFailure
                         )
-                        if (!success && !step.ignoreFailure) break
-                        delay(25L)
+                        if (!ok && !step.ignoreFailure) {
+                            allOk = false
+                            break
+                        }
+                        delay(120L)
                     }
+                    allOk
                 } else {
-                    executePipedOrSingleCommand(
+                    val ok = executePipedOrSingleCommand(
                         substitutedCommand,
                         suppressStderr = step.suppressStderr,
                         suppressStdout = step.suppressStdout,
                         ignoreFailure = step.ignoreFailure
                     )
-                    delay(25L)
+                    delay(120L)
+                    ok
+                }
+
+                // If conflict occurred during merge or rebase, gracefully pause queue
+                val state = _uiState.value
+                if ((state.activeMergeConflict || state.activeRebaseInProgress) && !success) {
+                    val remaining = steps.drop(i + 1).filter { !it.isComment }.map { it.command }
+                    if (remaining.isNotEmpty()) {
+                        _uiState.update { it.copy(pendingCommandQueue = remaining) }
+                        appendTerminalLine(
+                            TerminalLine(
+                                type = TerminalLineType.OUTPUT_WARNING,
+                                text = "[SCRIPT PAUSED] ${remaining.size} command(s) pending. Resolve conflicts in Terminal UI or flagged files to proceed."
+                            )
+                        )
+                    }
+                    break
                 }
             }
 
@@ -3044,7 +3117,12 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "git" -> {
-                handleGitCommand(args, command, repo, branch, workingDir, token)
+                return handleGitCommand(args, command, repo, branch, workingDir, token)
+            }
+
+            "resume", "continue" -> {
+                resumePendingTerminalCommands()
+                return true
             }
 
             "do" -> {
@@ -3666,10 +3744,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         branch: String,
         workingDir: String,
         token: String?
-    ) {
+    ): Boolean {
         if (args.isEmpty() || args[0] == "help" || args[0] == "--help") {
             printTerminalHelp()
-            return
+            return true
         }
 
         val subCmd = args[0].lowercase()
@@ -3678,52 +3756,64 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         when (subCmd) {
             "status" -> {
                 handleGitStatus(repo, branch)
+                return true
             }
 
             "log" -> {
                 handleGitLog(subArgs, repo, branch, token)
+                return true
             }
 
             "branch" -> {
                 handleGitBranch(subArgs, repo, branch, token)
+                return true
             }
 
             "checkout", "switch" -> {
-                handleGitCheckout(subArgs, repo, branch, token)
+                return handleGitCheckout(subArgs, repo, branch, token)
             }
 
             "add" -> {
                 handleGitAdd(subArgs, workingDir)
+                return true
             }
 
             "commit" -> {
-                handleGitCommit(fullCommand, repo, branch, token)
+                return handleGitCommit(fullCommand, repo, branch, token)
             }
 
             "push" -> {
-                handleGitPush(subArgs, repo, branch, token)
+                return handleGitPush(subArgs, repo, branch, token)
             }
 
-            "pull", "fetch" -> {
+            "pull" -> {
                 handleGitPull(repo, branch)
+                return true
+            }
+
+            "fetch" -> {
+                handleGitFetch(subArgs, repo)
+                return true
             }
 
             "diff" -> {
                 handleGitDiff(subArgs, repo, branch, token)
+                return true
             }
 
             "show" -> {
                 handleGitShow(subArgs, repo, branch, token)
+                return true
             }
 
             "remote" -> {
-                val fullName = repo?.fullName ?: "origin/repo"
-                if (subArgs.contains("-v") || subArgs.contains("--verbose")) {
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "origin\thttps://github.com/$fullName.git (fetch)"))
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "origin\thttps://github.com/$fullName.git (push)"))
-                } else {
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "origin"))
-                }
+                handleGitRemote(subArgs, repo)
+                return true
+            }
+
+            "conflict" -> {
+                handleGitConflict(subArgs)
+                return true
             }
 
             "reset", "restore" -> {
@@ -3777,7 +3867,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "merge" -> {
-                handleGitMerge(subArgs, repo, branch, token)
+                return handleGitMerge(subArgs, repo, branch, token)
             }
 
             "cherry-pick", "cherrypick" -> {
@@ -3817,9 +3907,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "rebase" -> {
-                val target = subArgs.firstOrNull() ?: "origin/$branch"
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Rebasing active branch '$branch' on '$target'..."))
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Current branch $branch is up to date with $target."))
+                return handleGitRebase(subArgs, repo, branch, token)
             }
 
             "bisect" -> {
@@ -3911,6 +3999,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 )
             }
         }
+        return true
     }
 
     private fun handleGitStatus(repo: GitHubRepository?, branch: String) {
@@ -3919,6 +4008,37 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val staged = state.terminalStagedFiles
 
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "On branch $branch"))
+
+        if (state.activeMergeConflict) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "You have unmerged paths."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (fix conflicts and run \"git commit\")"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (use \"git merge --abort\" to abort the merge)"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "\nUnmerged paths:"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (use \"git add <file>...\" to mark resolution)"))
+            state.conflictedFiles.forEach { c ->
+                val status = if (c.isResolved) "modified (resolved):" else "both modified:      "
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "\t$status ${c.filePath}"))
+            }
+            return
+        }
+
+        if (state.activeRebaseInProgress) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "interactive rebase in progress; onto $branch"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Last command done (1 command done):"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "   pick ${state.rebaseHeadCommit ?: "0001 feat: local modifications"}"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "You are currently rebasing branch '$branch' on '${state.selectedBranch}'."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (fix conflicts and then run \"git rebase --continue\")"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (use \"git rebase --skip\" to skip this patch)"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (use \"git rebase --abort\" to check out the original branch)"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "\nUnmerged paths:"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (use \"git add <file>...\" to mark resolution)"))
+            state.conflictedFiles.forEach { c ->
+                val status = if (c.isResolved) "modified (resolved):" else "both modified:      "
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "\t$status ${c.filePath}"))
+            }
+            return
+        }
+
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Your branch is up to date with 'origin/$branch'."))
 
         if (staged.isNotEmpty()) {
@@ -4069,10 +4189,23 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private suspend fun handleGitCheckout(args: List<String>, repo: GitHubRepository?, currentBranch: String, token: String?) {
+    private suspend fun handleGitCheckout(args: List<String>, repo: GitHubRepository?, currentBranch: String, token: String?): Boolean {
         if (args.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: you must specify a branch to checkout"))
-            return
+            return false
+        }
+
+        // git checkout --ours <file> or git checkout --theirs <file>
+        if (args.contains("--ours") || args.contains("--theirs")) {
+            val isOurs = args.contains("--ours")
+            val path = args.firstOrNull { !it.startsWith("-") }
+            if (path.isNullOrBlank()) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: path required for checkout --ours/--theirs"))
+                return false
+            }
+            resolveGitConflict(path, if (isOurs) "ours" else "theirs")
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Updated 1 path from the index (${if (isOurs) "ours" else "theirs"})"))
+            return true
         }
 
         // git checkout -b <new_branch>
@@ -4080,11 +4213,17 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             val newBranch = args.getOrNull(1)
             if (newBranch.isNullOrBlank()) {
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: branch name required"))
-                return
+                return false
             }
             if (repo == null || token.isNullOrBlank()) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication required to create branch"))
-                return
+                val newBranches = _uiState.value.branches.toMutableList()
+                if (!newBranches.any { it.name == newBranch }) {
+                    newBranches.add(GitHubBranch(name = newBranch))
+                }
+                _uiState.update { it.copy(branches = newBranches) }
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Switched to a new branch '$newBranch'"))
+                selectBranch(newBranch)
+                return true
             }
 
             val baseSha = _uiState.value.branches.find { it.name == currentBranch }?.commit?.sha ?: ""
@@ -4092,10 +4231,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             if (createResult.isSuccess) {
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Switched to a new branch '$newBranch'"))
                 selectBranch(newBranch)
+                return true
             } else {
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: ${createResult.exceptionOrNull()?.message}"))
+                return false
             }
-            return
         }
 
         val targetBranch = args[0]
@@ -4103,9 +4243,29 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         if (exists) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Switched to branch '$targetBranch'"))
             selectBranch(targetBranch)
-        } else {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: pathspec '$targetBranch' did not match any file(s) known to git"))
+            return true
         }
+
+        // Check if branch exists on fetched remotes (e.g. dev from upstream)
+        val cleanBranch = targetBranch.removePrefix("upstream/").removePrefix("origin/")
+        val isRemoteBranch = _uiState.value.fetchedRemoteBranches.any { (_, branches) -> branches.contains(cleanBranch) }
+            || targetBranch.contains("/")
+
+        if (isRemoteBranch) {
+            val remoteName = if (targetBranch.startsWith("upstream/")) "upstream" else "origin"
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Branch '$cleanBranch' set up to track remote branch '$cleanBranch' from '$remoteName'."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Switched to a new branch '$cleanBranch'"))
+            val newBranches = _uiState.value.branches.toMutableList()
+            if (!newBranches.any { it.name == cleanBranch }) {
+                newBranches.add(GitHubBranch(name = cleanBranch))
+            }
+            _uiState.update { it.copy(branches = newBranches) }
+            selectBranch(cleanBranch)
+            return true
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: pathspec '$targetBranch' did not match any file(s) known to git"))
+        return false
     }
 
     private fun handleGitAdd(args: List<String>, workingDir: String) {
@@ -4133,7 +4293,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    private suspend fun handleGitCommit(fullCommand: String, repo: GitHubRepository?, branch: String, token: String?) {
+    private suspend fun handleGitCommit(fullCommand: String, repo: GitHubRepository?, branch: String, token: String?): Boolean {
         val state = _uiState.value
         val staged = state.terminalStagedFiles
         val drafts = state.terminalDrafts
@@ -4142,12 +4302,38 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val msgRegex = Regex("-m\\s+[\"']([^\"']+)[\"']")
         val match = msgRegex.find(fullCommand)
         val commitMessage = match?.groupValues?.getOrNull(1)?.trim() 
-            ?: if (fullCommand.contains("--amend")) "Amend commit via GitHub Terminal" else "Update files via GitHub Terminal"
+            ?: if (fullCommand.contains("--amend")) "Amend commit via GitHub Terminal" else ""
 
-        if (token.isNullOrBlank() || repo == null) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication token required to commit files"))
-            return
+        // Handle merge commit during active merge conflict
+        if (state.activeMergeConflict) {
+            val hasUnresolved = state.conflictedFiles.any { !it.isResolved }
+                || state.terminalDrafts.values.any { ConflictResolverUtil.hasConflictMarkers(it) }
+
+            if (hasUnresolved) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: Committing is not possible because you have unmerged files."))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: Fix them up in the work tree, and then use 'git add <file>'"))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: as appropriate to mark resolution and make a commit."))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Exiting because of an unresolved conflict."))
+                return false
+            }
+
+            val defaultMergeMsg = "Merge remote-tracking branch '${state.mergeSourceBranch ?: "upstream/dev"}' into $branch"
+            val effectiveMsg = commitMessage.ifEmpty { defaultMergeMsg }
+
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch 7a3c9e1] $effectiveMsg"))
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = false,
+                    conflictedFiles = emptyList(),
+                    mergeSourceBranch = null,
+                    terminalStagedFiles = emptySet()
+                )
+            }
+            resumePendingTerminalCommands()
+            return true
         }
+
+        val effectiveCommitMsg = commitMessage.ifEmpty { "Update files via GitHub Terminal" }
 
         val isAutoStage = fullCommand.contains("-am") || fullCommand.contains("-a -m") || fullCommand.contains("-a ")
         val filesToCommit = when {
@@ -4160,7 +4346,20 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         if (filesToCommit.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "On branch $branch\nnothing to commit, working tree clean"))
-            return
+            return true
+        }
+
+        if (token.isNullOrBlank() || repo == null) {
+            _uiState.update {
+                it.copy(
+                    terminalStagedFiles = emptySet(),
+                    terminalDrafts = it.terminalDrafts.filterKeys { k -> !filesToCommit.contains(k) }
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch 7a3c9e1] $effectiveCommitMsg"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " ${filesToCommit.size} file(s) changed, committed."))
+            resumePendingTerminalCommands()
+            return true
         }
 
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} file(s) to branch '$branch'..."))
@@ -4180,7 +4379,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 repo = repo.name,
                 path = filePath,
                 content = content,
-                message = commitMessage,
+                message = effectiveCommitMsg,
                 sha = sha,
                 branch = branch
             )
@@ -4199,18 +4398,21 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         if (successCount > 0) {
             val shortSha = state.rawTreeItems.firstOrNull()?.sha?.take(7) ?: "HEAD"
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch $shortSha] $commitMessage"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch $shortSha] $effectiveCommitMsg"))
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " $successCount file(s) changed, committed to remote GitHub branch."))
             syncActiveRepository(isSilent = true)
+            resumePendingTerminalCommands()
+            return true
         } else {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit file(s)"))
+            return false
         }
     }
 
-    private suspend fun handleGitPush(args: List<String>, repo: GitHubRepository?, branch: String, token: String?) {
+    private suspend fun handleGitPush(args: List<String>, repo: GitHubRepository?, branch: String, token: String?): Boolean {
         if (repo == null) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Not in a git repository"))
-            return
+            return false
         }
 
         val isDelete = args.contains("--delete") || args.contains("-d") || args.any { it.startsWith(":") && it.length > 1 }
@@ -4230,16 +4432,22 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 val cleanRef = target.removePrefix("refs/tags/").removePrefix("refs/heads/")
                 repository.deleteTagRef(token, repo.owner.login, repo.name, cleanRef)
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git\n - [deleted]         $cleanRef"))
-                return
+                return true
             }
         }
 
+        val isForce = args.contains("--force") || args.contains("-f")
         val targetBranch = args.filter { !it.startsWith("-") && it != "origin" }.firstOrNull() ?: branch
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (3/3), done."))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git"))
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "   main..$targetBranch  $targetBranch -> $targetBranch"))
+        if (isForce) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " + 7a3c9e1...4b8d2f0 $targetBranch -> $targetBranch (forced update)"))
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "   main..$targetBranch  $targetBranch -> $targetBranch"))
+        }
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Branch '$targetBranch' set up to track remote branch '$targetBranch' from 'origin'."))
         syncActiveRepository(isSilent = true)
+        return true
     }
 
     private suspend fun handleGitPull(repo: GitHubRepository?, branch: String) {
@@ -4869,21 +5077,418 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         syncActiveRepository(isSilent = true)
     }
 
-    private suspend fun handleGitMerge(args: List<String>, repo: GitHubRepository?, currentBranch: String, token: String?) {
+    private suspend fun handleGitMerge(args: List<String>, repo: GitHubRepository?, currentBranch: String, token: String?): Boolean {
+        if (args.contains("--abort")) {
+            if (!_uiState.value.activeMergeConflict) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: There is no merge to abort (MERGE_HEAD missing)."))
+                return false
+            }
+            val cleanDrafts = _uiState.value.terminalDrafts.filterKeys { k -> !_uiState.value.conflictedFiles.any { c -> c.filePath == k } }
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = false,
+                    conflictedFiles = emptyList(),
+                    mergeSourceBranch = null,
+                    terminalDrafts = cleanDrafts
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Merge aborted. Restored working directory."))
+            return true
+        }
+
         val targetBranch = args.firstOrNull { !it.startsWith("-") }
         if (targetBranch.isNullOrBlank()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: branch name required\nusage: git merge <branch>"))
-            return
+            return false
         }
 
         if (targetBranch == currentBranch) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "Already up to date."))
+            return true
+        }
+
+        val state = _uiState.value
+        val flaggedFile = state.activeFilePath
+            ?: state.rawTreeItems.firstOrNull { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") }?.path
+            ?: "README.md"
+
+        val originalContent = state.terminalDrafts[flaggedFile]
+            ?: if (flaggedFile == state.activeFilePath) state.activeFileContent
+            else "# Morphe Manager\n\nAndroid application management tool."
+
+        val conflictHunk = """
+<<<<<<< HEAD
+// Local branch '$currentBranch' changes
+val version = "1.0.0-dev"
+=======
+// Upstream incoming '$targetBranch' changes
+val version = "1.1.0-upstream"
+>>>>>>> $targetBranch
+""".trim()
+
+        val fullConflictContent = if (ConflictResolverUtil.hasConflictMarkers(originalContent)) {
+            originalContent
+        } else {
+            "$conflictHunk\n\n$originalContent"
+        }
+
+        val conflict = ConflictResolverUtil.parseConflict(flaggedFile, fullConflictContent)
+            ?: GitConflict(
+                filePath = flaggedFile,
+                conflictMarkerCount = 1,
+                oursSnippet = "val version = \"1.0.0-dev\"",
+                theirsSnippet = "val version = \"1.1.0-upstream\"",
+                fullOursText = "val version = \"1.0.0-dev\"\n\n$originalContent",
+                fullTheirsText = "val version = \"1.1.0-upstream\"\n\n$originalContent",
+                fullBothText = "val version = \"1.0.0-dev\"\nval version = \"1.1.0-upstream\"\n\n$originalContent",
+                isResolved = false
+            )
+
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+        updatedDrafts[flaggedFile] = fullConflictContent
+
+        _uiState.update {
+            it.copy(
+                activeMergeConflict = true,
+                mergeSourceBranch = targetBranch,
+                conflictedFiles = listOf(conflict),
+                terminalDrafts = updatedDrafts,
+                activeFileContent = if (it.activeFilePath == flaggedFile) fullConflictContent else it.activeFileContent
+            )
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $flaggedFile"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $flaggedFile"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Automatic merge failed; fix conflicts and then commit the result."))
+        return false
+    }
+
+    private suspend fun handleGitRebase(args: List<String>, repo: GitHubRepository?, currentBranch: String, token: String?): Boolean {
+        if (args.contains("--abort")) {
+            if (!_uiState.value.activeRebaseInProgress) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: No rebase in progress?"))
+                return false
+            }
+            val cleanDrafts = _uiState.value.terminalDrafts.filterKeys { k -> !_uiState.value.conflictedFiles.any { c -> c.filePath == k } }
+            _uiState.update {
+                it.copy(
+                    activeRebaseInProgress = false,
+                    conflictedFiles = emptyList(),
+                    rebaseHeadCommit = null,
+                    terminalDrafts = cleanDrafts
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Rebase aborted. Checked out original branch '$currentBranch'."))
+            return true
+        }
+
+        if (args.contains("--skip")) {
+            _uiState.update {
+                it.copy(
+                    activeRebaseInProgress = false,
+                    conflictedFiles = emptyList(),
+                    rebaseHeadCommit = null
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Skipping patch. Successfully rebased and updated refs/heads/$currentBranch."))
+            resumePendingTerminalCommands()
+            return true
+        }
+
+        if (args.contains("--continue")) {
+            val state = _uiState.value
+            if (!state.activeRebaseInProgress) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: No rebase in progress?"))
+                return false
+            }
+
+            val hasUnresolved = state.conflictedFiles.any { !it.isResolved }
+                || state.terminalDrafts.values.any { ConflictResolverUtil.hasConflictMarkers(it) }
+
+            if (hasUnresolved) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: Committing is not possible because you have unmerged files."))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: Fix them up in the work tree, and then use 'git add <file>'"))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: as appropriate to mark resolution and run 'git rebase --continue'."))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Exiting because of an unresolved conflict."))
+                return false
+            }
+
+            val headCommit = state.rebaseHeadCommit ?: "feat: local modifications on $currentBranch"
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Applying: $headCommit"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Successfully rebased and updated refs/heads/$currentBranch."))
+
+            _uiState.update {
+                it.copy(
+                    activeRebaseInProgress = false,
+                    conflictedFiles = emptyList(),
+                    rebaseHeadCommit = null,
+                    terminalStagedFiles = emptySet()
+                )
+            }
+            resumePendingTerminalCommands()
+            return true
+        }
+
+        val target = args.firstOrNull { !it.startsWith("-") } ?: "origin/$currentBranch"
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "First, rewinding head to replay your work on top of it..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Applying: feat: local modifications on $currentBranch"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Using index info to reconstruct a base tree..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Falling back to patching base and 3-way merge..."))
+
+        val state = _uiState.value
+        val flaggedFile = state.activeFilePath
+            ?: state.rawTreeItems.firstOrNull { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") }?.path
+            ?: "README.md"
+
+        val originalContent = state.terminalDrafts[flaggedFile]
+            ?: if (flaggedFile == state.activeFilePath) state.activeFileContent
+            else "# Morphe Manager\n\nRebase modifications."
+
+        val conflictHunk = """
+<<<<<<< HEAD
+// Local commit on '$currentBranch'
+val buildNumber = 42
+=======
+// Upstream target '$target'
+val buildNumber = 43
+>>>>>>> $target
+""".trim()
+
+        val fullConflictContent = if (ConflictResolverUtil.hasConflictMarkers(originalContent)) {
+            originalContent
+        } else {
+            "$conflictHunk\n\n$originalContent"
+        }
+
+        val conflict = ConflictResolverUtil.parseConflict(flaggedFile, fullConflictContent)
+            ?: GitConflict(
+                filePath = flaggedFile,
+                conflictMarkerCount = 1,
+                oursSnippet = "val buildNumber = 42",
+                theirsSnippet = "val buildNumber = 43",
+                fullOursText = "val buildNumber = 42\n\n$originalContent",
+                fullTheirsText = "val buildNumber = 43\n\n$originalContent",
+                fullBothText = "val buildNumber = 42\nval buildNumber = 43\n\n$originalContent",
+                isResolved = false
+            )
+
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+        updatedDrafts[flaggedFile] = fullConflictContent
+
+        _uiState.update {
+            it.copy(
+                activeRebaseInProgress = true,
+                rebaseHeadCommit = "feat: local modifications on $currentBranch",
+                conflictedFiles = listOf(conflict),
+                terminalDrafts = updatedDrafts,
+                activeFileContent = if (it.activeFilePath == flaggedFile) fullConflictContent else it.activeFileContent
+            )
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $flaggedFile"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $flaggedFile"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: Failed to merge in the changes."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Patch failed at 0001 feat: local modifications on $currentBranch"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: When you have resolved this problem, run \"git rebase --continue\"."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: If you prefer to skip this patch, run \"git rebase --skip\"."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: To check out the original branch and stop rebasing, run \"git rebase --abort\"."))
+        return false
+    }
+
+    private fun handleGitRemote(args: List<String>, repo: GitHubRepository?) {
+        val state = _uiState.value
+        val remotes = state.gitRemotes.toMutableMap()
+        val defaultOrigin = if (repo != null) "https://github.com/${repo.fullName}.git" else "https://github.com/origin/repo.git"
+        if (!remotes.containsKey("origin")) {
+            remotes["origin"] = defaultOrigin
+        }
+
+        if (args.isEmpty()) {
+            remotes.keys.sorted().forEach { name ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = name))
+            }
             return
         }
 
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Updating $currentBranch..$targetBranch"))
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Fast-forward merge with '$targetBranch' succeeded."))
-        syncActiveRepository(isSilent = true)
+        val sub = args[0].lowercase()
+        when (sub) {
+            "-v", "--verbose" -> {
+                remotes.forEach { (name, url) ->
+                    val actualUrl = url.ifEmpty { defaultOrigin }
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$name\t$actualUrl (fetch)"))
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "$name\t$actualUrl (push)"))
+                }
+            }
+            "add" -> {
+                val name = args.getOrNull(1)
+                val url = args.getOrNull(2)
+                if (name.isNullOrBlank() || url.isNullOrBlank()) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "usage: git remote add <name> <url>"))
+                    return
+                }
+                if (remotes.containsKey(name)) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: remote $name already exists."))
+                    return
+                }
+                remotes[name] = url
+                _uiState.update { it.copy(gitRemotes = remotes) }
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "remote '$name' added ($url)"))
+            }
+            "remove", "rm" -> {
+                val name = args.getOrNull(1)
+                if (name.isNullOrBlank()) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "usage: git remote remove <name>"))
+                    return
+                }
+                remotes.remove(name)
+                _uiState.update { it.copy(gitRemotes = remotes) }
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "remote '$name' removed."))
+            }
+            "get-url" -> {
+                val name = args.getOrNull(1) ?: "origin"
+                val url = remotes[name] ?: defaultOrigin
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = url))
+            }
+            else -> {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: unknown subcommand '$sub'"))
+            }
+        }
+    }
+
+    private fun handleGitFetch(args: List<String>, repo: GitHubRepository?) {
+        val state = _uiState.value
+        val remotes = state.gitRemotes
+        val defaultOrigin = if (repo != null) "https://github.com/${repo.fullName}.git" else "https://github.com/origin/repo.git"
+        val remoteName = args.firstOrNull { !it.startsWith("-") } ?: "origin"
+
+        val remoteUrl = remotes[remoteName] ?: if (remoteName == "origin") defaultOrigin else null
+        if (remoteUrl == null) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: '$remoteName' does not appear to be a git repository\nfatal: Could not read from remote repository."))
+            return
+        }
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "remote: Enumerating objects: 38, done."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "remote: Counting objects: 100% (38/38), done."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "remote: Compressing objects: 100% (22/22), done."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "remote: Total 38 (delta 16), reused 30 (delta 12)"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "From $remoteUrl"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " * [new branch]      dev        -> $remoteName/dev"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " * [new branch]      main       -> $remoteName/main"))
+
+        val currentFetched = state.fetchedRemoteBranches.toMutableMap()
+        currentFetched[remoteName] = listOf("dev", "main")
+        _uiState.update { it.copy(fetchedRemoteBranches = currentFetched) }
+    }
+
+    private fun handleGitConflict(args: List<String>) {
+        val state = _uiState.value
+        val conflicts = state.conflictedFiles
+
+        if (args.isEmpty() || args[0] == "list") {
+            if (conflicts.isEmpty()) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "No unmerged conflict paths found."))
+                return
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "Unmerged conflicting paths (${conflicts.size}):"))
+            conflicts.forEach { c ->
+                val status = if (c.isResolved) "[RESOLVED: ${c.resolutionType}]" else "[UNRESOLVED]"
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "  $status ${c.filePath} (${c.conflictMarkerCount} marker(s))"))
+            }
+            return
+        }
+
+        if (args[0] == "resolve") {
+            val path = args.getOrNull(1)
+            val choice = args.find { it.startsWith("--") }?.removePrefix("--") ?: "ours"
+            if (path.isNullOrBlank()) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "usage: git conflict resolve <file> [--ours|--theirs|--both]"))
+                return
+            }
+            resolveGitConflict(path, choice)
+        }
+    }
+
+    fun resolveGitConflict(filePath: String, resolution: String) {
+        val state = _uiState.value
+        val conflict = state.conflictedFiles.find { it.filePath == filePath }
+        val currentContent = state.terminalDrafts[filePath]
+            ?: if (state.activeFilePath == filePath) state.activeFileContent
+            else ""
+
+        val resolved = when (resolution) {
+            "ours" -> if (conflict?.fullOursText?.isNotEmpty() == true) conflict.fullOursText else ConflictResolverUtil.resolveText(currentContent, "ours")
+            "theirs" -> if (conflict?.fullTheirsText?.isNotEmpty() == true) conflict.fullTheirsText else ConflictResolverUtil.resolveText(currentContent, "theirs")
+            "both" -> if (conflict?.fullBothText?.isNotEmpty() == true) conflict.fullBothText else ConflictResolverUtil.resolveText(currentContent, "both")
+            else -> currentContent
+        }
+
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+        updatedDrafts[filePath] = resolved
+
+        val updatedConflicts = state.conflictedFiles.map { c ->
+            if (c.filePath == filePath) c.copy(isResolved = true, resolutionType = resolution) else c
+        }
+
+        val allResolved = updatedConflicts.all { it.isResolved }
+
+        _uiState.update {
+            it.copy(
+                terminalDrafts = updatedDrafts,
+                conflictedFiles = updatedConflicts,
+                activeFileContent = if (it.activeFilePath == filePath) resolved else it.activeFileContent,
+                isFileDirty = if (it.activeFilePath == filePath) true else it.isFileDirty
+            )
+        }
+
+        appendTerminalLine(
+            TerminalLine(
+                type = TerminalLineType.OUTPUT_SUCCESS,
+                text = "✓ Resolved conflict in '$filePath' with $resolution version."
+            )
+        )
+
+        if (allResolved) {
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_INFO,
+                    text = "All conflicts resolved! Stage your changes ('git add .') to proceed."
+                )
+            )
+        }
+    }
+
+    fun resumePendingTerminalCommands() {
+        val queue = _uiState.value.pendingCommandQueue
+        if (queue.isEmpty()) return
+
+        _uiState.update { it.copy(pendingCommandQueue = emptyList()) }
+        appendTerminalLine(
+            TerminalLine(
+                type = TerminalLineType.OUTPUT_INFO,
+                text = "▶ Resuming ${queue.size} pending command(s) in queue..."
+            )
+        )
+        val script = queue.joinToString("\n")
+        runParsedScript(script)
+    }
+
+    fun abortMergeOrRebase() {
+        if (_uiState.value.activeMergeConflict) {
+            viewModelScope.launch {
+                handleGitMerge(listOf("--abort"), _uiState.value.selectedRepo, _uiState.value.selectedBranch, _uiState.value.currentAccount?.token)
+            }
+        } else if (_uiState.value.activeRebaseInProgress) {
+            viewModelScope.launch {
+                handleGitRebase(listOf("--abort"), _uiState.value.selectedRepo, _uiState.value.selectedBranch, _uiState.value.currentAccount?.token)
+            }
+        }
+    }
+
+    fun openFileFromTerminal(filePath: String) {
+        val item = _uiState.value.rawTreeItems.find { it.path == filePath }
+            ?: GitTreeItem(path = filePath, type = "blob", sha = "")
+        _uiState.update { it.copy(showTerminal = false) }
+        openFile(item)
     }
 
     private suspend fun handleGitCherryPick(args: List<String>, repo: GitHubRepository?, branch: String, token: String?) {
