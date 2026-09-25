@@ -369,7 +369,9 @@ data class GitConflict(
     val fullTheirsText: String = "",
     val fullBothText: String = "",
     val isResolved: Boolean = false,
-    val resolutionType: String? = null
+    val resolutionType: String? = null,
+    val hunkIndex: Int = 0,
+    val totalHunks: Int = 1
 )
 
 object ConflictResolverUtil {
@@ -380,6 +382,10 @@ object ConflictResolverUtil {
 
     fun hasConflictMarkers(content: String): Boolean {
         return content.contains("<<<<<<<") && content.contains("=======") && content.contains(">>>>>>>")
+    }
+
+    fun getMarkerCount(content: String): Int {
+        return CONFLICT_REGEX.findAll(content).count()
     }
 
     fun parseConflict(filePath: String, content: String): GitConflict? {
@@ -399,8 +405,44 @@ object ConflictResolverUtil {
             fullOursText = fullOurs,
             fullTheirsText = fullTheirs,
             fullBothText = fullBoth,
-            isResolved = false
+            isResolved = false,
+            hunkIndex = 0,
+            totalHunks = markerCount.coerceAtLeast(1)
         )
+    }
+
+    fun parseAllConflicts(filePath: String, content: String): List<GitConflict> {
+        val matches = CONFLICT_REGEX.findAll(content).toList()
+        if (matches.isEmpty()) return emptyList()
+        val total = matches.size
+
+        return matches.mapIndexed { idx, match ->
+            val ours = match.groupValues[1]
+            val theirs = match.groupValues[2]
+            GitConflict(
+                filePath = filePath,
+                conflictMarkerCount = total,
+                oursSnippet = ours.trim(),
+                theirsSnippet = theirs.trim(),
+                fullOursText = resolveFirstMarker(content, "ours"),
+                fullTheirsText = resolveFirstMarker(content, "theirs"),
+                fullBothText = resolveFirstMarker(content, "both"),
+                isResolved = false,
+                hunkIndex = idx,
+                totalHunks = total
+            )
+        }
+    }
+
+    fun resolveFirstMarker(content: String, resolution: String): String {
+        val match = CONFLICT_REGEX.find(content) ?: return content
+        val replacement = when (resolution) {
+            "ours" -> match.groupValues[1]
+            "theirs" -> match.groupValues[2]
+            "both" -> match.groupValues[1] + match.groupValues[2]
+            else -> match.value
+        }
+        return content.replaceRange(match.range, replacement)
     }
 
     fun resolveText(content: String, resolution: String): String {

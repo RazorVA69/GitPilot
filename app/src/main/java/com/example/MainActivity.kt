@@ -472,6 +472,8 @@ fun GitExplorerApp(
             isRebaseConflict = uiState.activeRebaseInProgress,
             pendingCommands = uiState.pendingCommandQueue,
             onResolveConflict = viewModel::resolveGitConflict,
+            onResolveAllConflicts = viewModel::resolveAllGitConflicts,
+            onCommitResolvedConflicts = viewModel::commitAndPushResolvedConflicts,
             onOpenInEditor = viewModel::openFileFromTerminal,
             onResumePendingQueue = viewModel::resumePendingTerminalCommands,
             onAbortConflict = viewModel::abortMergeOrRebase,

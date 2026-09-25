@@ -3873,7 +3873,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "cherry-pick", "cherrypick" -> {
-                handleGitCherryPick(subArgs, repo, branch, token)
+                return handleGitCherryPick(subArgs, repo, branch, token)
             }
 
             "clean" -> {
@@ -4322,16 +4322,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             val defaultMergeMsg = "Merge remote-tracking branch '${state.mergeSourceBranch ?: "upstream/dev"}' into $branch"
             val effectiveMsg = commitMessage.ifEmpty { defaultMergeMsg }
 
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch 7a3c9e1] $effectiveMsg"))
-            _uiState.update {
-                it.copy(
-                    activeMergeConflict = false,
-                    conflictedFiles = emptyList(),
-                    mergeSourceBranch = null,
-                    terminalStagedFiles = emptySet()
-                )
-            }
-            resumePendingTerminalCommands()
+            commitAndPushResolvedConflicts(effectiveMsg)
             return true
         }
 
@@ -4440,6 +4431,36 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         val isForce = args.contains("--force") || args.contains("-f")
         val targetBranch = args.filter { !it.startsWith("-") && it != "origin" }.firstOrNull() ?: branch
+
+        val state = _uiState.value
+        val pendingDrafts = state.terminalDrafts.filter { !ConflictResolverUtil.hasConflictMarkers(it.value) }
+        val filesToPush = (pendingDrafts.keys + state.terminalStagedFiles).distinct()
+
+        if (filesToPush.isNotEmpty() && !token.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing and pushing ${filesToPush.size} updated object(s) to branch '$targetBranch'..."))
+            for (filePath in filesToPush) {
+                val content = state.terminalDrafts[filePath] ?: if (filePath == state.activeFilePath) state.activeFileContent else null
+                if (content == null) continue
+                val sha = state.rawTreeItems.find { it.path == filePath }?.sha
+                repository.commitFile(
+                    token = token,
+                    owner = repo.owner.login,
+                    repo = repo.name,
+                    path = filePath,
+                    content = content,
+                    message = "Push updates for $filePath via git push",
+                    sha = sha,
+                    branch = targetBranch
+                )
+            }
+            _uiState.update {
+                it.copy(
+                    terminalDrafts = it.terminalDrafts - filesToPush.toSet(),
+                    terminalStagedFiles = emptySet()
+                )
+            }
+        }
+
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (3/3), done."))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git"))
         if (isForce) {
@@ -5110,58 +5131,86 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         val state = _uiState.value
-        val flaggedFile = state.activeFilePath
-            ?: state.rawTreeItems.firstOrNull { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") }?.path
-            ?: "README.md"
+        val existingDraftConflicts = state.terminalDrafts.filter { ConflictResolverUtil.hasConflictMarkers(it.value) }.keys.toList()
 
-        val originalContent = state.terminalDrafts[flaggedFile]
-            ?: if (flaggedFile == state.activeFilePath) state.activeFileContent
-            else "# Morphe Manager\n\nAndroid application management tool."
+        val candidateFiles = mutableListOf<String>()
+        if (existingDraftConflicts.isNotEmpty()) {
+            candidateFiles.addAll(existingDraftConflicts)
+        } else {
+            state.activeFilePath?.let { candidateFiles.add(it) }
+            val otherFiles = state.rawTreeItems
+                .filter { it.type == "blob" && !candidateFiles.contains(it.path) }
+                .filter { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") || it.path.endsWith(".xml") || it.path.endsWith(".json") }
+                .map { it.path }
+            candidateFiles.addAll(otherFiles.take(2)) // Up to 3 conflict files
+            if (candidateFiles.isEmpty()) candidateFiles.add("README.md")
+        }
 
-        val conflictHunk = """
+        val conflictList = mutableListOf<GitConflict>()
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+
+        candidateFiles.forEachIndexed { idx, file ->
+            val origContent = state.terminalDrafts[file]
+                ?: if (file == state.activeFilePath) state.activeFileContent
+                else "# Project File\n\nBranch updates for $file."
+
+            val (oursVar, theirsVar) = when (idx) {
+                0 -> "val version = \"1.0.0-dev\"" to "val version = \"1.1.0-upstream\""
+                1 -> "val buildVariant = \"debug\"" to "val buildVariant = \"release\""
+                else -> "val enableLogging = true" to "val enableLogging = false"
+            }
+
+            val hunk = """
 <<<<<<< HEAD
 // Local branch '$currentBranch' changes
-val version = "1.0.0-dev"
+$oursVar
 =======
 // Upstream incoming '$targetBranch' changes
-val version = "1.1.0-upstream"
+$theirsVar
 >>>>>>> $targetBranch
 """.trim()
 
-        val fullConflictContent = if (ConflictResolverUtil.hasConflictMarkers(originalContent)) {
-            originalContent
-        } else {
-            "$conflictHunk\n\n$originalContent"
+            val fullContent = if (ConflictResolverUtil.hasConflictMarkers(origContent)) {
+                origContent
+            } else {
+                "$hunk\n\n$origContent"
+            }
+
+            val conflict = ConflictResolverUtil.parseConflict(file, fullContent)
+                ?: GitConflict(
+                    filePath = file,
+                    conflictMarkerCount = 1,
+                    oursSnippet = oursVar,
+                    theirsSnippet = theirsVar,
+                    fullOursText = "$oursVar\n\n$origContent",
+                    fullTheirsText = "$theirsVar\n\n$origContent",
+                    fullBothText = "$oursVar\n$theirsVar\n\n$origContent",
+                    isResolved = false,
+                    hunkIndex = 0,
+                    totalHunks = 1
+                )
+
+            conflictList.add(conflict)
+            updatedDrafts[file] = fullContent
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $file"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $file"))
         }
-
-        val conflict = ConflictResolverUtil.parseConflict(flaggedFile, fullConflictContent)
-            ?: GitConflict(
-                filePath = flaggedFile,
-                conflictMarkerCount = 1,
-                oursSnippet = "val version = \"1.0.0-dev\"",
-                theirsSnippet = "val version = \"1.1.0-upstream\"",
-                fullOursText = "val version = \"1.0.0-dev\"\n\n$originalContent",
-                fullTheirsText = "val version = \"1.1.0-upstream\"\n\n$originalContent",
-                fullBothText = "val version = \"1.0.0-dev\"\nval version = \"1.1.0-upstream\"\n\n$originalContent",
-                isResolved = false
-            )
-
-        val updatedDrafts = state.terminalDrafts.toMutableMap()
-        updatedDrafts[flaggedFile] = fullConflictContent
 
         _uiState.update {
             it.copy(
                 activeMergeConflict = true,
                 mergeSourceBranch = targetBranch,
-                conflictedFiles = listOf(conflict),
+                conflictedFiles = conflictList,
                 terminalDrafts = updatedDrafts,
-                activeFileContent = if (it.activeFilePath == flaggedFile) fullConflictContent else it.activeFileContent
+                activeFileContent = if (candidateFiles.contains(it.activeFilePath)) updatedDrafts[it.activeFilePath] ?: it.activeFileContent else it.activeFileContent
             )
         }
 
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $flaggedFile"))
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $flaggedFile"))
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Automatic merge failed; fix conflicts and then commit the result."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Automatic merge failed; fix ${conflictList.size} conflict(s) and then commit the result."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "Unmerged conflicting paths (${conflictList.size}):"))
+        conflictList.forEach { c ->
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "  both modified:      ${c.filePath}"))
+        }
         return false
     }
 
@@ -5217,17 +5266,7 @@ val version = "1.1.0-upstream"
 
             val headCommit = state.rebaseHeadCommit ?: "feat: local modifications on $currentBranch"
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Applying: $headCommit"))
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Successfully rebased and updated refs/heads/$currentBranch."))
-
-            _uiState.update {
-                it.copy(
-                    activeRebaseInProgress = false,
-                    conflictedFiles = emptyList(),
-                    rebaseHeadCommit = null,
-                    terminalStagedFiles = emptySet()
-                )
-            }
-            resumePendingTerminalCommands()
+            commitAndPushResolvedConflicts(headCommit)
             return true
         }
 
@@ -5238,59 +5277,87 @@ val version = "1.1.0-upstream"
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Falling back to patching base and 3-way merge..."))
 
         val state = _uiState.value
-        val flaggedFile = state.activeFilePath
-            ?: state.rawTreeItems.firstOrNull { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") }?.path
-            ?: "README.md"
+        val existingDraftConflicts = state.terminalDrafts.filter { ConflictResolverUtil.hasConflictMarkers(it.value) }.keys.toList()
 
-        val originalContent = state.terminalDrafts[flaggedFile]
-            ?: if (flaggedFile == state.activeFilePath) state.activeFileContent
-            else "# Morphe Manager\n\nRebase modifications."
+        val candidateFiles = mutableListOf<String>()
+        if (existingDraftConflicts.isNotEmpty()) {
+            candidateFiles.addAll(existingDraftConflicts)
+        } else {
+            state.activeFilePath?.let { candidateFiles.add(it) }
+            val otherFiles = state.rawTreeItems
+                .filter { it.type == "blob" && !candidateFiles.contains(it.path) }
+                .filter { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") || it.path.endsWith(".xml") || it.path.endsWith(".json") }
+                .map { it.path }
+            candidateFiles.addAll(otherFiles.take(2)) // Up to 3 conflict files
+            if (candidateFiles.isEmpty()) candidateFiles.add("README.md")
+        }
 
-        val conflictHunk = """
+        val conflictList = mutableListOf<GitConflict>()
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+
+        candidateFiles.forEachIndexed { idx, file ->
+            val origContent = state.terminalDrafts[file]
+                ?: if (file == state.activeFilePath) state.activeFileContent
+                else "# Project File\n\nRebase modifications for $file."
+
+            val (oursVar, theirsVar) = when (idx) {
+                0 -> "val buildNumber = 42" to "val buildNumber = 43"
+                1 -> "val databaseVersion = 10" to "val databaseVersion = 11"
+                else -> "val apiEndpoint = \"https://api.v1.local\"" to "val apiEndpoint = \"https://api.v2.remote\""
+            }
+
+            val hunk = """
 <<<<<<< HEAD
 // Local commit on '$currentBranch'
-val buildNumber = 42
+$oursVar
 =======
 // Upstream target '$target'
-val buildNumber = 43
+$theirsVar
 >>>>>>> $target
 """.trim()
 
-        val fullConflictContent = if (ConflictResolverUtil.hasConflictMarkers(originalContent)) {
-            originalContent
-        } else {
-            "$conflictHunk\n\n$originalContent"
+            val fullContent = if (ConflictResolverUtil.hasConflictMarkers(origContent)) {
+                origContent
+            } else {
+                "$hunk\n\n$origContent"
+            }
+
+            val conflict = ConflictResolverUtil.parseConflict(file, fullContent)
+                ?: GitConflict(
+                    filePath = file,
+                    conflictMarkerCount = 1,
+                    oursSnippet = oursVar,
+                    theirsSnippet = theirsVar,
+                    fullOursText = "$oursVar\n\n$origContent",
+                    fullTheirsText = "$theirsVar\n\n$origContent",
+                    fullBothText = "$oursVar\n$theirsVar\n\n$origContent",
+                    isResolved = false,
+                    hunkIndex = 0,
+                    totalHunks = 1
+                )
+
+            conflictList.add(conflict)
+            updatedDrafts[file] = fullContent
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $file"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $file"))
         }
-
-        val conflict = ConflictResolverUtil.parseConflict(flaggedFile, fullConflictContent)
-            ?: GitConflict(
-                filePath = flaggedFile,
-                conflictMarkerCount = 1,
-                oursSnippet = "val buildNumber = 42",
-                theirsSnippet = "val buildNumber = 43",
-                fullOursText = "val buildNumber = 42\n\n$originalContent",
-                fullTheirsText = "val buildNumber = 43\n\n$originalContent",
-                fullBothText = "val buildNumber = 42\nval buildNumber = 43\n\n$originalContent",
-                isResolved = false
-            )
-
-        val updatedDrafts = state.terminalDrafts.toMutableMap()
-        updatedDrafts[flaggedFile] = fullConflictContent
 
         _uiState.update {
             it.copy(
                 activeRebaseInProgress = true,
                 rebaseHeadCommit = "feat: local modifications on $currentBranch",
-                conflictedFiles = listOf(conflict),
+                conflictedFiles = conflictList,
                 terminalDrafts = updatedDrafts,
-                activeFileContent = if (it.activeFilePath == flaggedFile) fullConflictContent else it.activeFileContent
+                activeFileContent = if (candidateFiles.contains(it.activeFilePath)) updatedDrafts[it.activeFilePath] ?: it.activeFileContent else it.activeFileContent
             )
         }
 
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $flaggedFile"))
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $flaggedFile"))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: Failed to merge in the changes."))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Patch failed at 0001 feat: local modifications on $currentBranch"))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "Unmerged conflicting paths (${conflictList.size}):"))
+        conflictList.forEach { c ->
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "  both modified:      ${c.filePath}"))
+        }
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: When you have resolved this problem, run \"git rebase --continue\"."))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: If you prefer to skip this patch, run \"git rebase --skip\"."))
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: To check out the original branch and stop rebasing, run \"git rebase --abort\"."))
@@ -5450,12 +5517,191 @@ val buildNumber = 43
         )
 
         if (allResolved) {
+            val pendingCount = state.pendingCommandQueue.size
+            if (pendingCount > 0) {
+                appendTerminalLine(
+                    TerminalLine(
+                        type = TerminalLineType.OUTPUT_INFO,
+                        text = "✓ All conflicts for this step resolved! Auto-resuming next command in queue ($pendingCount remaining)..."
+                    )
+                )
+                // Clear blocking flags so the next sequential command executes smoothly
+                _uiState.update {
+                    it.copy(
+                        activeMergeConflict = false,
+                        activeRebaseInProgress = false
+                    )
+                }
+                viewModelScope.launch {
+                    delay(350L)
+                    resumePendingTerminalCommands()
+                }
+            } else {
+                appendTerminalLine(
+                    TerminalLine(
+                        type = TerminalLineType.OUTPUT_INFO,
+                        text = "All conflicts resolved! Tap 'Commit & Push to GitHub' or run 'git commit' / 'git push' to write changes to your repository."
+                    )
+                )
+            }
+        }
+    }
+
+    fun resolveAllGitConflicts(resolution: String) {
+        val state = _uiState.value
+        val conflicts = state.conflictedFiles
+        if (conflicts.isEmpty()) return
+
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+        conflicts.forEach { conflict ->
+            val currentContent = updatedDrafts[conflict.filePath]
+                ?: if (state.activeFilePath == conflict.filePath) state.activeFileContent
+                else ""
+            val resolved = when (resolution) {
+                "ours" -> if (conflict.fullOursText.isNotEmpty()) conflict.fullOursText else ConflictResolverUtil.resolveText(currentContent, "ours")
+                "theirs" -> if (conflict.fullTheirsText.isNotEmpty()) conflict.fullTheirsText else ConflictResolverUtil.resolveText(currentContent, "theirs")
+                "both" -> if (conflict.fullBothText.isNotEmpty()) conflict.fullBothText else ConflictResolverUtil.resolveText(currentContent, "both")
+                else -> currentContent
+            }
+            updatedDrafts[conflict.filePath] = resolved
+        }
+
+        val updatedConflicts = conflicts.map { it.copy(isResolved = true, resolutionType = resolution) }
+
+        _uiState.update {
+            it.copy(
+                terminalDrafts = updatedDrafts,
+                conflictedFiles = updatedConflicts,
+                activeFileContent = if (it.activeFilePath != null && updatedDrafts.containsKey(it.activeFilePath)) updatedDrafts[it.activeFilePath] ?: it.activeFileContent else it.activeFileContent,
+                isFileDirty = true
+            )
+        }
+
+        appendTerminalLine(
+            TerminalLine(
+                type = TerminalLineType.OUTPUT_SUCCESS,
+                text = "✓ Resolved all ${conflicts.size} conflict(s) with $resolution version."
+            )
+        )
+
+        val pendingCount = state.pendingCommandQueue.size
+        if (pendingCount > 0) {
             appendTerminalLine(
                 TerminalLine(
                     type = TerminalLineType.OUTPUT_INFO,
-                    text = "All conflicts resolved! Stage your changes ('git add .') to proceed."
+                    text = "▶ Auto-resuming next command in queue ($pendingCount remaining)..."
                 )
             )
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = false,
+                    activeRebaseInProgress = false
+                )
+            }
+            viewModelScope.launch {
+                delay(350L)
+                resumePendingTerminalCommands()
+            }
+        } else {
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_INFO,
+                    text = "All conflicts resolved! Tap 'Commit & Push to GitHub' or run 'git commit' to write changes to your repository."
+                )
+            )
+        }
+    }
+
+    fun commitAndPushResolvedConflicts(customMessage: String? = null) {
+        val state = _uiState.value
+        val repo = state.selectedRepo
+        val branch = state.selectedBranch
+        val token = state.currentAccount?.token
+        val conflicts = state.conflictedFiles
+
+        if (repo == null) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Not in a git repository"))
+            return
+        }
+
+        val filesToCommit = (conflicts.map { it.filePath } + state.terminalDrafts.keys).distinct()
+        if (filesToCommit.isEmpty()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "No resolved conflict files or drafts found to commit."))
+            return
+        }
+
+        if (token.isNullOrBlank()) {
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_WARNING,
+                    text = "⚠️ Notice: No GitHub Personal Access Token configured.\nChanges are saved locally in terminal drafts. To commit and push changes directly to your remote repository (${repo.fullName}), please configure a GitHub PAT in Accounts with repo write permissions."
+                )
+            )
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = false,
+                    activeRebaseInProgress = false,
+                    conflictedFiles = emptyList()
+                )
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} resolved file(s) to remote branch '$branch'..."))
+
+            var successCount = 0
+            val effectiveMsg = customMessage?.ifBlank { null }
+                ?: "Resolve conflicts in ${filesToCommit.joinToString(", ") { it.substringAfterLast('/') }}"
+
+            for (filePath in filesToCommit) {
+                val content = state.terminalDrafts[filePath]
+                    ?: if (filePath == state.activeFilePath) state.activeFileContent
+                    else null
+
+                if (content == null) continue
+
+                if (ConflictResolverUtil.hasConflictMarkers(content)) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: File '$filePath' still contains unresolved conflict markers. Please resolve them first."))
+                    continue
+                }
+
+                val sha = state.rawTreeItems.find { it.path == filePath }?.sha
+
+                val res = repository.commitFile(
+                    token = token,
+                    owner = repo.owner.login,
+                    repo = repo.name,
+                    path = filePath,
+                    content = content,
+                    message = effectiveMsg,
+                    sha = sha,
+                    branch = branch
+                )
+
+                if (res.isSuccess) {
+                    successCount++
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "  ✓ Committed $filePath"))
+                } else {
+                    val err = res.exceptionOrNull()?.message ?: "commit failed"
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "  ✗ Failed to commit $filePath: $err"))
+                }
+            }
+
+            if (successCount > 0) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Successfully pushed $successCount file(s) to https://github.com/${repo.fullName}.git (refs/heads/$branch)"))
+                _uiState.update {
+                    it.copy(
+                        activeMergeConflict = false,
+                        activeRebaseInProgress = false,
+                        conflictedFiles = emptyList(),
+                        terminalDrafts = it.terminalDrafts - filesToCommit.toSet(),
+                        terminalStagedFiles = emptySet()
+                    )
+                }
+                syncActiveRepository(isSilent = true)
+                resumePendingTerminalCommands()
+            }
         }
     }
 
@@ -5493,16 +5739,121 @@ val buildNumber = 43
         openFile(item)
     }
 
-    private suspend fun handleGitCherryPick(args: List<String>, repo: GitHubRepository?, branch: String, token: String?) {
+    private suspend fun handleGitCherryPick(args: List<String>, repo: GitHubRepository?, branch: String, token: String?): Boolean {
+        if (args.contains("--abort")) {
+            val cleanDrafts = _uiState.value.terminalDrafts.filterKeys { k -> !_uiState.value.conflictedFiles.any { c -> c.filePath == k } }
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = false,
+                    activeRebaseInProgress = false,
+                    conflictedFiles = emptyList(),
+                    terminalDrafts = cleanDrafts
+                )
+            }
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Cherry-pick aborted. Restored working directory."))
+            return true
+        }
+
+        if (args.contains("--continue")) {
+            val hasUnresolved = _uiState.value.conflictedFiles.any { !it.isResolved }
+                || _uiState.value.terminalDrafts.values.any { ConflictResolverUtil.hasConflictMarkers(it) }
+            if (hasUnresolved) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Exiting because of an unresolved conflict."))
+                return false
+            }
+            commitAndPushResolvedConflicts("Apply cherry-picked modifications on $branch")
+            return true
+        }
+
         val sha = args.firstOrNull { !it.startsWith("-") }
         if (sha.isNullOrBlank()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: commit SHA required\nusage: git cherry-pick <commit>"))
-            return
+            return false
         }
 
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Cherry-picking commit ${sha.take(7)} onto '$branch'..."))
+
+        val state = _uiState.value
+        // If there are pending queue commands or target commit simulated conflict
+        val isConflicted = sha.length >= 7 && (sha.hashCode().mod(2) == 0 || state.pendingCommandQueue.isNotEmpty())
+
+        if (isConflicted) {
+            val candidateFile = state.activeFilePath
+                ?: state.rawTreeItems.firstOrNull { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") }?.path
+                ?: "README.md"
+
+            val origContent = state.terminalDrafts[candidateFile]
+                ?: if (candidateFile == state.activeFilePath) state.activeFileContent
+                else "# Project File\n\nExisting code."
+
+            val hunk = """
+<<<<<<< HEAD
+// Current branch '$branch'
+val cherryPickFeature = false
+=======
+// Incoming cherry-pick ${sha.take(7)}
+val cherryPickFeature = true
+>>>>>>> ${sha.take(7)}
+""".trim()
+
+            val fullContent = if (ConflictResolverUtil.hasConflictMarkers(origContent)) origContent else "$hunk\n\n$origContent"
+            val conflict = ConflictResolverUtil.parseConflict(candidateFile, fullContent)
+                ?: GitConflict(
+                    filePath = candidateFile,
+                    conflictMarkerCount = 1,
+                    oursSnippet = "val cherryPickFeature = false",
+                    theirsSnippet = "val cherryPickFeature = true",
+                    fullOursText = "val cherryPickFeature = false\n\n$origContent",
+                    fullTheirsText = "val cherryPickFeature = true\n\n$origContent",
+                    fullBothText = "val cherryPickFeature = false\nval cherryPickFeature = true\n\n$origContent",
+                    isResolved = false
+                )
+
+            val updatedDrafts = state.terminalDrafts.toMutableMap()
+            updatedDrafts[candidateFile] = fullContent
+
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = true,
+                    conflictedFiles = listOf(conflict),
+                    terminalDrafts = updatedDrafts,
+                    activeFileContent = if (it.activeFilePath == candidateFile) fullContent else it.activeFileContent
+                )
+            }
+
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Auto-merging $candidateFile"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "CONFLICT (content): Merge conflict in $candidateFile"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: could not apply ${sha.take(7)}..."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: after resolving the conflicts, mark the corrected paths"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "hint: with 'git add <paths>' or use the interactive UI above."))
+            return false
+        }
+
+        // Applied cleanly: commit changes directly to GitHub remote if token exists
+        if (repo != null && !token.isNullOrBlank()) {
+            val targetFile = state.activeFilePath
+                ?: state.rawTreeItems.firstOrNull { it.path.endsWith(".kt") || it.path.endsWith(".gradle.kts") || it.path.endsWith(".md") }?.path
+                ?: "README.md"
+            val shaOnFile = state.rawTreeItems.find { it.path == targetFile }?.sha
+            val currentContent = state.terminalDrafts[targetFile]
+                ?: if (targetFile == state.activeFilePath) state.activeFileContent
+                else "Cherry-pick applied."
+
+            repository.commitFile(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                path = targetFile,
+                content = currentContent,
+                message = "Cherry-pick ${sha.take(7)} onto $branch",
+                sha = shaOnFile,
+                branch = branch
+            )
+        }
+
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch ${sha.take(7)}] Applied cherry-pick commit cleanly."))
         syncActiveRepository(isSilent = true)
+        return true
     }
 
     private fun handleGitClean(args: List<String>) {

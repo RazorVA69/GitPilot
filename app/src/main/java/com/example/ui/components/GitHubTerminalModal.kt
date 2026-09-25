@@ -150,6 +150,8 @@ fun GitHubTerminalModal(
     isRebaseConflict: Boolean = false,
     pendingCommands: List<String> = emptyList(),
     onResolveConflict: (String, String) -> Unit = { _, _ -> },
+    onResolveAllConflicts: (String) -> Unit = {},
+    onCommitResolvedConflicts: () -> Unit = {},
     onOpenInEditor: (String) -> Unit = {},
     onResumePendingQueue: () -> Unit = {},
     onAbortConflict: () -> Unit = {},
@@ -627,8 +629,11 @@ fun GitHubTerminalModal(
                         conflicts = conflictedFiles,
                         isMergeConflict = isMergeConflict,
                         isRebaseConflict = isRebaseConflict,
+                        selectedBranch = selectedBranch,
                         pendingCommandCount = pendingCommands.size,
                         onResolveConflict = onResolveConflict,
+                        onResolveAllConflicts = onResolveAllConflicts,
+                        onCommitResolvedConflicts = onCommitResolvedConflicts,
                         onOpenInEditor = onOpenInEditor,
                         onResumePending = onResumePendingQueue,
                         onAbort = onAbortConflict
@@ -1165,13 +1170,17 @@ fun TerminalConflictResolutionCard(
     conflicts: List<GitConflict>,
     isMergeConflict: Boolean,
     isRebaseConflict: Boolean,
+    selectedBranch: String = "main",
     pendingCommandCount: Int,
     onResolveConflict: (String, String) -> Unit,
+    onResolveAllConflicts: (String) -> Unit = {},
+    onCommitResolvedConflicts: () -> Unit = {},
     onOpenInEditor: (String) -> Unit,
     onResumePending: () -> Unit,
     onAbort: () -> Unit
 ) {
     val allResolved = conflicts.isNotEmpty() && conflicts.all { it.isResolved }
+    val resolvedCount = conflicts.count { it.isResolved }
 
     Surface(
         color = TermSurface,
@@ -1203,7 +1212,9 @@ fun TerminalConflictResolutionCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (allResolved) {
-                            "All Conflicts Resolved"
+                            "All ${conflicts.size} Conflict(s) Resolved"
+                        } else if (conflicts.size > 1) {
+                            "${conflicts.size} Conflicts Detected ($resolvedCount/${conflicts.size} resolved)"
                         } else if (isRebaseConflict) {
                             "Rebase Conflict Detected"
                         } else {
@@ -1260,10 +1271,81 @@ fun TerminalConflictResolutionCard(
                     color = TermDim
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Batch quick resolution buttons if multiple conflicts
+                if (conflicts.size > 1) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            onClick = { onResolveAllConflicts("ours") },
+                            shape = RoundedCornerShape(4.dp),
+                            color = TermSurface2,
+                            border = BorderStroke(1.dp, TermSurfaceBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(26.dp)
+                                .testTag("resolve_all_ours_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Accept All Ours",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TermDiffAdd
+                                )
+                            }
+                        }
+                        Surface(
+                            onClick = { onResolveAllConflicts("theirs") },
+                            shape = RoundedCornerShape(4.dp),
+                            color = TermSurface2,
+                            border = BorderStroke(1.dp, TermSurfaceBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(26.dp)
+                                .testTag("resolve_all_theirs_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Accept All Theirs",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TermInfo
+                                )
+                            }
+                        }
+                        Surface(
+                            onClick = { onResolveAllConflicts("both") },
+                            shape = RoundedCornerShape(4.dp),
+                            color = TermSurface2,
+                            border = BorderStroke(1.dp, TermSurfaceBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(26.dp)
+                                .testTag("resolve_all_both_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Accept All Both",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TermText
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
             // Conflicted files list
-            conflicts.forEach { conflict ->
+            conflicts.forEachIndexed { index, conflict ->
                 Surface(
                     color = TermBg,
                     shape = RoundedCornerShape(6.dp),
@@ -1282,7 +1364,7 @@ fun TerminalConflictResolutionCard(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                 Icon(
                                     imageVector = if (conflict.isResolved) Icons.Default.Check else Icons.Default.CallSplit,
                                     contentDescription = null,
@@ -1290,13 +1372,33 @@ fun TerminalConflictResolutionCard(
                                     modifier = Modifier.size(14.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
+                                if (conflicts.size > 1) {
+                                    Text(
+                                        text = "[${index + 1}/${conflicts.size}] ",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = TermPromptUser
+                                    )
+                                }
                                 Text(
                                     text = conflict.filePath,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = TermText
+                                    color = TermText,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
+                                if (conflict.conflictMarkerCount > 1) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "(${conflict.conflictMarkerCount} markers)",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        color = TermDim
+                                    )
+                                }
                             }
 
                             if (conflict.isResolved) {
@@ -1493,17 +1595,19 @@ fun TerminalConflictResolutionCard(
                 }
             }
 
-            // Bottom CTA: If all resolved and pending commands exist, allow 1-tap resume
-            if (allResolved && pendingCommandCount > 0) {
+            // Bottom Actions when all resolved
+            if (allResolved) {
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Action 1: Commit & Push to GitHub remote
                 Surface(
-                    onClick = onResumePending,
+                    onClick = onCommitResolvedConflicts,
                     shape = RoundedCornerShape(6.dp),
-                    color = TermText,
+                    color = Color(0xFF0F9D74),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(36.dp)
-                        .testTag("terminal_resume_script_btn")
+                        .testTag("terminal_commit_push_resolved_btn")
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize(),
@@ -1511,19 +1615,54 @@ fun TerminalConflictResolutionCard(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
-                            imageVector = Icons.Default.PlayArrow,
-                            contentDescription = "Resume",
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Sync",
                             tint = Color.White,
                             modifier = Modifier.size(15.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Resume Remaining $pendingCommandCount Command(s) in Queue",
+                            text = "Commit & Push Resolved Changes to GitHub ($selectedBranch)",
                             fontFamily = FontFamily.Monospace,
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White
                         )
+                    }
+                }
+
+                // Action 2: Resume remaining queue if any
+                if (pendingCommandCount > 0) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Surface(
+                        onClick = onResumePending,
+                        shape = RoundedCornerShape(6.dp),
+                        color = TermText,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .testTag("terminal_resume_script_btn")
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Resume",
+                                tint = Color.White,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Resume Remaining $pendingCommandCount Command(s) in Queue",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
                     }
                 }
             }
