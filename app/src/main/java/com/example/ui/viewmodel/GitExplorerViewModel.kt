@@ -1072,6 +1072,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         if (existingTabIndex != -1) {
             // Tab already open, switch to it
             val tab = currentTabs[existingTabIndex]
+            val line = _uiState.value.initialEditorLine
             _uiState.update {
                 it.copy(
                     activeFilePath = tab.path,
@@ -1080,6 +1081,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     activeFileOriginalContent = tab.originalContent,
                     isFileDirty = tab.isDirty,
                     isMarkdownPreviewMode = tab.isMarkdownPreview,
+                    initialEditorLine = line,
                     isLoadingFile = false
                 )
             }

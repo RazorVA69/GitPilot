@@ -249,7 +249,26 @@ fun GitExplorerApp(
                 }
 
                 AppScreen.EXPLORER -> {
-                    if (uiState.activeFile != null || uiState.activeFilePath != null) {
+                    if (uiState.showSearchAcrossFiles) {
+                        SearchAcrossFilesView(
+                            repoName = uiState.selectedRepo?.name ?: "",
+                            branch = uiState.selectedBranch,
+                            searchQuery = uiState.searchAcrossFilesQuery,
+                            selectedPath = uiState.searchAcrossFilesPath,
+                            pinnedFolders = uiState.pinnedFolders,
+                            allTreeItems = uiState.rawTreeItems,
+                            isSearching = uiState.isSearchingAcrossFiles,
+                            progress = uiState.searchAcrossFilesProgress,
+                            results = uiState.searchAcrossFilesResults,
+                            onSearchQueryChange = viewModel::setSearchAcrossFilesQuery,
+                            onPathSelected = viewModel::setSearchAcrossFilesPath,
+                            onSelectMatch = { path, line ->
+                                viewModel.openFileAtLine(path, line)
+                            },
+                            onRefreshSearch = viewModel::refreshSearchAcrossFiles,
+                            onClose = viewModel::closeSearchAcrossFiles
+                        )
+                    } else if (uiState.activeFile != null || uiState.activeFilePath != null) {
                         CodeEditorView(
                             file = uiState.activeFile,
                             filePath = uiState.activeFilePath ?: "",
@@ -271,26 +290,8 @@ fun GitExplorerApp(
                             onCloseTab = viewModel::closeEditorTab,
                             onTogglePinTab = viewModel::togglePinEditorTab,
                             onTogglePinFile = viewModel::togglePinFile,
-                            onOpenFileFromFolder = viewModel::openFile
-                        )
-                    } else if (uiState.showSearchAcrossFiles) {
-                        SearchAcrossFilesView(
-                            repoName = uiState.selectedRepo?.name ?: "",
-                            branch = uiState.selectedBranch,
-                            searchQuery = uiState.searchAcrossFilesQuery,
-                            selectedPath = uiState.searchAcrossFilesPath,
-                            pinnedFolders = uiState.pinnedFolders,
-                            allTreeItems = uiState.rawTreeItems,
-                            isSearching = uiState.isSearchingAcrossFiles,
-                            progress = uiState.searchAcrossFilesProgress,
-                            results = uiState.searchAcrossFilesResults,
-                            onSearchQueryChange = viewModel::setSearchAcrossFilesQuery,
-                            onPathSelected = viewModel::setSearchAcrossFilesPath,
-                            onSelectMatch = { path, line ->
-                                viewModel.openFileAtLine(path, line)
-                            },
-                            onRefreshSearch = viewModel::refreshSearchAcrossFiles,
-                            onClose = viewModel::closeSearchAcrossFiles
+                            onOpenFileFromFolder = viewModel::openFile,
+                            onOpenSearchAcrossFiles = { viewModel.openSearchAcrossFiles() }
                         )
                     } else {
                         FileTreeExplorer(

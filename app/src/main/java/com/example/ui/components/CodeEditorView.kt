@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -41,6 +42,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
@@ -228,6 +230,7 @@ fun CodeEditorView(
     onTogglePinTab: (String) -> Unit = {},
     onTogglePinFile: (String) -> Unit = {},
     onOpenFileFromFolder: (GitTreeItem) -> Unit = {},
+    onOpenSearchAcrossFiles: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val clipboardManager = LocalClipboardManager.current
@@ -271,6 +274,7 @@ fun CodeEditorView(
     val searchFocusRequester = remember { FocusRequester() }
 
     val density = LocalDensity.current
+    var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
     val wrapSymbolPaint = remember(fontSize) {
         android.graphics.Paint().apply {
             isAntiAlias = true
@@ -329,9 +333,12 @@ fun CodeEditorView(
             previousFilePath = filePath
         }
 
-        // Restore target tab state from cache or tab info
-        val saved = tabPositionCache[filePath] ?: openTabs.find { it.path == filePath }?.let {
-            Triple(it.scrollY, it.scrollX, TextRange(it.selectionStart, it.selectionEnd))
+        // Restore target tab state from cache or tab info (unless explicit initialLine is requested)
+        val hasExplicitLine = (initialLine != null && initialLine > 0)
+        val saved = if (hasExplicitLine) null else {
+            tabPositionCache[filePath] ?: openTabs.find { it.path == filePath }?.let {
+                Triple(it.scrollY, it.scrollX, TextRange(it.selectionStart, it.selectionEnd))
+            }
         }
 
         val targetSelection = if (saved != null && saved.third.end <= content.length) {
@@ -347,20 +354,49 @@ fun CodeEditorView(
         if (saved != null) {
             verticalScrollState.scrollTo(saved.first.coerceIn(0, verticalScrollState.maxValue))
             horizontalScrollState.scrollTo(saved.second.coerceIn(0, horizontalScrollState.maxValue))
-        } else if (initialLine != null && initialLine > 0 && content.isNotEmpty()) {
-            val lines = content.lines()
-            val targetIdx = (initialLine - 1).coerceIn(0, (lines.size - 1).coerceAtLeast(0))
-            var charOffset = 0
-            for (i in 0 until targetIdx) {
-                charOffset += lines[i].length + 1
+        }
+    }
+
+    // Dedicated Jump to Initial Line on navigation from Search Across Files or Go To Line
+    var lastNavigatedLineTarget by remember { mutableStateOf<Pair<String, Int>?>(null) }
+
+    LaunchedEffect(filePath, initialLine, content) {
+        if (initialLine != null && initialLine > 0 && content.isNotEmpty()) {
+            val targetKey = Pair(filePath, initialLine)
+            if (lastNavigatedLineTarget != targetKey) {
+                lastNavigatedLineTarget = targetKey
+                tabPositionCache.remove(filePath)
+
+                val lines = content.lines()
+                val targetIdx = (initialLine - 1).coerceIn(0, (lines.size - 1).coerceAtLeast(0))
+                var charOffset = 0
+                for (i in 0 until targetIdx) {
+                    charOffset += lines[i].length + 1
+                }
+                val lineLen = lines.getOrNull(targetIdx)?.length ?: 0
+                val lineEnd = charOffset + lineLen
+                textFieldValue = textFieldValue.copy(
+                    selection = TextRange(charOffset, lineEnd)
+                )
+
+                val approxLineHeightPx = with(density) { (fontSize * 1.5f).sp.toPx() }
+                val targetScrollApprox = (targetIdx * approxLineHeightPx - 100f).coerceAtLeast(0f).toInt()
+                verticalScrollState.scrollTo(targetScrollApprox.coerceIn(0, verticalScrollState.maxValue))
             }
-            val lineEnd = charOffset + (lines.getOrNull(targetIdx)?.length ?: 0)
-            textFieldValue = textFieldValue.copy(
-                selection = TextRange(charOffset, lineEnd)
-            )
-            val approximateLineHeightPx = (fontSize * 1.5f * 2.5f).toInt()
-            val targetScroll = (targetIdx * approximateLineHeightPx - 100).coerceAtLeast(0)
-            verticalScrollState.scrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+        }
+    }
+
+    // Refine scroll to exact pixel position when TextLayoutResult is measured
+    LaunchedEffect(lastNavigatedLineTarget, textLayoutResult) {
+        val nav = lastNavigatedLineTarget ?: return@LaunchedEffect
+        val layout = textLayoutResult ?: return@LaunchedEffect
+        if (nav.first == filePath && layout.layoutInput.text.text == content && layout.lineCount > 0) {
+            val targetLineIdx = (nav.second - 1).coerceIn(0, layout.lineCount - 1)
+            val lineTopPx = try { layout.getLineTop(targetLineIdx) } catch (_: Exception) { -1f }
+            if (lineTopPx >= 0f) {
+                val targetScroll = (lineTopPx - 100f).coerceAtLeast(0f).toInt()
+                verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+            }
         }
     }
 
@@ -495,6 +531,17 @@ fun CodeEditorView(
         val newText = newTfv.text
         val oldSelection = textFieldValue.selection
         var adjustedTfv = newTfv
+
+        // Prevent Compose from selecting a new word/part when long-pressing on an already selected region
+        if (newText == oldText && !oldSelection.collapsed && !newTfv.selection.collapsed) {
+            val newMin = newTfv.selection.min
+            val newMax = newTfv.selection.max
+            // If the incoming selection is inside or overlapping the existing selection range,
+            // it is a long-press on the selection - preserve the user's intended selection!
+            if (newMin >= oldSelection.min && newMax <= oldSelection.max && (newMax - newMin) < oldSelection.length) {
+                adjustedTfv = newTfv.copy(selection = oldSelection)
+            }
+        }
 
         // If text was pasted or multi-character replaced, mark paste tracking to prevent jumping
         val isPasteOrReplace = (newText.length - oldText.length > 1) ||
@@ -671,17 +718,18 @@ fun CodeEditorView(
         }
     }
 
-    // Matches for search with derivedStateOf
+    // Matches for search with derivedStateOf (non-overlapping accurate calculation)
     val matches by remember(textFieldValue.text, searchQuery) {
         derivedStateOf {
             val text = textFieldValue.text
-            if (searchQuery.isBlank()) emptyList<Int>()
+            if (searchQuery.isEmpty()) emptyList<Int>()
             else {
                 val list = mutableListOf<Int>()
+                val step = searchQuery.length.coerceAtLeast(1)
                 var index = text.indexOf(searchQuery, ignoreCase = true)
                 while (index >= 0) {
                     list.add(index)
-                    index = text.indexOf(searchQuery, index + 1, ignoreCase = true)
+                    index = text.indexOf(searchQuery, index + step, ignoreCase = true)
                 }
                 list
             }
@@ -692,14 +740,31 @@ fun CodeEditorView(
         if (isSearchVisible && searchQuery.isNotEmpty() && matches.isNotEmpty()) {
             val safeIndex = currentMatchIndex.coerceIn(0, matches.size - 1)
             val matchPos = matches[safeIndex]
+            val currentText = textFieldValue.text
+            val matchEnd = (matchPos + searchQuery.length).coerceAtMost(currentText.length)
             textFieldValue = textFieldValue.copy(
-                selection = TextRange(matchPos, matchPos + searchQuery.length)
+                selection = TextRange(matchPos, matchEnd)
             )
-            // Scroll so the matched text appears in clear view in the top portion above keyboard
-            val line = content.take(matchPos).count { it == '\n' }
-            val approximateLineHeightPx = (fontSize * 1.5f * 2.6f).toInt()
-            val targetScroll = (line * approximateLineHeightPx - 80).coerceAtLeast(0)
-            verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+            // Accurately scroll to matched text using exact layout metrics when available
+            val layout = textLayoutResult
+            if (layout != null && matchPos <= layout.layoutInput.text.length) {
+                val rect = try { layout.getCursorRect(matchPos) } catch (_: Exception) { null }
+                if (rect != null) {
+                    val topPadPx = with(density) { 12.dp.toPx() }
+                    val targetY = (rect.top + topPadPx - 100).toInt().coerceIn(0, verticalScrollState.maxValue)
+                    verticalScrollState.animateScrollTo(targetY)
+                    if (!isWordWrapEnabled) {
+                        val startPadPx = with(density) { 14.dp.toPx() }
+                        val targetX = (rect.left + startPadPx - 50).toInt().coerceIn(0, horizontalScrollState.maxValue)
+                        horizontalScrollState.animateScrollTo(targetX)
+                    }
+                }
+            } else {
+                val line = currentText.take(matchPos).count { it == '\n' }
+                val approxLineHeightPx = with(density) { (fontSize * 1.5f).sp.toPx() }.toInt()
+                val targetScroll = (line * approxLineHeightPx - 80).coerceAtLeast(0)
+                verticalScrollState.animateScrollTo(targetScroll.coerceIn(0, verticalScrollState.maxValue))
+            }
         } else if (searchQuery.isEmpty() || !isSearchVisible) {
             if (!textFieldValue.selection.collapsed) {
                 textFieldValue = textFieldValue.copy(
@@ -824,7 +889,24 @@ fun CodeEditorView(
         // TOP APP BAR
         TopAppBar(
             title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .pointerInput(filePath) {
+                            detectTapGestures(
+                                onLongPress = {
+                                    clipboardManager.setText(AnnotatedString(filePath))
+                                    Toast.makeText(
+                                        context,
+                                        "Copied: $filePath",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            )
+                        }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                ) {
                     FileIconForExtension(
                         extension = fileName.substringAfterLast('.', ""),
                         modifier = Modifier.size(20.dp)
@@ -1686,6 +1768,14 @@ fun CodeEditorView(
                                 }
                             },
                             shape = RoundedCornerShape(10.dp),
+                            keyboardOptions = KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Search),
+                            keyboardActions = KeyboardActions(
+                                onSearch = {
+                                    if (matches.isNotEmpty()) {
+                                        currentMatchIndex = (currentMatchIndex + 1) % matches.size
+                                    }
+                                }
+                            ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedContainerColor = GitSurface,
                                 unfocusedContainerColor = GitSurface,
@@ -1855,18 +1945,6 @@ fun CodeEditorView(
                 }
             } else {
                 // Code Editor with High Performance Synchronized Gutter & Custom Scrollbars
-                val density = LocalDensity.current
-                var textLayoutResult by remember { mutableStateOf<TextLayoutResult?>(null) }
-
-                // Sync search match selection into textFieldValue
-                LaunchedEffect(matches, currentMatchIndex) {
-                    if (matches.isNotEmpty() && currentMatchIndex in matches.indices && searchQuery.isNotEmpty()) {
-                        val matchStart = matches[currentMatchIndex]
-                        val matchEnd = (matchStart + searchQuery.length).coerceAtMost(content.length)
-                        textFieldValue = textFieldValue.copy(selection = TextRange(matchStart, matchEnd))
-                    }
-                }
-
                 val topPaddingPx = with(density) { 12.dp.toPx() }
                 val safetyMarginPx = with(density) { 56.dp.toPx() }.toInt()
                 val topMarginPx = with(density) { 20.dp.toPx() }.toInt()
@@ -1921,6 +1999,28 @@ fun CodeEditorView(
                     } else if (cursorTop < curScroll + topMarginPx) {
                         val target = (cursorTop - topMarginPx).coerceIn(0, maxScroll)
                         verticalScrollState.scrollTo(target)
+                    }
+
+                    // Keep horizontal position in clear view when selecting with Gboard/arrows or moving cursor
+                    if (!isWordWrapEnabled) {
+                        val viewportWidth = horizontalScrollState.viewportSize
+                        if (viewportWidth > 0) {
+                            val curScrollX = horizontalScrollState.value
+                            val maxScrollX = horizontalScrollState.maxValue
+                            val startPaddingPx = with(density) { 14.dp.toPx() }.toInt()
+                            val cursorLeft = (cursorRect.left + startPaddingPx).toInt()
+                            val cursorRight = (cursorRect.right + startPaddingPx).toInt()
+                            val safetyMarginXPx = with(density) { 48.dp.toPx() }.toInt()
+                            val leftMarginXPx = with(density) { 24.dp.toPx() }.toInt()
+
+                            if (cursorRight > curScrollX + viewportWidth - safetyMarginXPx) {
+                                val targetX = (cursorRight + safetyMarginXPx - viewportWidth).coerceIn(0, maxScrollX)
+                                horizontalScrollState.scrollTo(targetX)
+                            } else if (cursorLeft < curScrollX + leftMarginXPx) {
+                                val targetX = (cursorLeft - leftMarginXPx).coerceIn(0, maxScrollX)
+                                horizontalScrollState.scrollTo(targetX)
+                            }
+                        }
                     }
                 }
 
@@ -1988,6 +2088,19 @@ fun CodeEditorView(
                         val fontSizePx = with(density) { fontSize.sp.toPx() }
                         val editorAccentColor = GitAccent
                         val editorContentModifier = textModifier
+                            .pointerInput(textFieldValue.selection) {
+                                detectTapGestures(
+                                    onLongPress = { touchOffset ->
+                                        val layout = textLayoutResult ?: return@detectTapGestures
+                                        val charOffset = try { layout.getOffsetForPosition(touchOffset) } catch (_: Exception) { -1 }
+                                        val sel = textFieldValue.selection
+                                        // If the user long presses on the already selected region, preserve it!
+                                        if (!sel.collapsed && charOffset in sel.min..sel.max) {
+                                            // Selection is preserved; consuming long press prevents Compose from selecting a new word!
+                                        }
+                                    }
+                                )
+                            }
                             .drawWithContent {
                                 val layout = textLayoutResult
                                 if (layout != null && layout.lineCount > 0) {
@@ -2018,6 +2131,43 @@ fun CodeEditorView(
                                             val box = layout.getBoundingBox(bSecond)
                                             drawRect(color = bracketBg, topLeft = box.topLeft, size = box.size)
                                             drawRect(color = bracketBorder, topLeft = box.topLeft, size = box.size, style = Stroke(width = 1.5f))
+                                        }
+                                    }
+
+                                    // 1c. Draw Search Match Highlights on canvas (clearly highlighting all matches)
+                                    if (isSearchVisible && searchQuery.isNotEmpty() && matches.isNotEmpty()) {
+                                        val qLen = searchQuery.length
+                                        val textLen = layout.layoutInput.text.length
+                                        val safeCurrentIdx = currentMatchIndex.coerceIn(0, matches.size - 1)
+                                        for (idx in matches.indices) {
+                                            val mStart = matches[idx]
+                                            val mEnd = (mStart + qLen).coerceAtMost(textLen)
+                                            if (mStart in 0 until textLen && mStart < mEnd) {
+                                                val isCurrent = (idx == safeCurrentIdx)
+                                                val bg = if (isCurrent) Color(0xFFFFD54F) else Color(0x66FFD54F)
+                                                val border = if (isCurrent) editorAccentColor else Color(0x80FFB300)
+
+                                                val sLine = layout.getLineForOffset(mStart)
+                                                val eLine = layout.getLineForOffset(mEnd)
+                                                for (l in sLine..eLine) {
+                                                    val segStart = maxOf(mStart, layout.getLineStart(l))
+                                                    val segEnd = minOf(mEnd, layout.getLineEnd(l))
+                                                    if (segStart < segEnd) {
+                                                        val box1 = layout.getCursorRect(segStart)
+                                                        val box2 = layout.getCursorRect(segEnd)
+                                                        val left = minOf(box1.left, box2.left)
+                                                        val right = maxOf(box1.right, box2.right)
+                                                        val top = layout.getLineTop(l)
+                                                        val bottom = layout.getLineBottom(l)
+                                                        val matchSize = androidx.compose.ui.geometry.Size((right - left).coerceAtLeast(4f), bottom - top)
+                                                        val matchTopLeft = Offset(left, top)
+                                                        drawRect(color = bg, topLeft = matchTopLeft, size = matchSize)
+                                                        if (isCurrent) {
+                                                            drawRect(color = border, topLeft = matchTopLeft, size = matchSize, style = Stroke(width = 2f))
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -2079,13 +2229,41 @@ fun CodeEditorView(
                                             // 1. Left Arrow (<)
                                             event.key == Key.DirectionLeft || keyCode == android.view.KeyEvent.KEYCODE_DPAD_LEFT -> {
                                                 if (isShift) {
-                                                    val newEnd = (sel.end - 1).coerceAtLeast(0)
+                                                    val cur = sel.end
+                                                    val prevNewline = text.lastIndexOf('\n', (cur - 1).coerceAtLeast(0))
+                                                    val lineStart = if (prevNewline == -1) 0 else prevNewline + 1
+                                                    var firstNonWs = lineStart
+                                                    val lineEnd = text.indexOf('\n', lineStart).takeIf { it >= 0 } ?: textLen
+                                                    while (firstNonWs < lineEnd && text[firstNonWs].isWhitespace()) {
+                                                        firstNonWs++
+                                                    }
+                                                    val newEnd = if (cur > firstNonWs) {
+                                                        cur - 1
+                                                    } else if (cur == firstNonWs && firstNonWs > lineStart) {
+                                                        // At start of code on line: skip formatting spaces to previous line end
+                                                        if (prevNewline >= 0) prevNewline else lineStart
+                                                    } else if (cur in lineStart..firstNonWs) {
+                                                        if (prevNewline >= 0) prevNewline else lineStart
+                                                    } else {
+                                                        (cur - 1).coerceAtLeast(0)
+                                                    }
                                                     textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, newEnd))
                                                     true
                                                 } else {
                                                     val cur = if (!sel.collapsed) sel.min else sel.end
                                                     if (cur > 0) {
-                                                        val newPos = cur - 1
+                                                        val prevNewline = text.lastIndexOf('\n', (cur - 1).coerceAtLeast(0))
+                                                        val lineStart = if (prevNewline == -1) 0 else prevNewline + 1
+                                                        var firstNonWs = lineStart
+                                                        val lineEnd = text.indexOf('\n', lineStart).takeIf { it >= 0 } ?: textLen
+                                                        while (firstNonWs < lineEnd && text[firstNonWs].isWhitespace()) {
+                                                            firstNonWs++
+                                                        }
+                                                        val newPos = if (cur == firstNonWs && firstNonWs > lineStart) {
+                                                            lineStart
+                                                        } else {
+                                                            cur - 1
+                                                        }
                                                         textFieldValue = textFieldValue.copy(selection = TextRange(newPos))
                                                         true
                                                     } else {
@@ -2188,7 +2366,18 @@ fun CodeEditorView(
                                                 val curPos = sel.end.coerceIn(0, textLen)
                                                 val prevNewline = text.lastIndexOf('\n', (curPos - 1).coerceAtLeast(0))
                                                 val lineStart = if (prevNewline == -1) 0 else prevNewline + 1
-                                                val targetOffset = if (curPos == lineStart) 0 else lineStart
+                                                var firstNonWs = lineStart
+                                                val lineEnd = text.indexOf('\n', lineStart).takeIf { it >= 0 } ?: textLen
+                                                while (firstNonWs < lineEnd && text[firstNonWs].isWhitespace()) {
+                                                    firstNonWs++
+                                                }
+                                                val targetOffset = if (curPos > firstNonWs) {
+                                                    firstNonWs // Go to code start first, avoiding formatting spaces
+                                                } else if (curPos == firstNonWs) {
+                                                    lineStart // Second press goes to column 0
+                                                } else {
+                                                    0
+                                                }
 
                                                 if (isShift) {
                                                     textFieldValue = textFieldValue.copy(selection = TextRange(sel.start, targetOffset))
@@ -2445,6 +2634,10 @@ fun CodeEditorView(
         pinnedFiles = pinnedFiles,
         onSelectFile = onOpenFileFromFolder,
         onTogglePinFile = onTogglePinFile,
+        onOpenSearchAcrossFiles = {
+            isFolderDrawerOpen = false
+            onOpenSearchAcrossFiles()
+        },
         onClose = { isFolderDrawerOpen = false }
     )
 
