@@ -563,6 +563,151 @@ class GitHubRepository(
         }
     }
 
+    suspend fun getCommitDetail(
+        token: String?,
+        owner: String,
+        repo: String,
+        ref: String
+    ): Result<com.example.data.model.GitHubCommitItem> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getCommitDetail(authHeader, owner, repo, ref)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to get commit detail: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun getFullGitTree(
+        token: String?,
+        owner: String,
+        repo: String,
+        ref: String
+    ): Result<com.example.data.model.GitTreeResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+            val response = apiService.getGitTreeRecursive(authHeader, owner, repo, ref, recursive = 1)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception("Failed to get git tree: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun createMergeCommit(
+        token: String?,
+        owner: String,
+        repo: String,
+        branch: String,
+        message: String,
+        parentShas: List<String>,
+        baseTreeSha: String,
+        overrideFiles: List<Pair<String, ByteArray>> = emptyList(),
+        additionalTreeItems: List<com.example.data.model.CreateTreeItemPayload> = emptyList()
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            if (token.isNullOrBlank()) {
+                return@withContext Result.failure(Exception("Authentication token required to commit"))
+            }
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Invalid authentication token"))
+
+            val treeItems = mutableListOf<com.example.data.model.CreateTreeItemPayload>()
+            treeItems.addAll(additionalTreeItems)
+
+            for (filePair in overrideFiles) {
+                val (filePath, fileBytes) = filePair
+                val b64 = Base64.encodeToString(fileBytes, Base64.NO_WRAP)
+                val blobResp = apiService.createBlob(
+                    authHeader = authHeader,
+                    owner = owner,
+                    repo = repo,
+                    payload = com.example.data.model.CreateBlobPayload(content = b64, encoding = "base64")
+                )
+                if (!blobResp.isSuccessful || blobResp.body() == null) {
+                    val err = blobResp.errorBody()?.string() ?: "HTTP ${blobResp.code()}"
+                    return@withContext Result.failure(Exception("Failed to create blob for $filePath: $err"))
+                }
+                treeItems.add(
+                    com.example.data.model.CreateTreeItemPayload(
+                        path = filePath.trimStart('/'),
+                        mode = "100644",
+                        type = "blob",
+                        sha = blobResp.body()!!.sha
+                    )
+                )
+            }
+
+            // Create tree with base_tree set to baseTreeSha
+            val treeResp = apiService.createTree(
+                authHeader = authHeader,
+                owner = owner,
+                repo = repo,
+                payload = com.example.data.model.CreateTreePayload(
+                    baseTree = baseTreeSha,
+                    tree = treeItems
+                )
+            )
+            if (!treeResp.isSuccessful || treeResp.body() == null) {
+                val err = treeResp.errorBody()?.string() ?: "HTTP ${treeResp.code()}"
+                return@withContext Result.failure(Exception("Failed to create tree: $err"))
+            }
+            val newTreeSha = treeResp.body()!!.sha
+
+            // Create commit with parentShas
+            val commitResp = apiService.createCommit(
+                authHeader = authHeader,
+                owner = owner,
+                repo = repo,
+                payload = com.example.data.model.CreateCommitPayload(
+                    message = message.ifBlank { "Merge branch into $branch" },
+                    tree = newTreeSha,
+                    parents = parentShas
+                )
+            )
+            if (!commitResp.isSuccessful || commitResp.body() == null) {
+                val err = commitResp.errorBody()?.string() ?: "HTTP ${commitResp.code()}"
+                return@withContext Result.failure(Exception("Failed to create commit: $err"))
+            }
+            val newCommitSha = commitResp.body()!!.sha
+
+            // Update branch reference
+            val refResp = apiService.updateBranchRef(
+                authHeader = authHeader,
+                owner = owner,
+                repo = repo,
+                branch = branch,
+                payload = com.example.data.model.UpdateRefPayload(sha = newCommitSha, force = false)
+            )
+            if (!refResp.isSuccessful) {
+                val forceRefResp = apiService.updateBranchRef(
+                    authHeader = authHeader,
+                    owner = owner,
+                    repo = repo,
+                    branch = branch,
+                    payload = com.example.data.model.UpdateRefPayload(sha = newCommitSha, force = true)
+                )
+                if (!forceRefResp.isSuccessful) {
+                    val err = forceRefResp.errorBody()?.string() ?: "HTTP ${forceRefResp.code()}"
+                    return@withContext Result.failure(Exception("Failed to update branch ref: $err"))
+                }
+            }
+
+            Result.success(newCommitSha)
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
     suspend fun commitFileChanges(
         token: String,
         owner: String,
@@ -955,6 +1100,55 @@ class GitHubRepository(
             } else {
                 val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
                 Result.failure(Exception("Failed to merge PR #$pullNumber: $error"))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun mergeUpstream(
+        token: String?,
+        owner: String,
+        repo: String,
+        branch: String
+    ): Result<com.example.data.model.MergeUpstreamResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Authentication token required to sync fork with upstream"))
+            val response = apiService.mergeUpstream(authHeader, owner, repo, com.example.data.model.MergeUpstreamPayload(branch))
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception(error))
+            }
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    suspend fun mergeBranches(
+        token: String?,
+        owner: String,
+        repo: String,
+        base: String,
+        head: String,
+        commitMessage: String? = null
+    ): Result<com.example.data.model.GitHubMergeBranchResponse> = withContext(Dispatchers.IO) {
+        try {
+            val authHeader = GitHubApiClient.formatAuthHeader(token)
+                ?: return@withContext Result.failure(Exception("Authentication token required to merge branches"))
+            val response = apiService.mergeBranches(
+                authHeader,
+                owner,
+                repo,
+                com.example.data.model.MergeBranchesPayload(base, head, commitMessage)
+            )
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                val error = response.errorBody()?.string() ?: "HTTP ${response.code()}"
+                Result.failure(Exception(error))
             }
         } catch (e: Exception) {
             Result.failure(Exception(friendlyErrorMessage(null, e)))

@@ -279,6 +279,56 @@ data class GitHubMergeResponse(
 )
 
 @JsonClass(generateAdapter = true)
+data class MergeUpstreamPayload(
+    val branch: String
+)
+
+@JsonClass(generateAdapter = true)
+data class MergeUpstreamResponse(
+    val message: String? = null,
+    @Json(name = "merge_type") val mergeType: String? = null,
+    @Json(name = "base_branch") val baseBranch: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class MergeBranchesPayload(
+    val base: String,
+    val head: String,
+    @Json(name = "commit_message") val commitMessage: String? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GitHubMergeBranchResponse(
+    val sha: String = "",
+    val message: String? = null,
+    val commit: BranchCommit? = null
+)
+
+data class ParsedGitHubUrl(
+    val owner: String,
+    val repo: String
+)
+
+object GitHubUrlParser {
+    fun parse(url: String): ParsedGitHubUrl? {
+        val clean = url.trim().trim('"', '\'')
+        val httpsRegex = Regex("""https?://github\.com/([^/\s]+)/([^/\s.]+?)(?:\.git)?(?:/.*)?$""")
+        httpsRegex.find(clean)?.let {
+            return ParsedGitHubUrl(it.groupValues[1], it.groupValues[2])
+        }
+        val sshRegex = Regex("""git@github\.com:([^/\s]+)/([^/\s.]+?)(?:\.git)?$""")
+        sshRegex.find(clean)?.let {
+            return ParsedGitHubUrl(it.groupValues[1], it.groupValues[2])
+        }
+        val slugRegex = Regex("""^([a-zA-Z0-9_-]+)/([a-zA-Z0-9_.-]+)$""")
+        slugRegex.find(clean)?.let {
+            return ParsedGitHubUrl(it.groupValues[1], it.groupValues[2])
+        }
+        return null
+    }
+}
+
+@JsonClass(generateAdapter = true)
 data class GitHubIssue(
     val id: Long = 0,
     val number: Int = 0,
@@ -452,5 +502,63 @@ object ConflictResolverUtil {
             "both" -> CONFLICT_REGEX.replace(content) { it.groupValues[1] + it.groupValues[2] }
             else -> content
         }
+    }
+}
+
+object ConflictBuilder {
+    fun buildRealConflictContent(
+        filePath: String,
+        localContent: String,
+        upstreamContent: String,
+        localBranch: String,
+        upstreamBranch: String
+    ): String {
+        if (ConflictResolverUtil.hasConflictMarkers(localContent)) return localContent
+
+        val localLines = localContent.lines()
+        val upstreamLines = upstreamContent.lines()
+
+        var prefixCount = 0
+        while (prefixCount < localLines.size && prefixCount < upstreamLines.size && localLines[prefixCount] == upstreamLines[prefixCount]) {
+            prefixCount++
+        }
+
+        var localSuffix = localLines.size - 1
+        var upstreamSuffix = upstreamLines.size - 1
+        while (localSuffix >= prefixCount && upstreamSuffix >= prefixCount && localLines[localSuffix] == upstreamLines[upstreamSuffix]) {
+            localSuffix--
+            upstreamSuffix--
+        }
+
+        val prefix = localLines.take(prefixCount).joinToString("\n")
+        val localDiff = if (prefixCount <= localSuffix) {
+            localLines.subList(prefixCount, localSuffix + 1).joinToString("\n")
+        } else {
+            "// Local branch '$localBranch' version"
+        }
+        val upstreamDiff = if (prefixCount <= upstreamSuffix) {
+            upstreamLines.subList(prefixCount, upstreamSuffix + 1).joinToString("\n")
+        } else {
+            "// Upstream '$upstreamBranch' incoming version"
+        }
+        val suffix = if (localSuffix + 1 < localLines.size) {
+            localLines.subList(localSuffix + 1, localLines.size).joinToString("\n")
+        } else {
+            ""
+        }
+
+        val hunk = """
+<<<<<<< HEAD
+$localDiff
+=======
+$upstreamDiff
+>>>>>>> $upstreamBranch
+""".trim()
+
+        val parts = mutableListOf<String>()
+        if (prefix.isNotEmpty()) parts.add(prefix)
+        parts.add(hunk)
+        if (suffix.isNotEmpty()) parts.add(suffix)
+        return parts.joinToString("\n")
     }
 }

@@ -217,6 +217,22 @@ interface GitHubApiService {
         @Body payload: com.example.data.model.MergePullRequestPayload
     ): Response<com.example.data.model.GitHubMergeResponse>
 
+    @POST("repos/{owner}/{repo}/merge-upstream")
+    suspend fun mergeUpstream(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body payload: com.example.data.model.MergeUpstreamPayload
+    ): Response<com.example.data.model.MergeUpstreamResponse>
+
+    @POST("repos/{owner}/{repo}/merges")
+    suspend fun mergeBranches(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Body payload: com.example.data.model.MergeBranchesPayload
+    ): Response<com.example.data.model.GitHubMergeBranchResponse>
+
     @GET("repos/{owner}/{repo}/issues")
     suspend fun getIssues(
         @Header("Authorization") authHeader: String?,
