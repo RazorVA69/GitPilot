@@ -437,6 +437,16 @@ class GitHubRepository(
         )
     }
 
+    suspend fun commitFilesAtomic(
+        token: String?,
+        owner: String,
+        repo: String,
+        branch: String,
+        message: String,
+        files: List<Pair<String, ByteArray>>,
+        onProgress: ((current: Int, total: Int, fileName: String) -> Unit)? = null
+    ): Result<String> = commitMultipleFilesBatch(token, owner, repo, branch, message, files, onProgress)
+
     suspend fun commitMultipleFilesBatch(
         token: String?,
         owner: String,

@@ -4320,8 +4320,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val commitMessage = match?.groupValues?.getOrNull(1)?.trim() 
             ?: if (fullCommand.contains("--amend")) "Amend commit via GitHub Terminal" else ""
 
-        // Handle merge commit during active merge conflict
-        if (state.activeMergeConflict) {
+        // Handle merge commit during active merge conflict or with pending activeMergeContext
+        if (state.activeMergeConflict || state.activeMergeContext != null) {
             val hasUnresolved = state.conflictedFiles.any { !it.isResolved }
                 || state.terminalDrafts.values.any { ConflictResolverUtil.hasConflictMarkers(it) }
 
@@ -4369,49 +4369,43 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             return true
         }
 
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} file(s) to branch '$branch'..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} file(s) in 1 commit to branch '$branch'..."))
 
-        var successCount = 0
+        val filePairs = mutableListOf<Pair<String, ByteArray>>()
         for (filePath in filesToCommit) {
             var content = drafts[filePath] ?: if (filePath == state.activeFilePath) state.activeFileContent else null
             if (content == null) {
                 val fileRes = repository.getFileContent(token, repo.owner.login, repo.name, filePath, branch)
                 content = fileRes.getOrNull()?.second ?: ""
             }
-            val sha = state.rawTreeItems.find { it.path == filePath }?.sha
+            filePairs.add(Pair(filePath.trimStart('/'), content.toByteArray(Charsets.UTF_8)))
+        }
 
-            val res = repository.commitFile(
-                token = token,
-                owner = repo.owner.login,
-                repo = repo.name,
-                path = filePath,
-                content = content,
-                message = effectiveCommitMsg,
-                sha = sha,
-                branch = branch
-            )
+        val atomicRes = repository.commitFilesAtomic(
+            token = token,
+            owner = repo.owner.login,
+            repo = repo.name,
+            branch = branch,
+            message = effectiveCommitMsg,
+            files = filePairs
+        )
 
-            if (res.isSuccess) {
-                successCount++
+        if (atomicRes.isSuccess) {
+            val shortSha = atomicRes.getOrNull()?.take(7) ?: "HEAD"
+            _uiState.update {
+                it.copy(
+                    terminalStagedFiles = emptySet(),
+                    terminalDrafts = it.terminalDrafts.filterKeys { k -> !filesToCommit.contains(k) }
+                )
             }
-        }
-
-        _uiState.update {
-            it.copy(
-                terminalStagedFiles = emptySet(),
-                terminalDrafts = it.terminalDrafts.filterKeys { k -> !filesToCommit.contains(k) }
-            )
-        }
-
-        if (successCount > 0) {
-            val shortSha = state.rawTreeItems.firstOrNull()?.sha?.take(7) ?: "HEAD"
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch $shortSha] $effectiveCommitMsg"))
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " $successCount file(s) changed, committed to remote GitHub branch."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " 1 commit created with ${filePairs.size} file(s) changed, pushed to remote GitHub branch."))
             syncActiveRepository(isSilent = true)
             resumePendingTerminalCommands()
             return true
         } else {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit file(s)"))
+            val err = atomicRes.exceptionOrNull()?.message ?: "Atomic commit failed"
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit files: $err"))
             return false
         }
     }
@@ -4451,29 +4445,38 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val filesToPush = (pendingDrafts.keys + state.terminalStagedFiles).distinct()
 
         if (filesToPush.isNotEmpty() && !token.isNullOrBlank()) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing and pushing ${filesToPush.size} updated object(s) to branch '$targetBranch'..."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing and pushing ${filesToPush.size} updated object(s) in 1 commit to branch '$targetBranch'..."))
+            val filePairs = mutableListOf<Pair<String, ByteArray>>()
             for (filePath in filesToPush) {
                 val content = state.terminalDrafts[filePath] ?: if (filePath == state.activeFilePath) state.activeFileContent else null
-                if (content == null) continue
-                val sha = state.rawTreeItems.find { it.path == filePath }?.sha
-                repository.commitFile(
+                if (content != null) {
+                    filePairs.add(Pair(filePath.trimStart('/'), content.toByteArray(Charsets.UTF_8)))
+                }
+            }
+
+            if (filePairs.isNotEmpty()) {
+                val atomicRes = repository.commitFilesAtomic(
                     token = token,
                     owner = repo.owner.login,
                     repo = repo.name,
-                    path = filePath,
-                    content = content,
-                    message = "Push updates for $filePath via git push",
-                    sha = sha,
-                    branch = targetBranch
+                    branch = targetBranch,
+                    message = "Push ${filePairs.size} update(s) via git push",
+                    files = filePairs
                 )
+                if (atomicRes.isFailure) {
+                    val err = atomicRes.exceptionOrNull()?.message ?: "Push commit failed"
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to push: $err"))
+                    return false
+                }
             }
+
             _uiState.update {
                 it.copy(
                     terminalDrafts = it.terminalDrafts - filesToPush.toSet(),
                     terminalStagedFiles = emptySet()
                 )
             }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (${filesToPush.size}/${filesToPush.size}), done."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (${filePairs.size}/${filePairs.size}), done."))
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git"))
             if (isForce) {
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " + 7a3c9e1...4b8d2f0 $targetBranch -> $targetBranch (forced update)"))
@@ -5254,20 +5257,47 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     ?: repository.getCommitDetail(token, repo.owner.login, repo.name, currentBranch).getOrNull()?.sha
                     ?: localTreeSha
 
+                // Query GitHub compare API to accurately find which files were modified/added on local branch
+                val compBase = if (upstreamOwner != null && upstreamOwner != repo.owner.login) "$upOwner:$targetBranchName" else targetBranchName
+                val compareRes = repository.compareBranches(token, repo.owner.login, repo.name, base = compBase, head = currentBranch)
+
+                val localBranchChangedFiles = if (compareRes.isSuccess) {
+                    compareRes.getOrNull()?.files?.map { it.filename.trimStart('/') }?.toSet() ?: emptySet()
+                } else {
+                    emptySet()
+                }
+
+                val localDraftFiles = (state.terminalDrafts.keys + state.terminalStagedFiles + listOfNotNull(state.activeFilePath.takeIf { state.isFileDirty })).map { it.trimStart('/') }.toSet()
+                val userTouchedFiles = localBranchChangedFiles + localDraftFiles
+
                 val upstreamBlobs = upstreamTree.tree.filter { it.type == "blob" }
                 val localBlobs = localTree.tree.filter { it.type == "blob" }
 
-                val upstreamMap = upstreamBlobs.associateBy { it.path }
-                val localMap = localBlobs.associateBy { it.path }
+                val upstreamMap = upstreamBlobs.associateBy { it.path.trimStart('/') }
+                val localMap = localBlobs.associateBy { it.path.trimStart('/') }
 
-                val localOnlyFiles = localBlobs.filter { !upstreamMap.containsKey(it.path) }
-                val differingFiles = upstreamBlobs.filter { localMap.containsKey(it.path) && localMap[it.path]?.sha != it.sha }
+                val localOnlyFiles = localBlobs.filter { !upstreamMap.containsKey(it.path.trimStart('/')) }
+                val differingFiles = upstreamBlobs.filter { localMap.containsKey(it.path.trimStart('/')) && localMap[it.path.trimStart('/')]?.sha != it.sha }
+
+                // Crucial fix: Only files actually touched by the user/local branch are candidates for conflict!
+                // Files only updated upstream merge cleanly without creating false conflict errors.
+                val (potentialConflictFiles, cleanUpstreamFiles) = if (userTouchedFiles.isNotEmpty()) {
+                    differingFiles.partition { it.path.trimStart('/') in userTouchedFiles }
+                } else if (localDraftFiles.isNotEmpty()) {
+                    differingFiles.partition { it.path.trimStart('/') in localDraftFiles }
+                } else {
+                    Pair(differingFiles, emptyList())
+                }
+
+                if (cleanUpstreamFiles.isNotEmpty()) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Cleanly merged ${cleanUpstreamFiles.size} upstream modified file(s)."))
+                }
 
                 val conflictList = mutableListOf<GitConflict>()
                 val updatedDrafts = state.terminalDrafts.toMutableMap()
                 val staged = state.terminalStagedFiles.toMutableSet()
 
-                for (diffItem in differingFiles) {
+                for (diffItem in potentialConflictFiles) {
                     val path = diffItem.path
                     val upstreamContent = repository.getFileContent(token, upOwner, upRepo, path, targetBranchName).getOrNull()?.second ?: ""
                     val localContent = state.terminalDrafts[path]
@@ -5338,7 +5368,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         parentShas = listOfNotNull(localHeadSha.ifBlank { null }, upstreamHeadSha.ifBlank { null }).ifEmpty { listOf(localHeadSha) },
                         baseTreeSha = upstreamTreeSha,
                         additionalTreeItems = localOnlyFiles.map {
-                            com.example.data.model.CreateTreeItemPayload(path = it.path, mode = it.mode ?: "100644", type = it.type, sha = it.sha)
+                            com.example.data.model.CreateTreeItemPayload(path = it.path.trimStart('/'), mode = it.mode ?: "100644", type = it.type, sha = it.sha)
                         }
                     )
                     if (mergeCommitRes.isSuccess) {
@@ -5622,10 +5652,23 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         if (args[0] == "resolve") {
+            val choice = args.find { it == "--ours" || it == "--theirs" || it == "--both" }?.removePrefix("--")
+                ?: args.find { it.startsWith("--") }?.removePrefix("--")
+                ?: "ours"
+
+            if (args.contains("--remaining")) {
+                resolveRemainingGitConflicts(choice)
+                return
+            }
+
+            if (args.contains("--all")) {
+                resolveAllGitConflicts(choice)
+                return
+            }
+
             val path = args.getOrNull(1)
-            val choice = args.find { it.startsWith("--") }?.removePrefix("--") ?: "ours"
             if (path.isNullOrBlank()) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "usage: git conflict resolve <file> [--ours|--theirs|--both]"))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "usage: git conflict resolve <file> [--ours|--theirs|--both] or git conflict resolve --remaining [--theirs|--ours]"))
                 return
             }
             resolveGitConflict(path, choice)
@@ -5767,6 +5810,74 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun resolveRemainingGitConflicts(resolution: String) {
+        val state = _uiState.value
+        val conflicts = state.conflictedFiles
+        val unresolved = conflicts.filter { !it.isResolved }
+        if (unresolved.isEmpty()) return
+
+        val updatedDrafts = state.terminalDrafts.toMutableMap()
+        unresolved.forEach { conflict ->
+            val currentContent = updatedDrafts[conflict.filePath]
+                ?: if (state.activeFilePath == conflict.filePath) state.activeFileContent
+                else ""
+            val resolved = when (resolution) {
+                "ours" -> if (conflict.fullOursText.isNotEmpty()) conflict.fullOursText else ConflictResolverUtil.resolveText(currentContent, "ours")
+                "theirs" -> if (conflict.fullTheirsText.isNotEmpty()) conflict.fullTheirsText else ConflictResolverUtil.resolveText(currentContent, "theirs")
+                "both" -> if (conflict.fullBothText.isNotEmpty()) conflict.fullBothText else ConflictResolverUtil.resolveText(currentContent, "both")
+                else -> currentContent
+            }
+            updatedDrafts[conflict.filePath] = resolved
+        }
+
+        val updatedConflicts = conflicts.map { c ->
+            if (!c.isResolved) c.copy(isResolved = true, resolutionType = resolution) else c
+        }
+
+        _uiState.update {
+            it.copy(
+                terminalDrafts = updatedDrafts,
+                conflictedFiles = updatedConflicts,
+                activeFileContent = if (it.activeFilePath != null && updatedDrafts.containsKey(it.activeFilePath)) updatedDrafts[it.activeFilePath] ?: it.activeFileContent else it.activeFileContent,
+                isFileDirty = true
+            )
+        }
+
+        appendTerminalLine(
+            TerminalLine(
+                type = TerminalLineType.OUTPUT_SUCCESS,
+                text = "✓ Resolved remaining ${unresolved.size} conflict(s) with $resolution version."
+            )
+        )
+
+        val pendingCount = state.pendingCommandQueue.size
+        if (pendingCount > 0) {
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_INFO,
+                    text = "▶ Auto-resuming next command in queue ($pendingCount remaining)..."
+                )
+            )
+            _uiState.update {
+                it.copy(
+                    activeMergeConflict = false,
+                    activeRebaseInProgress = false
+                )
+            }
+            viewModelScope.launch {
+                delay(350L)
+                resumePendingTerminalCommands()
+            }
+        } else {
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_INFO,
+                    text = "All conflicts resolved! Tap 'Commit & Push to GitHub' or run 'git commit' to write changes to your repository."
+                )
+            )
+        }
+    }
+
     fun commitAndPushResolvedConflicts(customMessage: String? = null) {
         val state = _uiState.value
         val repo = state.selectedRepo
@@ -5809,7 +5920,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
                 val resolvedFiles = mutableListOf<Pair<String, ByteArray>>()
                 for (c in conflicts) {
-                    val content = state.terminalDrafts[c.filePath] ?: if (c.filePath == state.activeFilePath) state.activeFileContent else null
+                    val content = state.terminalDrafts[c.filePath]
+                        ?: if (c.filePath == state.activeFilePath) state.activeFileContent
+                        else if (c.resolutionType == "theirs") c.fullTheirsText
+                        else if (c.resolutionType == "ours") c.fullOursText
+                        else null
                     if (content != null && !ConflictResolverUtil.hasConflictMarkers(content)) {
                         resolvedFiles.add(Pair(c.filePath, content.toByteArray(Charsets.UTF_8)))
                     }
@@ -5821,7 +5936,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 }
 
                 val additionalItems = mergeCtx.localOnlyFiles.map {
-                    com.example.data.model.CreateTreeItemPayload(path = it.path, mode = it.mode ?: "100644", type = it.type, sha = it.sha)
+                    com.example.data.model.CreateTreeItemPayload(path = it.path.trimStart('/'), mode = it.mode ?: "100644", type = it.type, sha = it.sha)
                 }
 
                 val effectiveMsg = customMessage?.ifBlank { null }
@@ -5870,12 +5985,12 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
 
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} resolved file(s) to remote branch '$branch'..."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} resolved file(s) in 1 atomic commit to remote branch '$branch'..."))
 
-            var successCount = 0
             val effectiveMsg = customMessage?.ifBlank { null }
                 ?: "Resolve conflicts in ${filesToCommit.joinToString(", ") { it.substringAfterLast('/') }}"
 
+            val filePairs = mutableListOf<Pair<String, ByteArray>>()
             for (filePath in filesToCommit) {
                 val content = state.terminalDrafts[filePath]
                     ?: if (filePath == state.activeFilePath) state.activeFileContent
@@ -5888,41 +6003,38 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     continue
                 }
 
-                val sha = state.rawTreeItems.find { it.path == filePath }?.sha
+                filePairs.add(Pair(filePath.trimStart('/'), content.toByteArray(Charsets.UTF_8)))
+            }
 
-                val res = repository.commitFile(
+            if (filePairs.isNotEmpty()) {
+                val atomicRes = repository.commitFilesAtomic(
                     token = token,
                     owner = repo.owner.login,
                     repo = repo.name,
-                    path = filePath,
-                    content = content,
+                    branch = branch,
                     message = effectiveMsg,
-                    sha = sha,
-                    branch = branch
+                    files = filePairs
                 )
 
-                if (res.isSuccess) {
-                    successCount++
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "  ✓ Committed $filePath"))
+                if (atomicRes.isSuccess) {
+                    val shortSha = atomicRes.getOrNull()?.take(7) ?: "HEAD"
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch $shortSha] $effectiveMsg"))
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Successfully pushed ${filePairs.size} file(s) in 1 commit to https://github.com/${repo.fullName}.git (refs/heads/$branch)"))
+                    _uiState.update {
+                        it.copy(
+                            activeMergeConflict = false,
+                            activeRebaseInProgress = false,
+                            conflictedFiles = emptyList(),
+                            terminalDrafts = it.terminalDrafts - filesToCommit.toSet(),
+                            terminalStagedFiles = emptySet()
+                        )
+                    }
+                    syncActiveRepository(isSilent = true)
+                    resumePendingTerminalCommands()
                 } else {
-                    val err = res.exceptionOrNull()?.message ?: "commit failed"
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "  ✗ Failed to commit $filePath: $err"))
+                    val err = atomicRes.exceptionOrNull()?.message ?: "Atomic commit failed"
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit resolved files: $err"))
                 }
-            }
-
-            if (successCount > 0) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Successfully pushed $successCount file(s) to https://github.com/${repo.fullName}.git (refs/heads/$branch)"))
-                _uiState.update {
-                    it.copy(
-                        activeMergeConflict = false,
-                        activeRebaseInProgress = false,
-                        conflictedFiles = emptyList(),
-                        terminalDrafts = it.terminalDrafts - filesToCommit.toSet(),
-                        terminalStagedFiles = emptySet()
-                    )
-                }
-                syncActiveRepository(isSilent = true)
-                resumePendingTerminalCommands()
             }
         }
     }

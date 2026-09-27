@@ -8,6 +8,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -151,6 +153,7 @@ fun GitHubTerminalModal(
     pendingCommands: List<String> = emptyList(),
     onResolveConflict: (String, String) -> Unit = { _, _ -> },
     onResolveAllConflicts: (String) -> Unit = {},
+    onResolveRemainingConflicts: (String) -> Unit = {},
     onCommitResolvedConflicts: () -> Unit = {},
     onOpenInEditor: (String) -> Unit = {},
     onResumePendingQueue: () -> Unit = {},
@@ -633,6 +636,7 @@ fun GitHubTerminalModal(
                         pendingCommandCount = pendingCommands.size,
                         onResolveConflict = onResolveConflict,
                         onResolveAllConflicts = onResolveAllConflicts,
+                        onResolveRemainingConflicts = onResolveRemainingConflicts,
                         onCommitResolvedConflicts = onCommitResolvedConflicts,
                         onOpenInEditor = onOpenInEditor,
                         onResumePending = onResumePendingQueue,
@@ -1174,6 +1178,7 @@ fun TerminalConflictResolutionCard(
     pendingCommandCount: Int,
     onResolveConflict: (String, String) -> Unit,
     onResolveAllConflicts: (String) -> Unit = {},
+    onResolveRemainingConflicts: (String) -> Unit = {},
     onCommitResolvedConflicts: () -> Unit = {},
     onOpenInEditor: (String) -> Unit,
     onResumePending: () -> Unit,
@@ -1181,6 +1186,7 @@ fun TerminalConflictResolutionCard(
 ) {
     val allResolved = conflicts.isNotEmpty() && conflicts.all { it.isResolved }
     val resolvedCount = conflicts.count { it.isResolved }
+    val unresolvedCount = conflicts.count { !it.isResolved }
 
     Surface(
         color = TermSurface,
@@ -1272,6 +1278,58 @@ fun TerminalConflictResolutionCard(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // If some are already resolved, offer remaining resolution buttons
+                if (resolvedCount > 0 && unresolvedCount > 0) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            onClick = { onResolveRemainingConflicts("theirs") },
+                            shape = RoundedCornerShape(4.dp),
+                            color = Color(0xFF0F9D74).copy(alpha = 0.15f),
+                            border = BorderStroke(1.dp, Color(0xFF0F9D74).copy(alpha = 0.5f)),
+                            modifier = Modifier
+                                .weight(1.2f)
+                                .height(28.dp)
+                                .testTag("resolve_remaining_theirs_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Accept Remaining ($unresolvedCount) as Theirs",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0F9D74)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            onClick = { onResolveRemainingConflicts("ours") },
+                            shape = RoundedCornerShape(4.dp),
+                            color = TermSurface2,
+                            border = BorderStroke(1.dp, TermSurfaceBorder),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(28.dp)
+                                .testTag("resolve_remaining_ours_btn")
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    "Remaining as Ours",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TermDiffAdd
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Batch quick resolution buttons if multiple conflicts
                 if (conflicts.size > 1) {
                     Row(
@@ -1344,8 +1402,15 @@ fun TerminalConflictResolutionCard(
                 }
             }
 
-            // Conflicted files list
-            conflicts.forEachIndexed { index, conflict ->
+            // Scrollable Conflicted files list
+            val conflictListScroll = rememberScrollState()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(conflictListScroll)
+            ) {
+                conflicts.forEachIndexed { index, conflict ->
                 Surface(
                     color = TermBg,
                     shape = RoundedCornerShape(6.dp),
@@ -1593,6 +1658,7 @@ fun TerminalConflictResolutionCard(
                         }
                     }
                 }
+            }
             }
 
             // Bottom Actions when all resolved

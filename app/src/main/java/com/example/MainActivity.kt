@@ -473,6 +473,7 @@ fun GitExplorerApp(
             pendingCommands = uiState.pendingCommandQueue,
             onResolveConflict = viewModel::resolveGitConflict,
             onResolveAllConflicts = viewModel::resolveAllGitConflicts,
+            onResolveRemainingConflicts = viewModel::resolveRemainingGitConflicts,
             onCommitResolvedConflicts = viewModel::commitAndPushResolvedConflicts,
             onOpenInEditor = viewModel::openFileFromTerminal,
             onResumePendingQueue = viewModel::resumePendingTerminalCommands,

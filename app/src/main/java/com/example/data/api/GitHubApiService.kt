@@ -188,7 +188,7 @@ interface GitHubApiService {
         @Header("Authorization") authHeader: String?,
         @Path("owner") owner: String,
         @Path("repo") repo: String,
-        @Path("basehead") basehead: String
+        @Path(value = "basehead", encoded = true) basehead: String
     ): Response<CompareResponse>
 
     @GET("repos/{owner}/{repo}/pulls")
