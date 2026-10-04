@@ -232,7 +232,7 @@ fun CommitDialog(
                         .testTag("confirm_commit_btn")
                 ) {
                     if (isCommitting) {
-                        CircularProgressIndicator(
+                        ExpressiveSnakeLoadingIndicator(
                             color = Color.White,
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp

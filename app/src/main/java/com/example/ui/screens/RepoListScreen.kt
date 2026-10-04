@@ -44,7 +44,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.ui.components.ExpressiveSnakeLoadingIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -460,7 +460,7 @@ fun RepoListScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(36.dp))
+                        ExpressiveSnakeLoadingIndicator(color = GitAccent, modifier = Modifier.size(42.dp), strokeWidth = 3.5.dp)
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Loading repositories...", color = GitText2, fontSize = 13.sp)
                     }

@@ -169,7 +169,7 @@ fun BranchSelectorSheet(
                         .padding(24.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(28.dp))
+                    ExpressiveSnakeLoadingIndicator(color = GitAccent, modifier = Modifier.size(32.dp), strokeWidth = 3.dp)
                 }
             } else {
                 Surface(

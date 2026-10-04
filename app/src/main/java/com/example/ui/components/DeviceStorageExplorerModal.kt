@@ -1128,10 +1128,10 @@ fun DeviceStorageExplorerModal(
                                 if (searchQuery.isNotBlank()) {
                                     if (isSearching) {
                                         Row(verticalAlignment = Alignment.CenterVertically) {
-                                            CircularProgressIndicator(
+                                            ExpressiveSnakeLoadingIndicator(
                                                 color = GitAccent,
-                                                modifier = Modifier.size(13.dp),
-                                                strokeWidth = 1.6.dp
+                                                modifier = Modifier.size(15.dp),
+                                                strokeWidth = 1.8.dp
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text("Scanning...", fontSize = 11.5.sp, color = GitText2)
@@ -1241,7 +1241,7 @@ fun DeviceStorageExplorerModal(
                     Box(modifier = Modifier.weight(1f)) {
                         if (isLoadingFiles && searchQuery.isBlank()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = GitAccent, modifier = Modifier.size(34.dp))
+                                ExpressiveSnakeLoadingIndicator(color = GitAccent, modifier = Modifier.size(42.dp), strokeWidth = 3.5.dp)
                             }
                         } else if (displayedList.isEmpty()) {
                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1423,7 +1423,7 @@ fun DeviceStorageExplorerModal(
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 if (isCollectingFiles) {
-                                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                                    ExpressiveSnakeLoadingIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Reading Files...", fontSize = 13.5.sp)
                                 } else {

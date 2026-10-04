@@ -170,7 +170,7 @@ data class CreateTreeItemPayload(
     val path: String,
     val mode: String = "100644",
     val type: String = "blob",
-    val sha: String
+    val sha: String? = null
 )
 
 @JsonClass(generateAdapter = true)

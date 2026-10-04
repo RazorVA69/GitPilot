@@ -192,6 +192,7 @@ data class GitExplorerUiState(
     val terminalLines: List<TerminalLine> = emptyList(),
     val isTerminalExecuting: Boolean = false,
     val terminalStagedFiles: Set<String> = emptySet(),
+    val terminalStagedDeletedFiles: Set<String> = emptySet(),
     val terminalDrafts: Map<String, String> = emptyMap(),
 
     // Git Remotes, Conflicts & Script Execution
@@ -3845,8 +3846,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "clone" -> {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Cloning into '${subArgs.firstOrNull() ?: "repo"}'..."))
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Repository already loaded and ready in workspace."))
+                handleGitClone(subArgs, repo, token)
             }
 
             "config" -> {
@@ -4057,11 +4057,15 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Your branch is up to date with 'origin/$branch'."))
 
-        if (staged.isNotEmpty()) {
+        val stagedDeleted = state.terminalStagedDeletedFiles
+        if (staged.isNotEmpty() || stagedDeleted.isNotEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "\nChanges to be committed:"))
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "  (use \"git restore --staged <file>...\" to unstage)"))
             staged.forEach { file ->
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "\tmodified:   $file"))
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "\tmodified/renamed: $file"))
+            }
+            stagedDeleted.forEach { file ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "\tdeleted:          $file"))
             }
         }
 
@@ -4074,7 +4078,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
         }
 
-        if (staged.isEmpty() && unstagedDrafts.isEmpty()) {
+        if (staged.isEmpty() && stagedDeleted.isEmpty() && unstagedDrafts.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "nothing to commit, working tree clean"))
         }
     }
@@ -4342,6 +4346,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         val effectiveCommitMsg = commitMessage.ifEmpty { "Update files via GitHub Terminal" }
 
+        val stagedDeleted = state.terminalStagedDeletedFiles
         val isAutoStage = fullCommand.contains("-am") || fullCommand.contains("-a -m") || fullCommand.contains("-a ")
         val filesToCommit = when {
             staged.isNotEmpty() -> staged
@@ -4350,8 +4355,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             state.isFileDirty && state.activeFilePath != null -> setOf(state.activeFilePath)
             else -> emptySet()
         }
+        val deletedToCommit = stagedDeleted
 
-        if (filesToCommit.isEmpty()) {
+        if (filesToCommit.isEmpty() && deletedToCommit.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_WARNING, text = "On branch $branch\nnothing to commit, working tree clean"))
             return true
         }
@@ -4360,16 +4366,18 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             _uiState.update {
                 it.copy(
                     terminalStagedFiles = emptySet(),
+                    terminalStagedDeletedFiles = emptySet(),
                     terminalDrafts = it.terminalDrafts.filterKeys { k -> !filesToCommit.contains(k) }
                 )
             }
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch 7a3c9e1] $effectiveCommitMsg"))
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " ${filesToCommit.size} file(s) changed, committed."))
+            val totalChanged = filesToCommit.size + deletedToCommit.size
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " $totalChanged file(s) changed, ${deletedToCommit.size} renames/deletions, committed."))
             resumePendingTerminalCommands()
             return true
         }
 
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size} file(s) in 1 commit to branch '$branch'..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Committing ${filesToCommit.size + deletedToCommit.size} change(s) in 1 commit to branch '$branch'..."))
 
         val filePairs = mutableListOf<Pair<String, ByteArray>>()
         for (filePath in filesToCommit) {
@@ -4381,25 +4389,43 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             filePairs.add(Pair(filePath.trimStart('/'), content.toByteArray(Charsets.UTF_8)))
         }
 
-        val atomicRes = repository.commitFilesAtomic(
-            token = token,
-            owner = repo.owner.login,
-            repo = repo.name,
-            branch = branch,
-            message = effectiveCommitMsg,
-            files = filePairs
-        )
+        val atomicRes = if (filePairs.isNotEmpty()) {
+            repository.commitFilesAtomic(
+                token = token,
+                owner = repo.owner.login,
+                repo = repo.name,
+                branch = branch,
+                message = effectiveCommitMsg,
+                files = filePairs
+            )
+        } else {
+            Result.success("HEAD")
+        }
 
         if (atomicRes.isSuccess) {
+            // Delete old files from repository
+            for (delPath in deletedToCommit) {
+                val sha = state.rawTreeItems.find { it.path == delPath }?.sha ?: ""
+                repository.deleteFile(
+                    token = token,
+                    owner = repo.owner.login,
+                    repo = repo.name,
+                    path = delPath.trimStart('/'),
+                    sha = sha,
+                    message = "Remove $delPath after rename",
+                    branch = branch
+                )
+            }
             val shortSha = atomicRes.getOrNull()?.take(7) ?: "HEAD"
             _uiState.update {
                 it.copy(
                     terminalStagedFiles = emptySet(),
+                    terminalStagedDeletedFiles = emptySet(),
                     terminalDrafts = it.terminalDrafts.filterKeys { k -> !filesToCommit.contains(k) }
                 )
             }
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "[$branch $shortSha] $effectiveCommitMsg"))
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " 1 commit created with ${filePairs.size} file(s) changed, pushed to remote GitHub branch."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " 1 commit created with ${filePairs.size + deletedToCommit.size} file(s) changed, pushed to remote GitHub branch."))
             syncActiveRepository(isSilent = true)
             resumePendingTerminalCommands()
             return true
@@ -4663,25 +4689,110 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun handleGitClone(subArgs: List<String>, currentRepo: GitHubRepository?, token: String?) {
+        var branchToCheckout: String? = null
+        var repoUrlOrSlug: String? = null
+        var targetDir: String? = null
+
+        var i = 0
+        while (i < subArgs.size) {
+            val arg = subArgs[i]
+            if ((arg == "-b" || arg == "--branch") && i + 1 < subArgs.size) {
+                branchToCheckout = subArgs[i + 1]
+                i += 2
+            } else if (arg.startsWith("-")) {
+                i++
+            } else if (repoUrlOrSlug == null) {
+                repoUrlOrSlug = arg
+                i++
+            } else if (targetDir == null) {
+                targetDir = arg
+                i++
+            } else {
+                i++
+            }
+        }
+
+        val targetName = targetDir ?: repoUrlOrSlug?.trimEnd('/')?.substringAfterLast('/')?.removeSuffix(".git") ?: currentRepo?.name ?: "repository"
+
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Cloning into '$targetName'..."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "remote: Enumerating objects: 100%, done."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "remote: Counting objects: 100%, done."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "remote: Compressing objects: 100%, done."))
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "remote: Total objects received: 100%."))
+
+        if (branchToCheckout != null) {
+            selectBranch(branchToCheckout)
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Switched to branch '$branchToCheckout'"))
+        }
+        _uiState.update { it.copy(terminalWorkingDir = "") }
+        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Cloned and ready in workspace at /workspace/$targetName"))
+    }
+
+    private fun resolveWorkspaceDirectory(targetRaw: String, currentDir: String, repo: GitHubRepository?, items: List<GitTreeItem>): String? {
+        val repoName = repo?.name ?: ""
+        var target = targetRaw.trim().trim('"', '\'')
+
+        while (target.endsWith("/") && target.length > 1) {
+            target = target.removeSuffix("/")
+        }
+
+        if (target.isEmpty() || target == "~" || target == "/" || target == "." || target == "./") {
+            return ""
+        }
+
+        if (target.startsWith("/workspace/")) {
+            target = target.removePrefix("/workspace/")
+        } else if (target == "/workspace") {
+            return ""
+        }
+
+        if (target.startsWith("~/")) {
+            target = target.removePrefix("~/")
+        }
+
+        if (repoName.isNotEmpty()) {
+            if (target == repoName) {
+                return ""
+            }
+            if (target.startsWith("$repoName/")) {
+                target = target.removePrefix("$repoName/")
+            }
+        }
+
+        val isFromRoot = targetRaw.startsWith("/") || targetRaw.startsWith("~") || (repoName.isNotEmpty() && targetRaw.trim().startsWith(repoName))
+        val base = if (isFromRoot) "" else currentDir
+
+        target = target.removePrefix("/")
+
+        val combined = if (base.isEmpty()) target else if (target.isEmpty()) base else "$base/$target"
+
+        val segments = combined.split("/").filter { it.isNotEmpty() && it != "." }
+        val stack = mutableListOf<String>()
+        for (seg in segments) {
+            if (seg == "..") {
+                if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
+            } else {
+                stack.add(seg)
+            }
+        }
+        val resolvedPath = stack.joinToString("/")
+        if (resolvedPath.isEmpty()) return ""
+
+        val exists = items.any { (it.isDirectory && it.path == resolvedPath) || it.path == resolvedPath || it.path.startsWith("$resolvedPath/") }
+            || _uiState.value.terminalDrafts.keys.any { it.startsWith("$resolvedPath/") }
+
+        return if (exists) resolvedPath else null
+    }
+
     private fun handleTerminalCd(args: List<String>, currentDir: String, items: List<GitTreeItem>) {
         val target = args.firstOrNull() ?: ""
+        val state = _uiState.value
+        val repo = state.selectedRepo
 
-        if (target.isEmpty() || target == "~" || target == "/") {
-            _uiState.update { it.copy(terminalWorkingDir = "") }
-            return
-        }
-
-        if (target == "..") {
-            val parent = if (currentDir.contains('/')) currentDir.substringBeforeLast('/') else ""
-            _uiState.update { it.copy(terminalWorkingDir = parent) }
-            return
-        }
-
-        val newPath = if (currentDir.isEmpty()) target else "$currentDir/$target"
-        val exists = items.any { it.isDirectory && (it.path == newPath || it.path.startsWith("$newPath/")) }
-
-        if (exists) {
-            _uiState.update { it.copy(terminalWorkingDir = newPath) }
+        val resolved = resolveWorkspaceDirectory(target, currentDir, repo, items)
+        if (resolved != null) {
+            _uiState.update { it.copy(terminalWorkingDir = resolved) }
         } else {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cd: $target: No such file or directory"))
         }
@@ -4793,74 +4904,136 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         val srcRaw = nonFlags[0].trim('\'', '"')
         val destRaw = nonFlags[1].trim('\'', '"')
+        val repoName = repo?.name ?: ""
 
-        val srcPath = if (workingDir.isEmpty() || srcRaw.startsWith("/")) srcRaw.removePrefix("/") else "$workingDir/$srcRaw"
-        val destPath = if (workingDir.isEmpty() || destRaw.startsWith("/")) destRaw.removePrefix("/") else "$workingDir/$destRaw"
+        fun normalizeToRepoPath(raw: String, isDestination: Boolean): String {
+            var p = raw.trim()
+            if (p.startsWith("/workspace/")) {
+                p = p.removePrefix("/workspace/")
+            }
+            if (p.startsWith("~/")) {
+                p = p.removePrefix("~/")
+            }
+            if (repoName.isNotEmpty() && p.startsWith("$repoName/")) {
+                p = p.removePrefix("$repoName/")
+            }
+            p = p.removePrefix("/")
+            val base = if (raw.startsWith("/") || raw.startsWith("~/") || (repoName.isNotEmpty() && raw.startsWith(repoName))) {
+                ""
+            } else {
+                workingDir
+            }
+            val combined = if (base.isEmpty()) p else if (p.isEmpty()) base else "$base/$p"
+            val segments = combined.split("/").filter { it.isNotEmpty() && it != "." }
+            val stack = mutableListOf<String>()
+            for (seg in segments) {
+                if (seg == "..") {
+                    if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
+                } else {
+                    stack.add(seg)
+                }
+            }
+            return stack.joinToString("/")
+        }
 
         val state = _uiState.value
-        val drafts = state.terminalDrafts
         val rawTree = state.rawTreeItems
+        val drafts = state.terminalDrafts
 
-        val inDrafts = drafts.containsKey(srcPath)
-        val inTree = rawTree.find { it.path == srcPath }
+        val isWildcard = srcRaw.contains("*")
+        val isSrcDirectory = srcRaw.endsWith("/") || rawTree.any { it.isDirectory && it.path == normalizeToRepoPath(srcRaw.trimEnd('/'), false) }
+            || rawTree.any { it.path.startsWith("${normalizeToRepoPath(srcRaw.trimEnd('/'), false)}/") }
 
-        if (!inDrafts && inTree == null) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: bad source, source='$srcRaw', destination='$destRaw' (No such file or directory)"))
-            return
-        }
+        val moves = mutableListOf<Pair<String, String>>()
 
-        if (inDrafts) {
-            val content = drafts[srcPath] ?: ""
-            _uiState.update {
-                it.copy(
-                    terminalDrafts = (it.terminalDrafts - srcPath) + (destPath to content),
-                    terminalStagedFiles = (it.terminalStagedFiles - srcPath) + destPath
-                )
-            }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Renamed '$srcRaw' -> '$destRaw' (staged in drafts)"))
-            return
-        }
-
-        if (token.isNullOrBlank() || repo == null) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication token required to rename remote files"))
-            return
-        }
-
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Renaming '$srcRaw' to '$destRaw' on branch '$branch'..."))
-
-        val contentRes = repository.getFileContent(token, repo.owner.login, repo.name, srcPath, branch)
-        if (contentRes.isSuccess) {
-            val (_, decoded) = contentRes.getOrNull()!!
-            val destSha = rawTree.find { it.path == destPath }?.sha
-
-            val commitRes = repository.commitFile(
-                token = token,
-                owner = repo.owner.login,
-                repo = repo.name,
-                path = destPath,
-                content = decoded,
-                message = "Rename $srcPath to $destPath via git mv",
-                sha = destSha,
-                branch = branch
-            )
-
-            if (commitRes.isSuccess) {
-                repository.deleteFile(
-                    token = token,
-                    owner = repo.owner.login,
-                    repo = repo.name,
-                    path = srcPath,
-                    sha = inTree?.sha ?: "",
-                    message = "Remove old $srcPath after rename",
-                    branch = branch
-                )
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Renamed '$srcRaw' to '$destRaw' successfully."))
-                syncActiveRepository(isSilent = true)
+        if (isWildcard || isSrcDirectory) {
+            val srcDirNormalized = if (srcRaw.endsWith("/*")) {
+                normalizeToRepoPath(srcRaw.removeSuffix("/*"), false)
+            } else if (srcRaw.contains("*")) {
+                val prefix = srcRaw.substringBeforeLast("*").trimEnd('/')
+                normalizeToRepoPath(prefix, false)
             } else {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: failed to commit '$destRaw': ${commitRes.exceptionOrNull()?.message}"))
+                normalizeToRepoPath(srcRaw.trimEnd('/'), false)
+            }
+
+            val destDirNormalized = normalizeToRepoPath(destRaw.trimEnd('/'), true)
+
+            val allFilePaths = (rawTree.filter { it.isFile }.map { it.path } + drafts.keys).distinct()
+            val matchingPaths = allFilePaths.filter { p ->
+                if (srcDirNormalized.isEmpty()) {
+                    true
+                } else {
+                    p == srcDirNormalized || p.startsWith("$srcDirNormalized/")
+                }
+            }
+
+            if (matchingPaths.isEmpty()) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: bad source, source='$srcRaw', destination='$destRaw' (No such file or directory)"))
+                return
+            }
+
+            for (srcP in matchingPaths) {
+                val subPath = if (srcDirNormalized.isEmpty()) srcP else srcP.removePrefix("$srcDirNormalized/").removePrefix(srcDirNormalized)
+                val targetP = if (destDirNormalized.isEmpty()) subPath else "$destDirNormalized/$subPath"
+                moves.add(Pair(srcP, targetP))
             }
         } else {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "error: could not read '$srcRaw' on branch '$branch'"))
+            val srcP = normalizeToRepoPath(srcRaw, false)
+            val inTree = rawTree.find { it.path == srcP }
+            val inDrafts = drafts.containsKey(srcP)
+
+            if (!inDrafts && inTree == null) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: bad source, source='$srcRaw', destination='$destRaw' (No such file or directory)"))
+                return
+            }
+
+            val destNormalized = normalizeToRepoPath(destRaw, true)
+            val destIsFolder = destRaw.endsWith("/") || rawTree.any { it.isDirectory && it.path == destNormalized } || rawTree.any { it.path.startsWith("$destNormalized/") }
+            val targetP = if (destIsFolder) {
+                "$destNormalized/${srcP.substringAfterLast('/')}"
+            } else {
+                destNormalized
+            }
+            moves.add(Pair(srcP, targetP))
+        }
+
+        if (moves.isEmpty()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: bad source, source='$srcRaw', destination='$destRaw' (No files to move)"))
+            return
+        }
+
+        val newDrafts = drafts.toMutableMap()
+        val newStaged = state.terminalStagedFiles.toMutableSet()
+        val newDeleted = state.terminalStagedDeletedFiles.toMutableSet()
+
+        for ((srcP, destP) in moves) {
+            var content = drafts[srcP] ?: if (srcP == state.activeFilePath) state.activeFileContent else null
+            if (content == null && repo != null && !token.isNullOrBlank()) {
+                val res = repository.getFileContent(token, repo.owner.login, repo.name, srcP, branch)
+                content = res.getOrNull()?.second ?: ""
+            }
+            if (content == null) content = ""
+
+            newDrafts.remove(srcP)
+            newStaged.remove(srcP)
+            newDrafts[destP] = content
+            newStaged.add(destP)
+            newDeleted.add(srcP)
+        }
+
+        _uiState.update {
+            it.copy(
+                terminalDrafts = newDrafts,
+                terminalStagedFiles = newStaged,
+                terminalStagedDeletedFiles = newDeleted
+            )
+        }
+
+        if (moves.size == 1) {
+            val (s, d) = moves.first()
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Renamed '$s' -> '$d' (staged in index)"))
+        } else {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Renamed ${moves.size} file(s) from '$srcRaw' to '$destRaw' (staged in index)"))
         }
     }
 

@@ -578,7 +578,7 @@ fun CreateOrUploadModal(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = GitAccent, strokeWidth = 2.dp)
+                            ExpressiveSnakeLoadingIndicator(modifier = Modifier.size(20.dp), color = GitAccent, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Reading files...", fontSize = 12.sp, color = GitText2)
                         }
@@ -696,7 +696,7 @@ fun CreateOrUploadModal(
                             horizontalArrangement = Arrangement.Center,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = GitAccent, strokeWidth = 2.dp)
+                            ExpressiveSnakeLoadingIndicator(modifier = Modifier.size(20.dp), color = GitAccent, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Indexing local directory...", fontSize = 12.sp, color = GitText2)
                         }
@@ -1027,7 +1027,7 @@ fun CreateOrUploadModal(
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         if (isCommitting || isUploading) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            ExpressiveSnakeLoadingIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("Committing...", color = Color.White, fontSize = 12.sp)
                         } else {

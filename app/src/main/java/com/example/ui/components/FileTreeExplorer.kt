@@ -1086,9 +1086,9 @@ fun FileTreeExplorer(
                                 contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp)
                             ) {
                                 if (isPasting) {
-                                    CircularProgressIndicator(
+                                    ExpressiveSnakeLoadingIndicator(
                                         color = Color.White,
-                                        modifier = Modifier.size(14.dp),
+                                        modifier = Modifier.size(16.dp),
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(4.dp))
@@ -1113,10 +1113,10 @@ fun FileTreeExplorer(
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(
+                        ExpressiveSnakeLoadingIndicator(
                             color = GitAccent,
-                            modifier = Modifier.size(34.dp),
-                            strokeWidth = 2.5.dp
+                            modifier = Modifier.size(42.dp),
+                            strokeWidth = 3.5.dp
                         )
                         Spacer(modifier = Modifier.height(14.dp))
                         Text(

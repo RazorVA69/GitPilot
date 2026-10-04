@@ -1907,7 +1907,7 @@ fun CodeEditorView(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    CircularProgressIndicator(color = GitAccent)
+                    ExpressiveSnakeLoadingIndicator(color = GitAccent, modifier = Modifier.size(42.dp), strokeWidth = 3.5.dp)
                 }
             } else if (isImage && file?.downloadUrl != null) {
                 // Image preview viewer

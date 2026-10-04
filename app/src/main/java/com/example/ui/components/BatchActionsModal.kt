@@ -242,14 +242,12 @@ fun BatchActionsModal(
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { pct },
+                    ExpressiveLinearSnakeIndicator(
                         color = Md3LightError,
                         trackColor = GitBorder,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp))
+                            .height(8.dp)
                     )
                 }
             }
@@ -282,7 +280,7 @@ fun BatchActionsModal(
                         .testTag("confirm_batch_delete_btn")
                 ) {
                     if (isDeleting) {
-                        CircularProgressIndicator(
+                        ExpressiveSnakeLoadingIndicator(
                             color = Color.White,
                             modifier = Modifier.size(18.dp),
                             strokeWidth = 2.dp

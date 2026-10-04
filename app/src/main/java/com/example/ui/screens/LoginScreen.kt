@@ -59,7 +59,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
+import com.example.ui.components.ExpressiveSnakeLoadingIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -354,7 +354,7 @@ fun LoginScreen(
                                                 .testTag("github_oauth_login_btn")
                                         ) {
                                             if (isStartingOAuth) {
-                                                CircularProgressIndicator(
+                                                ExpressiveSnakeLoadingIndicator(
                                                     color = Color.White,
                                                     modifier = Modifier.size(18.dp),
                                                     strokeWidth = 2.dp
@@ -506,9 +506,9 @@ fun LoginScreen(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.Center
                                                     ) {
-                                                        CircularProgressIndicator(
+                                                        ExpressiveSnakeLoadingIndicator(
                                                             color = GitAccent,
-                                                            modifier = Modifier.size(16.dp),
+                                                            modifier = Modifier.size(18.dp),
                                                             strokeWidth = 2.dp
                                                         )
                                                         Spacer(modifier = Modifier.width(8.dp))
@@ -631,7 +631,7 @@ fun LoginScreen(
                                             .testTag("login_pat_submit_btn")
                                     ) {
                                         if (isAuthenticating) {
-                                            CircularProgressIndicator(
+                                            ExpressiveSnakeLoadingIndicator(
                                                 color = Color.White,
                                                 modifier = Modifier.size(18.dp),
                                                 strokeWidth = 2.dp
@@ -733,7 +733,7 @@ fun LoginScreen(
                                             .testTag("login_public_submit_btn")
                                     ) {
                                         if (isAuthenticating) {
-                                            CircularProgressIndicator(
+                                            ExpressiveSnakeLoadingIndicator(
                                                 color = Color.White,
                                                 modifier = Modifier.size(18.dp),
                                                 strokeWidth = 2.dp

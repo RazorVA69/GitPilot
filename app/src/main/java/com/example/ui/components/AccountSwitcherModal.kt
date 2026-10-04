@@ -527,7 +527,7 @@ fun AccountSwitcherModal(
                                         )
                                     ) {
                                         if (isAuthenticating) {
-                                            CircularProgressIndicator(
+                                            ExpressiveSnakeLoadingIndicator(
                                                 modifier = Modifier.size(18.dp),
                                                 color = Color.White,
                                                 strokeWidth = 2.dp

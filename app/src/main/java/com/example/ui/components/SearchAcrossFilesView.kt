@@ -173,11 +173,11 @@ fun SearchAcrossFilesView(
             },
             actions = {
                 if (isSearching) {
-                    CircularProgressIndicator(
+                    ExpressiveSnakeLoadingIndicator(
                         modifier = Modifier
-                            .size(20.dp)
-                            .padding(end = 8.dp),
-                        strokeWidth = 2.dp,
+                            .size(22.dp)
+                            .padding(end = 6.dp),
+                        strokeWidth = 2.2.dp,
                         color = GitAccent
                     )
                 } else if (searchQuery.isNotEmpty()) {
@@ -422,11 +422,10 @@ fun SearchAcrossFilesView(
         if (isSearching && progress != null) {
             val (scanned, total) = progress
             val progressFraction = if (total > 0) scanned.toFloat() / total.toFloat() else 0f
-            LinearProgressIndicator(
-                progress = { progressFraction.coerceIn(0f, 1f) },
+            ExpressiveLinearSnakeIndicator(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(3.dp),
+                    .height(6.dp),
                 color = GitAccent,
                 trackColor = GitBorder
             )
