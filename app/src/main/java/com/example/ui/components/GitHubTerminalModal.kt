@@ -218,6 +218,7 @@ fun GitHubTerminalModal(
             "git diff",
             "git grep",
             "git branch -a",
+            "python3 /tmp/unify.py",
             "gh pr list",
             "gh repo view",
             "ls -la",
@@ -231,7 +232,7 @@ fun GitHubTerminalModal(
             "upstream", "rebase", "--continue", "--abort", "--force", "remote", "fetch",
             "checkout", "--ours", "--theirs", "git", "status", "add .", "commit",
             "pull", "push", "branch", "log", "diff", "origin", "dev", "main",
-            "gh", "pr", "issue", "merge", "run", "repo", "auth", "|", "&&",
+            "python3", "<<'EOF'", "EOF", "gh", "pr", "issue", "merge", "run", "repo", "auth", "|", "&&",
             "clear", "help"
         )
     }

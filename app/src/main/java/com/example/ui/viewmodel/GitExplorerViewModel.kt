@@ -21,6 +21,7 @@ import com.example.data.model.RepoFileSearchMatch
 import com.example.data.repository.GitHubRepository as GitHubRepoRepository
 import com.example.ui.components.TerminalLine
 import com.example.ui.components.TerminalLineType
+import com.example.ui.components.terminal.PythonScriptEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -194,6 +195,7 @@ data class GitExplorerUiState(
     val terminalStagedFiles: Set<String> = emptySet(),
     val terminalStagedDeletedFiles: Set<String> = emptySet(),
     val terminalDrafts: Map<String, String> = emptyMap(),
+    val virtualTempFiles: Map<String, String> = emptyMap(),
 
     // Git Remotes, Conflicts & Script Execution
     val gitRemotes: Map<String, String> = emptyMap(),
@@ -236,6 +238,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     private var hasAttemptedAutoOpenWorkingRepo = false
     private val sessionVariables = mutableMapOf<String, String>()
     private val interactiveScriptBuffer = mutableListOf<String>()
+    private var interactiveHeredocDelimiter: String? = null
 
     init {
         // Load initial preferences
@@ -2539,7 +2542,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val commentText: String = "",
         val suppressStderr: Boolean = false,
         val suppressStdout: Boolean = false,
-        val ignoreFailure: Boolean = false
+        val ignoreFailure: Boolean = false,
+        val isHeredoc: Boolean = false,
+        val heredocTarget: String? = null,
+        val heredocAppend: Boolean = false,
+        val heredocContent: String? = null
     )
 
     private fun stripInlineComment(line: String): String {
@@ -2591,17 +2598,95 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun parseScriptToCommandSteps(rawInput: String): List<ShellCommandStep> {
         val result = mutableListOf<ShellCommandStep>()
+        val lines = rawInput.lines()
+        var i = 0
 
+        val heredocMarkerRegex = Regex("""<<-?\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z0-9_\-\.]+))""")
+        val redirTargetRegex = Regex("""(>>|>)\s*([^\s;'"]+|'[^']+'|"[^"]+")""")
+
+        while (i < lines.size) {
+            val currentLine = lines[i]
+            val trimmedLine = currentLine.trim()
+
+            if (trimmedLine.isEmpty()) {
+                i++
+                continue
+            }
+
+            // Check if current line starts a Heredoc: e.g. cat > /tmp/unify.py <<'EOF'
+            val heredocMatch = heredocMarkerRegex.find(trimmedLine)
+            if (heredocMatch != null && !trimmedLine.startsWith("#")) {
+                val delimiter = heredocMatch.groupValues[1].ifEmpty {
+                    heredocMatch.groupValues[2].ifEmpty {
+                        heredocMatch.groupValues[3]
+                    }
+                }
+
+                // Check redirection target: e.g. > /tmp/unify.py or >> /tmp/unify.py
+                val redirMatch = redirTargetRegex.find(trimmedLine)
+                val target = redirMatch?.groupValues?.get(2)?.trim('\'', '"')
+                val isAppend = redirMatch?.groupValues?.get(1) == ">>"
+
+                // Accumulate heredoc body lines until delimiter
+                val heredocLines = mutableListOf<String>()
+                i++
+                while (i < lines.size) {
+                    val bodyLine = lines[i]
+                    if (bodyLine.trim() == delimiter) {
+                        break
+                    }
+                    heredocLines.add(bodyLine)
+                    i++
+                }
+
+                result.add(
+                    ShellCommandStep(
+                        command = trimmedLine,
+                        isHeredoc = true,
+                        heredocTarget = target,
+                        heredocAppend = isAppend,
+                        heredocContent = heredocLines.joinToString("\n")
+                    )
+                )
+                i++
+                continue
+            }
+
+            // Check if this line starts a shell for loop
+            if (trimmedLine.startsWith("for ", ignoreCase = true)) {
+                val forLines = mutableListOf<String>()
+                forLines.add(currentLine)
+                if (!trimmedLine.contains("done", ignoreCase = true)) {
+                    i++
+                    while (i < lines.size) {
+                        forLines.add(lines[i])
+                        if (lines[i].trim().equals("done", ignoreCase = true) || lines[i].trim().endsWith("; done", ignoreCase = true)) {
+                            break
+                        }
+                        i++
+                    }
+                }
+                val forBlock = forLines.joinToString("\n")
+                parseForLoopToCommandSteps(forBlock, result)
+                i++
+                continue
+            }
+
+            // Single normal line
+            addRawCommands(currentLine, result)
+            i++
+        }
+
+        return result
+    }
+
+    private fun parseForLoopToCommandSteps(forBlock: String, dest: MutableList<ShellCommandStep>) {
         val forPattern = Regex(
             """for\s+([a-zA-Z_][a-zA-Z0-9_]*)\s+in\s+([^;\r\n]+?)(?:[;\r\n]+|\s+)do\b([\s\S]*?)\bdone\b""",
             RegexOption.IGNORE_CASE
         )
-
-        var lastIdx = 0
-        forPattern.findAll(rawInput).forEach { match ->
-            val pre = rawInput.substring(lastIdx, match.range.first)
-            addRawCommands(pre, result)
-
+        val match = forPattern.find(forBlock)
+        if (match != null) {
             val varName = match.groupValues[1].trim()
             val inExpr = match.groupValues[2].trim()
             val body = match.groupValues[3].trim()
@@ -2609,18 +2694,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             val values = expandBracesAndTokens(inExpr)
             for (v in values) {
                 val substitutedBody = substituteVar(body, varName, v)
-                addRawCommands(substitutedBody, result)
+                addRawCommands(substitutedBody, dest)
             }
-
-            lastIdx = match.range.last + 1
+        } else {
+            addRawCommands(forBlock, dest)
         }
-
-        if (lastIdx < rawInput.length) {
-            val post = rawInput.substring(lastIdx)
-            addRawCommands(post, result)
-        }
-
-        return result
     }
 
     private fun addRawCommands(scriptPart: String, dest: MutableList<ShellCommandStep>) {
@@ -2652,9 +2730,29 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         val trimmed = rawInput.trim()
 
-        // 1. Interactive Multi-Line Buffering (e.g. user typed 'for i in ...' then 'do' then 'done' across multiple prompts)
+        // 1. Interactive Multi-Line Buffering (heredocs or loop blocks)
         if (interactiveScriptBuffer.isNotEmpty()) {
-            if (trimmed.equals("done", ignoreCase = true) || trimmed.equals("fi", ignoreCase = true)) {
+            if (interactiveHeredocDelimiter != null) {
+                if (trimmed == interactiveHeredocDelimiter) {
+                    interactiveScriptBuffer.add(rawInput)
+                    val fullScript = interactiveScriptBuffer.joinToString("\n")
+                    interactiveScriptBuffer.clear()
+                    interactiveHeredocDelimiter = null
+                    runParsedScript(fullScript)
+                    return
+                } else {
+                    interactiveScriptBuffer.add(rawInput)
+                    appendTerminalLine(
+                        TerminalLine(
+                            type = TerminalLineType.PROMPT_COMMAND,
+                            text = "> $rawInput",
+                            workingDir = _uiState.value.terminalWorkingDir,
+                            branch = _uiState.value.selectedBranch
+                        )
+                    )
+                    return
+                }
+            } else if (trimmed.equals("done", ignoreCase = true) || trimmed.equals("fi", ignoreCase = true)) {
                 interactiveScriptBuffer.add(trimmed)
                 val fullScript = interactiveScriptBuffer.joinToString("\n")
                 interactiveScriptBuffer.clear()
@@ -2672,7 +2770,30 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 )
                 return
             }
-        } else if (trimmed.startsWith("for ", ignoreCase = true) && !trimmed.contains("done", ignoreCase = true)) {
+        } else if (!rawInput.contains("\n") && trimmed.contains("<<") && !trimmed.startsWith("#")) {
+            val heredocMarkerRegex = Regex("""<<-?\s*(?:'([^']+)'|"([^"]+)"|([a-zA-Z0-9_\-\.]+))""")
+            val m = heredocMarkerRegex.find(trimmed)
+            if (m != null) {
+                val delimiter = m.groupValues[1].ifEmpty { m.groupValues[2].ifEmpty { m.groupValues[3] } }
+                interactiveHeredocDelimiter = delimiter
+                interactiveScriptBuffer.add(trimmed)
+                appendTerminalLine(
+                    TerminalLine(
+                        type = TerminalLineType.PROMPT_COMMAND,
+                        text = trimmed,
+                        workingDir = _uiState.value.terminalWorkingDir,
+                        branch = _uiState.value.selectedBranch
+                    )
+                )
+                appendTerminalLine(
+                    TerminalLine(
+                        type = TerminalLineType.OUTPUT_INFO,
+                        text = "heredoc> Heredoc started. Enter script content, then type '$delimiter' to end."
+                    )
+                )
+                return
+            }
+        } else if (trimmed.startsWith("for ", ignoreCase = true) && !trimmed.contains("done", ignoreCase = true) && !rawInput.contains("\n")) {
             // Started an interactive loop block
             interactiveScriptBuffer.add(trimmed)
             appendTerminalLine(
@@ -2715,6 +2836,57 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         )
                     )
                     delay(30L)
+                    continue
+                }
+
+                if (step.isHeredoc) {
+                    appendTerminalLine(
+                        TerminalLine(
+                            type = TerminalLineType.PROMPT_COMMAND,
+                            text = step.command,
+                            workingDir = _uiState.value.terminalWorkingDir,
+                            branch = _uiState.value.selectedBranch
+                        )
+                    )
+                    val target = step.heredocTarget
+                    val content = step.heredocContent ?: ""
+                    val workingDir = _uiState.value.terminalWorkingDir
+
+                    if (target != null) {
+                        val cleanTarget = target.trim('\'', '"')
+                        val isTmpOrRoot = cleanTarget.startsWith("/")
+                        val normalizedPath = if (isTmpOrRoot) cleanTarget else if (workingDir.isEmpty()) cleanTarget else "$workingDir/$cleanTarget"
+
+                        _uiState.update { current ->
+                            val prevVirtual = if (step.heredocAppend) current.virtualTempFiles[cleanTarget] ?: "" else ""
+                            val newVirtual = prevVirtual + content
+
+                            val newVirtualMap = current.virtualTempFiles + (cleanTarget to newVirtual) + (normalizedPath to newVirtual)
+
+                            if (!isTmpOrRoot) {
+                                val prevDraft = if (step.heredocAppend) current.terminalDrafts[normalizedPath] ?: "" else ""
+                                val newDraft = prevDraft + content
+                                current.copy(
+                                    virtualTempFiles = newVirtualMap,
+                                    terminalDrafts = current.terminalDrafts + (normalizedPath to newDraft),
+                                    terminalStagedFiles = current.terminalStagedFiles + normalizedPath
+                                )
+                            } else {
+                                current.copy(virtualTempFiles = newVirtualMap)
+                            }
+                        }
+                        appendTerminalLine(
+                            TerminalLine(
+                                type = TerminalLineType.OUTPUT_SUCCESS,
+                                text = "Heredoc written to $cleanTarget (${content.length} bytes)"
+                            )
+                        )
+                    } else {
+                        content.lines().forEach { line ->
+                            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+                        }
+                    }
+                    delay(50L)
                     continue
                 }
 
@@ -3135,6 +3307,10 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
             "git" -> {
                 return handleGitCommand(args, command, repo, branch, workingDir, token)
+            }
+
+            "python", "python3", "py" -> {
+                return handlePythonCommand(args, command, workingDir, repo, branch, token)
             }
 
             "resume", "continue" -> {
@@ -4799,14 +4975,35 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private suspend fun handleTerminalCat(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
-        val fileName = args.firstOrNull()
+        val fileName = args.firstOrNull()?.trim('\'', '"')
         if (fileName.isNullOrBlank()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cat: missing file operand"))
             return
         }
-        if (repo == null) return
 
-        val filePath = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+        val isTmpOrRoot = fileName.startsWith("/")
+        val filePath = if (isTmpOrRoot) fileName else if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
+
+        val state = _uiState.value
+        val localContent = state.virtualTempFiles[fileName]
+            ?: state.virtualTempFiles[filePath]
+            ?: state.terminalDrafts[filePath]
+
+        if (localContent != null) {
+            localContent.lines().take(100).forEach { line ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+            }
+            if (localContent.lines().size > 100) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [truncated output: ${localContent.lines().size} lines]"))
+            }
+            return
+        }
+
+        if (repo == null) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cat: $fileName: No such file or directory"))
+            return
+        }
+
         val contentRes = repository.getFileContent(token, repo.owner.login, repo.name, filePath, branch)
 
         if (contentRes.isSuccess) {
@@ -6545,6 +6742,7 @@ val cherryPickFeature = true
         val cmd = args.firstOrNull() ?: ""
         when (cmd) {
             "git" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/usr/bin/git"))
+            "python", "python3", "py" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/usr/bin/python3"))
             "sh", "bash" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/bin/bash"))
             "curl" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/usr/bin/curl"))
             "chmod", "chown" -> appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "/bin/$cmd"))
@@ -6620,6 +6818,164 @@ val cherryPickFeature = true
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "--- $host ping statistics ---\n2 packets transmitted, 2 packets received, 0.0% packet loss"))
     }
 
+    private suspend fun handlePythonCommand(
+        args: List<String>,
+        command: String,
+        workingDir: String,
+        repo: GitHubRepository?,
+        branch: String,
+        token: String?
+    ): Boolean {
+        if (args.isEmpty() || args.contains("--help") || args.contains("-h")) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Python 3.12.2 (built-in terminal script engine)"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "usage: python3 [option] ... [-c cmd | file] [arg] ..."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Options and arguments:"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "  -c cmd : program passed in as string"))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "  file   : program read from script file (e.g. /tmp/unify.py, patch.py)"))
+            return true
+        }
+
+        if (args.contains("--version") || args.contains("-V")) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = "Python 3.12.2"))
+            return true
+        }
+
+        // Inline script: python3 -c "print('hello')"
+        val cIdx = args.indexOf("-c")
+        if (cIdx != -1 && cIdx + 1 < args.size) {
+            val scriptCode = args.subList(cIdx + 1, args.size).joinToString(" ").trim('\'', '"')
+            return executePythonScript(scriptCode, workingDir, repo, branch, token)
+        }
+
+        val scriptPath = args.firstOrNull { !it.startsWith("-") }?.trim('\'', '"')
+        if (scriptPath.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "python3: missing script operand"))
+            return false
+        }
+
+        val isTmpOrRoot = scriptPath.startsWith("/")
+        val normalizedPath = if (isTmpOrRoot) scriptPath else if (workingDir.isEmpty()) scriptPath else "$workingDir/$scriptPath"
+
+        // Search for script in virtualTempFiles, then drafts, then repository
+        val state = _uiState.value
+        val scriptContent = state.virtualTempFiles[scriptPath]
+            ?: state.virtualTempFiles[normalizedPath]
+            ?: state.terminalDrafts[normalizedPath]
+            ?: run {
+                if (repo != null) {
+                    repository.getFileContent(token, repo.owner.login, repo.name, normalizedPath, branch).getOrNull()?.second
+                } else null
+            }
+
+        if (scriptContent == null) {
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_ERROR,
+                    text = "python3: can't open file '$scriptPath': [Errno 2] No such file or directory"
+                )
+            )
+            return false
+        }
+
+        return executePythonScript(scriptContent, workingDir, repo, branch, token)
+    }
+
+    private suspend fun executePythonScript(
+        script: String,
+        workingDir: String,
+        repo: GitHubRepository?,
+        branch: String,
+        token: String?
+    ): Boolean {
+        val globToRegex: (String) -> Regex = { pat ->
+            val sb = StringBuilder("^")
+            for (c in pat) {
+                when (c) {
+                    '*' -> sb.append(".*")
+                    '?' -> sb.append(".")
+                    '.' -> sb.append("\\.")
+                    '(' -> sb.append("\\(")
+                    ')' -> sb.append("\\)")
+                    '[' -> sb.append("\\[")
+                    ']' -> sb.append("\\]")
+                    '+' -> sb.append("\\+")
+                    else -> sb.append(c)
+                }
+            }
+            sb.append("$")
+            Regex(sb.toString())
+        }
+
+        val context = PythonScriptEngine.Context(
+            workingDir = workingDir,
+            getFile = { path ->
+                val clean = path.trim('\'', '"')
+                val isRoot = clean.startsWith("/")
+                val full = if (isRoot) clean else if (workingDir.isEmpty()) clean else "$workingDir/$clean"
+
+                val state = _uiState.value
+                state.virtualTempFiles[clean]
+                    ?: state.virtualTempFiles[full]
+                    ?: state.terminalDrafts[full]
+                    ?: run {
+                        if (repo != null) {
+                            repository.getFileContent(token, repo.owner.login, repo.name, full, branch).getOrNull()?.second
+                        } else null
+                    }
+            },
+            writeFile = { path, newContent ->
+                val clean = path.trim('\'', '"')
+                val isRoot = clean.startsWith("/")
+                val full = if (isRoot) clean else if (workingDir.isEmpty()) clean else "$workingDir/$clean"
+
+                _uiState.update { current ->
+                    val updatedTemp = current.virtualTempFiles + (clean to newContent) + (full to newContent)
+                    if (!isRoot) {
+                        current.copy(
+                            virtualTempFiles = updatedTemp,
+                            terminalDrafts = current.terminalDrafts + (full to newContent),
+                            terminalStagedFiles = current.terminalStagedFiles + full
+                        )
+                    } else {
+                        current.copy(virtualTempFiles = updatedTemp)
+                    }
+                }
+            },
+            listMatchingFiles = { pattern ->
+                val regex = globToRegex(pattern)
+                val prefix = if (workingDir.isEmpty()) "" else "$workingDir/"
+
+                val allPaths = mutableSetOf<String>()
+                _uiState.value.rawTreeItems.forEach { item ->
+                    if (prefix.isEmpty()) {
+                        if (!item.path.contains("/")) allPaths.add(item.path)
+                    } else if (item.path.startsWith(prefix)) {
+                        val rel = item.path.removePrefix(prefix)
+                        if (!rel.contains("/")) allPaths.add(rel)
+                    }
+                }
+                _uiState.value.terminalDrafts.keys.forEach { draftPath ->
+                    if (prefix.isEmpty()) {
+                        if (!draftPath.contains("/")) allPaths.add(draftPath)
+                    } else if (draftPath.startsWith(prefix)) {
+                        val rel = draftPath.removePrefix(prefix)
+                        if (!rel.contains("/")) allPaths.add(rel)
+                    }
+                }
+                allPaths.filter { regex.matches(it) }.sorted()
+            },
+            printOutput = { text ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = text))
+            },
+            printError = { text ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = text))
+            },
+            tempFiles = _uiState.value.virtualTempFiles
+        )
+
+        return PythonScriptEngine.execute(script, context)
+    }
+
     private fun printTerminalHelp() {
         val helpLines = listOf(
             "GitHub CLI & Terminal Command Reference:",
@@ -6679,7 +7035,8 @@ val cherryPickFeature = true
             "  echo \"text\" > <file>                     Write text into file",
             "  rm <file>                                Delete file from repository",
             "  whoami / uname / uptime / date           System inspection utilities",
-            "  env / export / curl / ping               Environment and network utilities",
+            "  python3 <file.py> [-c cmd]               Execute Python 3 scripts & regex transformations",
+            "  cat > <file> <<'EOF' ... EOF             Multi-line Heredoc file writer",
             "  clear                                    Clear terminal screen output",
             "  help                                     Show this help manual"
         )
