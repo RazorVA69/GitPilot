@@ -1082,7 +1082,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     // FILE VIEWER & EDITOR (FRESH SYNC ON EVERY OPEN + MULTI-FILE TABS)
     // ==========================================
 
-    fun openFile(item: GitTreeItem) {
+    fun openFile(item: GitTreeItem, targetLine: Int? = null) {
         val repo = _uiState.value.selectedRepo ?: return
         val currentTabs = _uiState.value.openEditorTabs.toMutableList()
         val existingTabIndex = currentTabs.indexOfFirst { it.path == item.path }
@@ -1090,7 +1090,6 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         if (existingTabIndex != -1) {
             // Tab already open, switch to it
             val tab = currentTabs[existingTabIndex]
-            val line = _uiState.value.initialEditorLine
             _uiState.update {
                 it.copy(
                     activeFilePath = tab.path,
@@ -1099,7 +1098,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     activeFileOriginalContent = tab.originalContent,
                     isFileDirty = tab.isDirty,
                     isMarkdownPreviewMode = tab.isMarkdownPreview,
-                    initialEditorLine = line,
+                    initialEditorLine = targetLine,
                     isLoadingFile = false
                 )
             }
@@ -1115,7 +1114,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     activeFileContent = "",
                     activeFileOriginalContent = "",
                     isFileDirty = false,
-                    isMarkdownPreviewMode = false
+                    isMarkdownPreviewMode = false,
+                    initialEditorLine = targetLine
                 )
             }
 
@@ -1141,7 +1141,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     isDirty = false,
                     isPinned = isPinned,
                     isMarkdownPreview = false,
-                    initialLine = _uiState.value.initialEditorLine
+                    initialLine = null
                 )
 
                 _uiState.update { state ->
@@ -1153,6 +1153,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         activeFileContent = decodedContent,
                         activeFileOriginalContent = decodedContent,
                         isFileDirty = false,
+                        initialEditorLine = targetLine,
                         openEditorTabs = updatedTabs
                     )
                 }
@@ -1203,7 +1204,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 activeFileOriginalContent = targetTab.originalContent,
                 isFileDirty = targetTab.isDirty,
                 isMarkdownPreviewMode = targetTab.isMarkdownPreview,
-                initialEditorLine = targetTab.initialLine,
+                initialEditorLine = null,
                 isLoadingFile = false
             )
         }
@@ -1410,7 +1411,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 showSearchAcrossFiles = false
             )
         }
-        openFile(treeItem)
+        openFile(treeItem, targetLine = line)
     }
 
     fun executeSearchAcrossFiles(query: String, pathScope: String, debounceMs: Long = 0L) {
