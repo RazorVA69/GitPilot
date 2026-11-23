@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.CloseFullscreen
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.DriveFolderUpload
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.NoteAdd
@@ -53,6 +54,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -98,6 +100,8 @@ import com.example.ui.theme.GitSurface3
 import com.example.ui.theme.GitText1
 import com.example.ui.theme.GitText2
 import com.example.ui.theme.GitText3
+import com.example.ui.theme.Md3LightError
+import com.example.ui.theme.Md3LightErrorContainer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -111,6 +115,7 @@ fun CreateOrUploadModal(
     isCommitting: Boolean,
     isUploading: Boolean = false,
     uploadProgress: Triple<Int, Int, String>? = null,
+    uploadError: String? = null,
     onDismiss: () -> Unit,
     onCreateOrUpload: (
         targetDir: String,
@@ -203,7 +208,7 @@ fun CreateOrUploadModal(
     }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isCommitting && !isUploading) onDismiss() },
         sheetState = sheetState,
         containerColor = GitSurface,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
@@ -251,7 +256,8 @@ fun CreateOrUploadModal(
                     }
 
                     IconButton(
-                        onClick = onDismiss,
+                        onClick = { if (!isCommitting && !isUploading) onDismiss() },
+                        enabled = !isCommitting && !isUploading,
                         modifier = Modifier.size(32.dp)
                     ) {
                         Icon(Icons.Default.Close, contentDescription = "Close", tint = GitText2)
@@ -932,9 +938,14 @@ fun CreateOrUploadModal(
                 // Upload Progress Bar if active
                 if (isUploading && uploadProgress != null) {
                     val (completed, total, curFile) = uploadProgress
+                    val safeTotal = total.coerceAtLeast(1)
+                    val fraction = (completed.toFloat() / safeTotal.toFloat()).coerceIn(0f, 1f)
+                    val percent = (fraction * 100f).toInt()
                     Spacer(modifier = Modifier.height(12.dp))
                     Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("upload_progress_banner"),
                         color = GitAccentSoft,
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, GitAccent.copy(alpha = 0.3f))
@@ -942,13 +953,78 @@ fun CreateOrUploadModal(
                         Column(modifier = Modifier.padding(12.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("Uploading files to GitHub...", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = GitText1)
-                                Text("$completed / $total", fontSize = 12.sp, color = GitAccent, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Creating single commit ($total files)...",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = GitText1
+                                )
+                                Text(
+                                    "$completed / $total ($percent%)",
+                                    fontSize = 12.sp,
+                                    color = GitAccent,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(curFile, fontSize = 11.sp, color = GitText2, maxLines = 1, fontFamily = FontFamily.Monospace)
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = GitAccent,
+                                trackColor = GitAccent.copy(alpha = 0.16f)
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                curFile,
+                                fontSize = 11.sp,
+                                color = GitText2,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+                } else if (!isUploading && !uploadError.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("upload_error_banner"),
+                        color = Md3LightErrorContainer,
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, Md3LightError.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.ErrorOutline,
+                                contentDescription = "Upload failed",
+                                tint = Md3LightError,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Single-commit upload failed",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Md3LightError
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = uploadError,
+                                    fontSize = 11.5.sp,
+                                    color = GitText1
+                                )
+                            }
                         }
                     }
                 }
@@ -962,6 +1038,7 @@ fun CreateOrUploadModal(
                 ) {
                     OutlinedButton(
                         onClick = onDismiss,
+                        enabled = !isCommitting && !isUploading,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(10.dp),
                         border = BorderStroke(1.dp, GitBorderStrong),
@@ -1393,8 +1470,10 @@ private fun traverseDocumentTree(
     resultList: MutableList<Pair<String, ByteArray>>
 ) {
     for (file in dirDoc.listFiles()) {
-        val relPath = if (relativePrefix.isEmpty()) file.name ?: "" else "$relativePrefix/${file.name}"
+        val name = file.name ?: continue
+        val relPath = if (relativePrefix.isEmpty()) name else "$relativePrefix/$name"
         if (file.isDirectory) {
+            if (name == ".git") continue
             traverseDocumentTree(context, file, relPath, resultList)
         } else {
             val bytes = readBytesFromUri(context, file.uri)

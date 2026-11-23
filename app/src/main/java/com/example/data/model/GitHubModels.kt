@@ -170,7 +170,8 @@ data class CreateTreeItemPayload(
     val path: String,
     val mode: String = "100644",
     val type: String = "blob",
-    val sha: String? = null
+    val sha: String? = null,
+    val content: String? = null
 )
 
 @JsonClass(generateAdapter = true)
@@ -196,6 +197,21 @@ data class CreateCommitResponse(
 data class UpdateRefPayload(
     val sha: String,
     val force: Boolean = false
+)
+
+@JsonClass(generateAdapter = true)
+data class GitRefResponse(
+    val ref: String = "",
+    @Json(name = "node_id") val nodeId: String? = null,
+    val url: String? = null,
+    @Json(name = "object") val refObject: GitRefObject? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class GitRefObject(
+    val type: String = "",
+    val sha: String = "",
+    val url: String? = null
 )
 
 @JsonClass(generateAdapter = true)

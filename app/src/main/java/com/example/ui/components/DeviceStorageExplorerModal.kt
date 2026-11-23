@@ -523,7 +523,7 @@ fun DeviceStorageExplorerModal(
         isCollectingFiles = true
 
         scope.launch(Dispatchers.IO) {
-            val finalFiles = mutableListOf<Pair<String, ByteArray>>()
+            val collectedMap = LinkedHashMap<String, ByteArray>()
             var folderCount = 0
             var fileCount = 0
 
@@ -531,19 +531,25 @@ fun DeviceStorageExplorerModal(
                 val targetFile = File(path)
                 if (targetFile.exists()) {
                     if (targetFile.isDirectory) {
+                        if (targetFile.name == ".git") continue
                         folderCount++
                         val baseParentName = targetFile.name
-                        collectFilesInDirectory(targetFile, baseParentName, finalFiles)
+                        val folderFiles = mutableListOf<Pair<String, ByteArray>>()
+                        collectFilesInDirectory(targetFile, baseParentName, folderFiles)
+                        for ((relPath, bytes) in folderFiles) {
+                            collectedMap[relPath] = bytes
+                        }
                     } else if (targetFile.isFile) {
                         fileCount++
                         val bytes = try { targetFile.readBytes() } catch (e: Exception) { null }
                         if (bytes != null) {
-                            finalFiles.add(targetFile.name to bytes)
+                            collectedMap[targetFile.name] = bytes
                         }
                     }
                 }
             }
 
+            val finalFiles = collectedMap.entries.map { it.key to it.value }
             val totalSize = finalFiles.sumOf { it.second.size.toLong() }
             val summaryText = if (folderCount > 0) {
                 "$folderCount folder(s), $fileCount file(s) (${finalFiles.size} total items, ${formatFileSize(totalSize)})"
@@ -1800,6 +1806,7 @@ private fun collectFilesInDirectory(
     val files = dir.listFiles() ?: return
     for (f in files) {
         if (f.isDirectory) {
+            if (f.name == ".git") continue
             val childPath = "$relativeParentPath/${f.name}"
             collectFilesInDirectory(f, childPath, resultList)
         } else if (f.isFile) {

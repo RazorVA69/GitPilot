@@ -172,6 +172,7 @@ data class GitExplorerUiState(
     // Upload Operations
     val isUploadingFiles: Boolean = false,
     val uploadProgress: Triple<Int, Int, String>? = null,
+    val uploadError: String? = null,
 
     // Dialogs & Sheets
     val isLeftDrawerOpen: Boolean = false,
@@ -1649,22 +1650,35 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val cleanDir = targetDir.trim().trim('/')
 
         viewModelScope.launch {
+            val preparedFiles = files.mapNotNull { (rawRelativePath, bytes) ->
+                val rel = rawRelativePath.replace('\\', '/').trim().trim('/')
+                if (rel.isEmpty()) return@mapNotNull null
+                val fullPath = if (cleanDir.isEmpty()) rel else "$cleanDir/$rel"
+                fullPath to bytes
+            }
+
+            if (preparedFiles.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        isUploadingFiles = false,
+                        uploadProgress = null,
+                        uploadError = "No valid files selected to upload."
+                    )
+                }
+                return@launch
+            }
+
             _uiState.update {
                 it.copy(
                     isUploadingFiles = true,
-                    uploadProgress = Triple(0, files.size, "Preparing upload of ${files.size} file(s)...")
+                    uploadError = null,
+                    uploadProgress = Triple(0, preparedFiles.size, "Preparing single-commit upload for ${preparedFiles.size} file(s)...")
                 )
             }
 
             val token = _uiState.value.currentAccount?.token
-            val preparedFiles = files.map { (relativePath, bytes) ->
-                val fullPath = if (cleanDir.isEmpty()) relativePath else "$cleanDir/$relativePath"
-                fullPath to bytes
-            }
+            val finalMsg = commitMessage.ifBlank { "Upload ${preparedFiles.size} file(s)" }
 
-            val finalMsg = commitMessage.ifBlank { "Upload ${files.size} file(s)" }
-
-            // Attempt single atomic commit via Git Data API
             val batchResult = repository.commitMultipleFilesBatch(
                 token = token,
                 owner = repo.owner.login,
@@ -1672,9 +1686,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 branch = branch,
                 message = finalMsg,
                 files = preparedFiles,
-                onProgress = { current, total, fileName ->
+                onProgress = { current, total, statusText ->
                     _uiState.update {
-                        it.copy(uploadProgress = Triple(current, total, "Uploading $fileName ($current/$total)..."))
+                        it.copy(uploadProgress = Triple(current, total, statusText))
                     }
                 }
             )
@@ -1684,49 +1698,23 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     it.copy(
                         isUploadingFiles = false,
                         uploadProgress = null,
+                        uploadError = null,
                         showCreateUploadDialog = false,
-                        toastOrMessage = "Successfully created single commit with ${files.size} file(s)"
+                        toastOrMessage = "Committed ${preparedFiles.size} file(s) in 1 commit to $branch"
                     )
                 }
                 syncActiveRepository(isSilent = false)
             } else {
-                // Fallback: commit individually if Git Data API fails (e.g. empty repository without commits)
-                var successCount = 0
-                var failedCount = 0
-
-                for ((index, filePair) in preparedFiles.withIndex()) {
-                    val (fullPath, bytes) = filePair
-                    val displayName = fullPath.substringAfterLast('/')
-                    _uiState.update {
-                        it.copy(uploadProgress = Triple(index + 1, preparedFiles.size, "Uploading $displayName (${index + 1}/${preparedFiles.size})..."))
-                    }
-
-                    val existingSha = _uiState.value.rawTreeItems.find { it.path == fullPath }?.sha
-                    val singleMsg = if (preparedFiles.size == 1) finalMsg else "Add $displayName"
-                    val result = repository.commitRawFileBytes(
-                        token = token,
-                        owner = repo.owner.login,
-                        repo = repo.name,
-                        path = fullPath,
-                        bytes = bytes,
-                        message = singleMsg,
-                        sha = existingSha,
-                        branch = branch
-                    )
-
-                    if (result.isSuccess) successCount++
-                    else failedCount++
-                }
-
+                val errMsg = batchResult.exceptionOrNull()?.message
+                    ?: "Failed to commit ${preparedFiles.size} file(s) in a single commit"
                 _uiState.update {
                     it.copy(
                         isUploadingFiles = false,
                         uploadProgress = null,
-                        showCreateUploadDialog = false,
-                        toastOrMessage = "Uploaded $successCount file(s)" + if (failedCount > 0) " ($failedCount failed)" else ""
+                        uploadError = errMsg,
+                        errorMessage = errMsg
                     )
                 }
-                syncActiveRepository(isSilent = false)
             }
         }
     }
@@ -2355,7 +2343,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     fun setShowCreateUploadDialog(show: Boolean) {
-        _uiState.update { it.copy(showCreateUploadDialog = show) }
+        _uiState.update { it.copy(showCreateUploadDialog = show, uploadError = null) }
+    }
+
+    fun clearUploadError() {
+        _uiState.update { it.copy(uploadError = null) }
     }
 
     fun setShowBatchDeleteDialog(show: Boolean) {

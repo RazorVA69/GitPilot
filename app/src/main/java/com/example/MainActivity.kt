@@ -438,6 +438,7 @@ fun GitExplorerApp(
             isCommitting = uiState.isCommitting,
             isUploading = uiState.isUploadingFiles,
             uploadProgress = uiState.uploadProgress,
+            uploadError = uiState.uploadError,
             onDismiss = { viewModel.setShowCreateUploadDialog(false) },
             onCreateOrUpload = { targetDir, name, content, msg, branch ->
                 viewModel.createOrUploadFile(targetDir, name, content, msg, branch)

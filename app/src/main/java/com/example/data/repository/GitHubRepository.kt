@@ -28,10 +28,23 @@ import com.example.data.model.OAuthTokenRequest
 import com.example.data.model.OAuthTokenResponse
 import com.example.data.model.UpdateRefPayload
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import retrofit2.Response
+import java.io.IOException
+import java.net.URLEncoder
 import java.net.UnknownHostException
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicInteger
 
 class GitHubRepository(
     private val apiService: GitHubApiService = GitHubApiClient.apiService,
@@ -101,6 +114,101 @@ class GitHubRepository(
                 current = current.children.find { it.name == segment && it.isDirectory } ?: return null
             }
             return current
+        }
+
+        internal const val MAX_INLINE_TREE_FILE_BYTES = 128 * 1024
+        internal const val MAX_TREE_ITEMS_PER_CHUNK = 300
+        internal const val MAX_TREE_INLINE_CHARS_PER_CHUNK = 1_000_000
+        internal const val BLOB_UPLOAD_CONCURRENCY = 8
+
+        internal fun encodeBranchPath(branch: String): String {
+            val clean = branch.trim().removePrefix("refs/heads/").trim('/')
+            if (clean.isEmpty()) return "main"
+            return clean.split('/')
+                .filter { it.isNotEmpty() }
+                .joinToString("/") { segment ->
+                    URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+                }
+        }
+
+        internal fun sanitizeBatchFiles(files: List<Pair<String, ByteArray>>): List<Pair<String, ByteArray>> {
+            val deduped = LinkedHashMap<String, ByteArray>(files.size)
+            for ((rawPath, bytes) in files) {
+                val segments = rawPath
+                    .replace('\\', '/')
+                    .split('/')
+                    .filter { it.isNotBlank() && it != "." && it != ".." }
+                if (segments.isEmpty()) continue
+                // GitHub strictly rejects any tree containing a ".git" path segment (HTTP 422)
+                if (segments.any { it == ".git" }) continue
+                val normalized = segments.joinToString("/")
+                deduped[normalized] = bytes
+            }
+
+            if (deduped.size <= 1) return deduped.entries.map { it.key to it.value }
+
+            // Collect all directory prefixes implied by file paths so a file never collides with a directory of the same name
+            val directoryPrefixes = HashSet<String>(deduped.size * 2)
+            for (path in deduped.keys) {
+                var slash = path.indexOf('/')
+                while (slash != -1) {
+                    directoryPrefixes.add(path.substring(0, slash))
+                    slash = path.indexOf('/', slash + 1)
+                }
+            }
+
+            return deduped.entries
+                .filter { !directoryPrefixes.contains(it.key) }
+                .map { it.key to it.value }
+        }
+
+        internal fun tryDecodeStrictUtf8(bytes: ByteArray): String? {
+            if (bytes.isEmpty() || bytes.size > MAX_INLINE_TREE_FILE_BYTES) return null
+            for (b in bytes) {
+                if (b == 0.toByte()) return null
+            }
+            return try {
+                val decoder = StandardCharsets.UTF_8.newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                val decoded = decoder.decode(ByteBuffer.wrap(bytes)).toString()
+                // Verify bijective round-trip so bytes match 100% identically
+                if (decoded.toByteArray(StandardCharsets.UTF_8).contentEquals(bytes)) decoded else null
+            } catch (_: Exception) {
+                null
+            }
+        }
+
+        internal fun gitBlobDigestKey(bytes: ByteArray): String {
+            val md = MessageDigest.getInstance("SHA-1")
+            val header = "blob ${bytes.size}\u0000".toByteArray(StandardCharsets.US_ASCII)
+            md.update(header)
+            md.update(bytes)
+            return md.digest().joinToString("") { "%02x".format(it) }
+        }
+
+        internal fun chunkTreeItems(items: List<CreateTreeItemPayload>): List<List<CreateTreeItemPayload>> {
+            if (items.isEmpty()) return emptyList()
+            val chunks = ArrayList<List<CreateTreeItemPayload>>()
+            var current = ArrayList<CreateTreeItemPayload>()
+            var currentChars = 0
+
+            for (item in items) {
+                val itemChars = item.path.length + (item.content?.length ?: 48) + 64
+                val wouldExceedItems = current.size >= MAX_TREE_ITEMS_PER_CHUNK
+                val wouldExceedBytes = current.isNotEmpty() && (currentChars + itemChars > MAX_TREE_INLINE_CHARS_PER_CHUNK)
+                if (wouldExceedItems || wouldExceedBytes) {
+                    chunks.add(current)
+                    current = ArrayList()
+                    currentChars = 0
+                }
+                current.add(item)
+                currentChars += itemChars
+            }
+            if (current.isNotEmpty()) {
+                chunks.add(current)
+            }
+            return chunks
         }
     }
 
@@ -460,117 +568,410 @@ class GitHubRepository(
             if (token.isNullOrBlank()) {
                 return@withContext Result.failure(Exception("Authentication token required to upload"))
             }
-            if (files.isEmpty()) {
-                return@withContext Result.failure(Exception("No files to commit"))
+            val sanitizedFiles = sanitizeBatchFiles(files)
+            if (sanitizedFiles.isEmpty()) {
+                return@withContext Result.failure(Exception("No valid files to commit (filtered empty or .git metadata paths)"))
             }
 
             val authHeader = GitHubApiClient.formatAuthHeader(token)
                 ?: return@withContext Result.failure(Exception("Invalid authentication token"))
 
-            // 1. Fetch latest commit on branch to find parent commit and base tree
-            val latestCommitResp = apiService.getCommitDetail(authHeader, owner, repo, branch)
-            if (!latestCommitResp.isSuccessful || latestCommitResp.body() == null) {
-                return@withContext Result.failure(
-                    Exception("Failed to get latest branch commit: ${latestCommitResp.message()} (${latestCommitResp.code()})")
+            val cleanBranch = branch.trim().removePrefix("refs/heads/").trim('/').ifEmpty { "main" }
+            val encodedBranch = encodeBranchPath(cleanBranch)
+            val commitMsg = message.ifBlank { "Upload ${sanitizedFiles.size} file(s)" }
+            val totalCount = sanitizedFiles.size
+
+            // 1. Single fast-path for 1 file (avoids extra round-trips on empty OR normal repos)
+            if (totalCount == 1) {
+                val (singlePath, singleBytes) = sanitizedFiles[0]
+                val displayName = singlePath.substringAfterLast('/')
+                onProgress?.invoke(1, 1, "Committing $displayName...")
+                val existingSha = runCatching {
+                    val fResp = apiService.getFileContent(authHeader, owner, repo, singlePath, cleanBranch)
+                    if (fResp.isSuccessful) fResp.body()?.sha else null
+                }.getOrNull()
+                val res = commitBinaryFile(
+                    token = token,
+                    owner = owner,
+                    repo = repo,
+                    path = singlePath,
+                    bytes = singleBytes,
+                    commitMessage = commitMsg,
+                    branch = cleanBranch,
+                    fileSha = existingSha
+                )
+                return@withContext res.map { it.commit?.sha ?: it.content?.sha ?: "HEAD" }
+            }
+
+            // 2. Partition sanitized files into fast inline UTF-8 tree entries vs parallel binary/large blobs
+            val inlineTextEntries = mutableMapOf<String, String>()
+            val blobEntries = mutableListOf<Triple<String, ByteArray, String>>() // path, bytes, digestKey
+            for ((path, bytes) in sanitizedFiles) {
+                val inlineUtf8 = tryDecodeStrictUtf8(bytes)
+                if (inlineUtf8 != null) {
+                    inlineTextEntries[path] = inlineUtf8
+                } else {
+                    blobEntries.add(Triple(path, bytes, gitBlobDigestKey(bytes)))
+                }
+            }
+
+            // 3. Resolve branch head commit & base tree (detecting empty repository HTTP 409)
+            onProgress?.invoke(0, totalCount, "Connecting to branch '$cleanBranch'...")
+            var branchState = resolveBranchHead(authHeader, owner, repo, cleanBranch, encodedBranch)
+            var isEmptyRepoSeeded = false
+            var seedCommitSha = ""
+            var seedTreeSha = ""
+            var seedFilePath = ""
+
+            if (branchState == null) {
+                // Repository might be completely empty (0 commits) — bootstrap with 1 seed commit so Git Data API unlocks,
+                // then replace with a clean single orphan root commit containing all files!
+                val (firstPath, firstBytes) = sanitizedFiles[0]
+                onProgress?.invoke(0, totalCount, "Initializing empty repository...")
+                val initRes = commitBinaryFile(
+                    token = token,
+                    owner = owner,
+                    repo = repo,
+                    path = firstPath,
+                    bytes = firstBytes,
+                    commitMessage = commitMsg,
+                    branch = cleanBranch,
+                    fileSha = null
+                )
+                if (initRes.isFailure) {
+                    return@withContext Result.failure(
+                        initRes.exceptionOrNull() ?: Exception("Failed to initialize branch '$cleanBranch'")
+                    )
+                }
+                val initCommit = initRes.getOrNull()?.commit?.sha ?: ""
+                val refreshed = resolveBranchHead(authHeader, owner, repo, cleanBranch, encodedBranch)
+                    ?: return@withContext Result.failure(Exception("Branch '$cleanBranch' could not be resolved after init"))
+                isEmptyRepoSeeded = true
+                seedCommitSha = initCommit.ifBlank { refreshed.first }
+                seedTreeSha = refreshed.second ?: ""
+                seedFilePath = firstPath
+                branchState = Pair(seedCommitSha, null) // Null base_tree creates 1 clean root commit with ALL files
+            }
+
+            // 4. Upload all binary/non-UTF-8/large blobs IN PARALLEL (deduplicated by content SHA-1)
+            val completedCounter = AtomicInteger(inlineTextEntries.size)
+            if (inlineTextEntries.isNotEmpty() && blobEntries.isNotEmpty()) {
+                onProgress?.invoke(
+                    completedCounter.get().coerceAtMost(totalCount),
+                    totalCount,
+                    "Uploading ${blobEntries.size} asset(s) in parallel (${inlineTextEntries.size} text files bundled)..."
                 )
             }
 
-            val parentCommit = latestCommitResp.body()!!
-            val parentSha = parentCommit.sha
-            val baseTreeSha = parentCommit.commit.tree?.sha
-
-            // 2. Create blobs for each file
-            val treeItems = mutableListOf<CreateTreeItemPayload>()
-            val totalCount = files.size
-
-            for ((idx, filePair) in files.withIndex()) {
-                val (filePath, fileBytes) = filePair
-                val displayName = filePath.substringAfterLast('/')
-                onProgress?.invoke(idx + 1, totalCount, displayName)
-
-                val b64 = Base64.encodeToString(fileBytes, Base64.NO_WRAP)
-                val blobResp = apiService.createBlob(
+            val uploadedBlobShas = if (blobEntries.isNotEmpty()) {
+                uploadBlobsConcurrently(
                     authHeader = authHeader,
                     owner = owner,
                     repo = repo,
-                    payload = CreateBlobPayload(content = b64, encoding = "base64")
+                    blobEntries = blobEntries,
+                    onBlobUploaded = { fileName ->
+                        val done = completedCounter.incrementAndGet().coerceAtMost(totalCount)
+                        onProgress?.invoke(done, totalCount, "Uploaded $fileName ($done/$totalCount)")
+                    }
+                )
+            } else {
+                emptyMap()
+            }
+
+            // 5. Assemble ordered CreateTreeItemPayload list preserving original path order
+            val treeItems = sanitizedFiles.map { (path, _) ->
+                val inlineText = inlineTextEntries[path]
+                if (inlineText != null) {
+                    CreateTreeItemPayload(
+                        path = path,
+                        mode = "100644",
+                        type = "blob",
+                        sha = null,
+                        content = inlineText
+                    )
+                } else {
+                    val blobSha = uploadedBlobShas[path]
+                        ?: throw IllegalStateException("Missing uploaded blob SHA for $path")
+                    CreateTreeItemPayload(
+                        path = path,
+                        mode = "100644",
+                        type = "blob",
+                        sha = blobSha,
+                        content = null
+                    )
+                }
+            }
+
+            onProgress?.invoke(totalCount, totalCount, "Creating single commit for $totalCount file(s)...")
+
+            // 6. Create tree(s), create 1 commit, and update branch ref (with fast-forward race retry)
+            var currentParentSha = branchState.first
+            var currentBaseTreeSha = branchState.second
+
+            for (attempt in 0..2) {
+                val finalTreeSha = createChainedTrees(
+                    authHeader = authHeader,
+                    owner = owner,
+                    repo = repo,
+                    baseTreeSha = if (isEmptyRepoSeeded) null else currentBaseTreeSha,
+                    treeItems = treeItems
                 )
 
-                if (!blobResp.isSuccessful || blobResp.body() == null) {
-                    return@withContext Result.failure(
-                        Exception("Failed to create git blob for $displayName (${blobResp.code()})")
+                val parents = if (isEmptyRepoSeeded) emptyList() else listOf(currentParentSha)
+                val commitResp = executeWithRetry("createCommit") {
+                    apiService.createCommit(
+                        authHeader = authHeader,
+                        owner = owner,
+                        repo = repo,
+                        payload = CreateCommitPayload(
+                            message = commitMsg,
+                            tree = finalTreeSha,
+                            parents = parents
+                        )
                     )
                 }
 
-                val blobSha = blobResp.body()!!.sha
-                treeItems.add(
-                    CreateTreeItemPayload(
-                        path = filePath.trimStart('/'),
-                        mode = "100644",
-                        type = "blob",
-                        sha = blobSha
+                if (!commitResp.isSuccessful || commitResp.body() == null) {
+                    val err = commitResp.errorBody()?.string() ?: commitResp.message()
+                    return@withContext Result.failure(
+                        Exception("Failed to create single commit (${commitResp.code()}): $err")
+                    )
+                }
+
+                val newCommitSha = commitResp.body()!!.sha
+
+                val refResp = apiService.updateBranchRef(
+                    authHeader = authHeader,
+                    owner = owner,
+                    repo = repo,
+                    branch = encodedBranch,
+                    payload = UpdateRefPayload(sha = newCommitSha, force = isEmptyRepoSeeded)
+                )
+
+                if (refResp.isSuccessful) {
+                    return@withContext Result.success(newCommitSha)
+                }
+
+                val refErrCode = refResp.code()
+                val refErrBody = refResp.errorBody()?.string() ?: refResp.message()
+
+                // If empty repo ruleset rejected force=true orphan commit, fall back cleanly to 1 tree on top of seedCommitSha
+                if (isEmptyRepoSeeded && (refErrCode == 403 || refErrCode == 422)) {
+                    val remainingItems = treeItems.filter { it.path != seedFilePath }
+                    if (remainingItems.isEmpty()) {
+                        return@withContext Result.success(seedCommitSha)
+                    }
+                    val chainedTreeSha = createChainedTrees(
+                        authHeader = authHeader,
+                        owner = owner,
+                        repo = repo,
+                        baseTreeSha = seedTreeSha.ifEmpty { null },
+                        treeItems = remainingItems
+                    )
+                    val appendCommitResp = apiService.createCommit(
+                        authHeader = authHeader,
+                        owner = owner,
+                        repo = repo,
+                        payload = CreateCommitPayload(
+                            message = commitMsg,
+                            tree = chainedTreeSha,
+                            parents = listOf(seedCommitSha)
+                        )
+                    )
+                    if (appendCommitResp.isSuccessful && appendCommitResp.body() != null) {
+                        val appendSha = appendCommitResp.body()!!.sha
+                        val appendRef = apiService.updateBranchRef(
+                            authHeader = authHeader,
+                            owner = owner,
+                            repo = repo,
+                            branch = encodedBranch,
+                            payload = UpdateRefPayload(sha = appendSha, force = false)
+                        )
+                        if (appendRef.isSuccessful) {
+                            return@withContext Result.success(appendSha)
+                        }
+                    }
+                    return@withContext Result.failure(
+                        Exception("Failed to update branch '$cleanBranch' ($refErrCode): $refErrBody")
+                    )
+                }
+
+                // If another push landed on branch during upload, re-fetch head & re-link (reusing already uploaded tree/blobs)
+                if (refErrCode == 422 && attempt < 2 && !isEmptyRepoSeeded) {
+                    val latest = resolveBranchHead(authHeader, owner, repo, cleanBranch, encodedBranch)
+                    if (latest != null) {
+                        currentParentSha = latest.first
+                        currentBaseTreeSha = latest.second
+                        continue
+                    }
+                }
+
+                return@withContext Result.failure(
+                    Exception("Failed to update branch reference ($refErrCode): $refErrBody")
+                )
+            }
+
+            Result.failure(Exception("Failed to update branch reference after concurrent updates"))
+        } catch (e: Exception) {
+            Result.failure(Exception(friendlyErrorMessage(null, e)))
+        }
+    }
+
+    private suspend fun resolveBranchHead(
+        authHeader: String,
+        owner: String,
+        repo: String,
+        cleanBranch: String,
+        encodedBranch: String
+    ): Pair<String, String?>? {
+        // Fast path: 1 HTTP call via /commits/{branch}
+        val commitResp = apiService.getCommitDetail(authHeader, owner, repo, cleanBranch)
+        if (commitResp.isSuccessful && commitResp.body() != null) {
+            val c = commitResp.body()!!
+            if (c.sha.isNotBlank()) {
+                return Pair(c.sha, c.commit.tree?.sha)
+            }
+        }
+        // Empty repo returns HTTP 409 here
+        if (commitResp.code() == 409) {
+            return null
+        }
+
+        // Secondary path: /git/ref/heads/{branch} (reliable for branch names containing special characters / slashes)
+        val refResp = apiService.getBranchRef(authHeader, owner, repo, encodedBranch)
+        if (refResp.isSuccessful && refResp.body()?.refObject != null) {
+            val headSha = refResp.body()!!.refObject!!.sha
+            if (headSha.isNotBlank()) {
+                val headCommitResp = apiService.getCommitDetail(authHeader, owner, repo, headSha)
+                val baseTreeSha = if (headCommitResp.isSuccessful) headCommitResp.body()?.commit?.tree?.sha else null
+                return Pair(headSha, baseTreeSha)
+            }
+        }
+        if (refResp.code() == 409) {
+            return null
+        }
+
+        // Check if repository has zero branches (another indicator of an empty repository returning 404)
+        if (commitResp.code() == 404 || refResp.code() == 404) {
+            val branchesResp = apiService.getBranches(authHeader, owner, repo)
+            if (branchesResp.isSuccessful && (branchesResp.body()?.isEmpty() == true)) {
+                return null
+            }
+        }
+
+        val errMsg = commitResp.errorBody()?.string() ?: commitResp.message()
+        throw IllegalStateException("Unable to resolve branch '$cleanBranch' (${commitResp.code()}): $errMsg")
+    }
+
+    private suspend fun uploadBlobsConcurrently(
+        authHeader: String,
+        owner: String,
+        repo: String,
+        blobEntries: List<Triple<String, ByteArray, String>>,
+        onBlobUploaded: (fileName: String) -> Unit
+    ): Map<String, String> = coroutineScope {
+        // Deduplicate identical payloads so repeated files only upload once
+        val uniqueByDigest = LinkedHashMap<String, Pair<String, ByteArray>>()
+        for ((path, bytes, digest) in blobEntries) {
+            if (!uniqueByDigest.containsKey(digest)) {
+                uniqueByDigest[digest] = Pair(path, bytes)
+            }
+        }
+
+        val semaphore = Semaphore(BLOB_UPLOAD_CONCURRENCY)
+        val digestToSha = java.util.concurrent.ConcurrentHashMap<String, String>(uniqueByDigest.size)
+
+        uniqueByDigest.entries.map { (digest, samplePair) ->
+            async(Dispatchers.IO) {
+                semaphore.withPermit {
+                    val (samplePath, bytes) = samplePair
+                    val displayName = samplePath.substringAfterLast('/')
+                    val b64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
+                    val blobResp = executeWithRetry("createBlob($displayName)") {
+                        apiService.createBlob(
+                            authHeader = authHeader,
+                            owner = owner,
+                            repo = repo,
+                            payload = CreateBlobPayload(content = b64, encoding = "base64")
+                        )
+                    }
+                    if (!blobResp.isSuccessful || blobResp.body() == null) {
+                        val errBody = blobResp.errorBody()?.string() ?: blobResp.message()
+                        throw IllegalStateException("Failed to upload $displayName (${blobResp.code()}): $errBody")
+                    }
+                    digestToSha[digest] = blobResp.body()!!.sha
+                    onBlobUploaded(displayName)
+                }
+            }
+        }.awaitAll()
+
+        val result = HashMap<String, String>(blobEntries.size)
+        for ((path, _, digest) in blobEntries) {
+            result[path] = digestToSha[digest]
+                ?: throw IllegalStateException("Missing blob SHA for $path")
+        }
+        result
+    }
+
+    private suspend fun createChainedTrees(
+        authHeader: String,
+        owner: String,
+        repo: String,
+        baseTreeSha: String?,
+        treeItems: List<CreateTreeItemPayload>
+    ): String {
+        val chunks = chunkTreeItems(treeItems)
+        var currentBase = baseTreeSha
+        for (chunk in chunks) {
+            val treeResp = executeWithRetry("createTree(${chunk.size})") {
+                apiService.createTree(
+                    authHeader = authHeader,
+                    owner = owner,
+                    repo = repo,
+                    payload = CreateTreePayload(
+                        baseTree = currentBase,
+                        tree = chunk
                     )
                 )
             }
-
-            // 3. Create tree containing all new files
-            val treeResp = apiService.createTree(
-                authHeader = authHeader,
-                owner = owner,
-                repo = repo,
-                payload = CreateTreePayload(
-                    baseTree = baseTreeSha,
-                    tree = treeItems
-                )
-            )
-
             if (!treeResp.isSuccessful || treeResp.body() == null) {
-                return@withContext Result.failure(
-                    Exception("Failed to create git tree (${treeResp.code()}): ${treeResp.message()}")
-                )
+                val errBody = treeResp.errorBody()?.string() ?: treeResp.message()
+                throw IllegalStateException("Failed to create git tree (${treeResp.code()}): $errBody")
             }
-
-            val newTreeSha = treeResp.body()!!.sha
-
-            // 4. Create single commit pointing to new tree
-            val commitResp = apiService.createCommit(
-                authHeader = authHeader,
-                owner = owner,
-                repo = repo,
-                payload = CreateCommitPayload(
-                    message = message.ifBlank { "Upload ${files.size} file(s)" },
-                    tree = newTreeSha,
-                    parents = listOf(parentSha)
-                )
-            )
-
-            if (!commitResp.isSuccessful || commitResp.body() == null) {
-                return@withContext Result.failure(
-                    Exception("Failed to create commit (${commitResp.code()}): ${commitResp.message()}")
-                )
-            }
-
-            val newCommitSha = commitResp.body()!!.sha
-
-            // 5. Update branch ref
-            val refResp = apiService.updateBranchRef(
-                authHeader = authHeader,
-                owner = owner,
-                repo = repo,
-                branch = branch,
-                payload = UpdateRefPayload(sha = newCommitSha, force = false)
-            )
-
-            if (!refResp.isSuccessful) {
-                return@withContext Result.failure(
-                    Exception("Failed to update branch reference (${refResp.code()})")
-                )
-            }
-
-            Result.success(newCommitSha)
-        } catch (e: Exception) {
-            Result.failure(e)
+            currentBase = treeResp.body()!!.sha
         }
+        return currentBase ?: throw IllegalStateException("Git tree creation returned empty SHA")
+    }
+
+    private suspend fun <T> executeWithRetry(
+        label: String,
+        maxAttempts: Int = 3,
+        block: suspend () -> Response<T>
+    ): Response<T> {
+        var lastException: Exception? = null
+        for (attempt in 0 until maxAttempts) {
+            try {
+                val resp = block()
+                val code = resp.code()
+                val shouldRetry = (code == 429 || code == 500 || code == 502 || code == 503 || code == 504 ||
+                    (code == 403 && resp.headers()["Retry-After"] != null))
+                if (!shouldRetry || attempt == maxAttempts - 1) {
+                    return resp
+                }
+                val retryAfterSec = resp.headers()["Retry-After"]?.toLongOrNull()
+                val backoffMs = if (retryAfterSec != null) {
+                    (retryAfterSec * 1000L).coerceIn(250L, 10_000L)
+                } else {
+                    (350L shl attempt)
+                }
+                delay(backoffMs)
+            } catch (e: IOException) {
+                lastException = e
+                if (attempt == maxAttempts - 1) throw e
+                delay(350L shl attempt)
+            }
+        }
+        throw lastException ?: IllegalStateException("Request $label failed after $maxAttempts attempts")
     }
 
     suspend fun getCommitDetail(
@@ -799,26 +1200,20 @@ class GitHubRepository(
         branch: String,
         baseMessage: String,
         onProgress: (completed: Int, total: Int, currentFile: String) -> Unit
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        var successCount = 0
-        for ((index, item) in files.withIndex()) {
-            val (path, bytes) = item
-            onProgress(index, files.size, path)
-            val res = commitBinaryFile(
-                token = token,
-                owner = owner,
-                repo = repo,
-                path = path,
-                bytes = bytes,
-                commitMessage = "$baseMessage: $path",
-                branch = branch
-            )
-            if (res.isSuccess) {
-                successCount++
-            }
+    ): Result<Int> {
+        val batchRes = commitMultipleFilesBatch(
+            token = token,
+            owner = owner,
+            repo = repo,
+            branch = branch,
+            message = baseMessage.ifBlank { "Upload ${files.size} file(s)" },
+            files = files,
+            onProgress = onProgress
+        )
+        return batchRes.map {
+            onProgress(files.size, files.size, "Done")
+            files.size
         }
-        onProgress(files.size, files.size, "Done")
-        Result.success(successCount)
     }
 
     suspend fun deleteFile(

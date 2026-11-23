@@ -2,6 +2,8 @@ package com.example.data.api
 
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -57,12 +59,19 @@ object GitHubApiClient {
         .addLast(KotlinJsonAdapterFactory())
         .build()
 
+    private val apiDispatcher = Dispatcher().apply {
+        maxRequests = 64
+        maxRequestsPerHost = 12
+    }
+
     private val okHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .dispatcher(apiDispatcher)
+        .connectionPool(ConnectionPool(12, 5, TimeUnit.MINUTES))
         .dns(fallbackDns)
         .retryOnConnectionFailure(true)
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val request = chain.request().newBuilder()
                 .header("Accept", "application/vnd.github.v3+json, application/json")

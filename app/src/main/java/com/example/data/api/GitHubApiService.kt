@@ -17,6 +17,7 @@ import com.example.data.model.GitHubCommitItem
 import com.example.data.model.GitHubRepository
 import com.example.data.model.GitHubTagItem
 import com.example.data.model.GitHubUser
+import com.example.data.model.GitRefResponse
 import com.example.data.model.GitTreeResponse
 import com.example.data.model.UpdateRefPayload
 import okhttp3.ResponseBody
@@ -157,6 +158,14 @@ interface GitHubApiService {
         @Path("repo") repo: String,
         @Body payload: CreateCommitPayload
     ): Response<CreateCommitResponse>
+
+    @GET("repos/{owner}/{repo}/git/ref/heads/{branch}")
+    suspend fun getBranchRef(
+        @Header("Authorization") authHeader: String,
+        @Path("owner") owner: String,
+        @Path("repo") repo: String,
+        @Path(value = "branch", encoded = true) branch: String
+    ): Response<GitRefResponse>
 
     @PATCH("repos/{owner}/{repo}/git/refs/heads/{branch}")
     suspend fun updateBranchRef(
