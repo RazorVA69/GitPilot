@@ -22,6 +22,8 @@ import com.example.data.repository.GitHubRepository as GitHubRepoRepository
 import com.example.ui.components.TerminalLine
 import com.example.ui.components.TerminalLineType
 import com.example.ui.components.terminal.PythonScriptEngine
+import com.example.ui.components.terminal.SedCommandEngine
+import com.example.ui.components.terminal.ShellScriptParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -2434,43 +2436,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun tokenizeShellCommand(command: String): List<String> {
-        val tokens = mutableListOf<String>()
-        val current = StringBuilder()
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        var escapeNext = false
-
-        for (c in command) {
-            if (escapeNext) {
-                current.append(c)
-                escapeNext = false
-                continue
-            }
-            if (c == '\\') {
-                escapeNext = true
-                continue
-            }
-            if (c == '\'' && !inDoubleQuote) {
-                inSingleQuote = !inSingleQuote
-                continue
-            }
-            if (c == '"' && !inSingleQuote) {
-                inDoubleQuote = !inDoubleQuote
-                continue
-            }
-            if (c.isWhitespace() && !inSingleQuote && !inDoubleQuote) {
-                if (current.isNotEmpty()) {
-                    tokens.add(current.toString())
-                    current.clear()
-                }
-            } else {
-                current.append(c)
-            }
-        }
-        if (current.isNotEmpty()) {
-            tokens.add(current.toString())
-        }
-        return tokens
+        return ShellScriptParser.tokenize(command)
     }
 
     private fun expandBracesAndTokens(expr: String): List<String> {
@@ -2517,16 +2483,15 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun substituteSessionVariables(cmd: String): String {
-        var current = cmd
-        sessionVariables.forEach { (k, v) ->
-            current = substituteVar(current, k, v)
-        }
         val state = _uiState.value
-        current = substituteVar(current, "REPO", state.selectedRepo?.name ?: "repo")
-        current = substituteVar(current, "BRANCH", state.selectedBranch)
-        current = substituteVar(current, "PWD", state.terminalWorkingDir)
-        current = substituteVar(current, "USER", state.currentAccount?.username ?: "developer")
-        return current
+        val allVars = buildMap {
+            putAll(sessionVariables)
+            put("REPO", state.selectedRepo?.name ?: "repo")
+            put("BRANCH", state.selectedBranch)
+            put("PWD", state.terminalWorkingDir)
+            put("USER", state.currentAccount?.username ?: "developer")
+        }
+        return ShellScriptParser.substituteVariables(cmd, allVars)
     }
 
     data class ShellCommandStep(
@@ -2543,17 +2508,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     )
 
     private fun stripInlineComment(line: String): String {
-        var inSingleQuote = false
-        var inDoubleQuote = false
-        for (i in line.indices) {
-            val c = line[i]
-            if (c == '\'' && !inDoubleQuote) inSingleQuote = !inSingleQuote
-            if (c == '"' && !inSingleQuote) inDoubleQuote = !inDoubleQuote
-            if (c == '#' && !inSingleQuote && !inDoubleQuote) {
-                return line.substring(0, i).trim()
-            }
-        }
-        return line.trim()
+        return ShellScriptParser.stripInlineComment(line)
     }
 
     private fun parseShellModifiers(raw: String): ShellCommandStep {
@@ -2665,8 +2620,47 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 continue
             }
 
-            // Single normal line
-            addRawCommands(currentLine, result)
+            // Single/multi-line normal command (join unclosed quotes or trailing backslash continuations)
+            val continuedLines = mutableListOf<String>()
+            continuedLines.add(currentLine)
+            while (i + 1 < lines.size) {
+                val joinedSoFar = ShellScriptParser.joinContinuedLines(continuedLines)
+                val stillOpen = run {
+                    var inS = false
+                    var inD = false
+                    var k = 0
+                    val s = continuedLines.joinToString("\n")
+                    while (k < s.length) {
+                        val ch = s[k]
+                        if (inS) {
+                            if (ch == '\'') inS = false
+                        } else if (inD) {
+                            if (ch == '\\' && k + 1 < s.length) {
+                                k += 2
+                                continue
+                            }
+                            if (ch == '"') inD = false
+                        } else {
+                            if (ch == '\\' && k + 1 < s.length) {
+                                k += 2
+                                continue
+                            }
+                            if (ch == '\'') inS = true
+                            else if (ch == '"') inD = true
+                        }
+                        k++
+                    }
+                    val endsWithBs = !inS && s.endsWith("\\") && !s.endsWith("\\\\")
+                    inS || inD || endsWithBs || joinedSoFar.isEmpty()
+                }
+                if (!stillOpen) break
+                i++
+                continuedLines.add(lines[i])
+            }
+            val logicalCommands = ShellScriptParser.joinContinuedLines(continuedLines)
+            for (logicalCmd in logicalCommands) {
+                addRawCommands(logicalCmd, result)
+            }
             i++
         }
 
@@ -2695,9 +2689,9 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun addRawCommands(scriptPart: String, dest: MutableList<ShellCommandStep>) {
-        val rawLines = scriptPart.lines()
+        val logicalLines = ShellScriptParser.joinContinuedLines(scriptPart.lines())
 
-        for (rawLine in rawLines) {
+        for (rawLine in logicalLines) {
             val trimmed = rawLine.trim()
             if (trimmed.isEmpty()) continue
 
@@ -2706,7 +2700,8 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 continue
             }
 
-            val parts = trimmed.split(';')
+            // Quote-aware split on ';' so semicolons inside 'sed ...' or "..." stay intact!
+            val parts = ShellScriptParser.splitTopLevel(trimmed, ";")
             for (part in parts) {
                 val cleaned = stripInlineComment(part)
                 if (cleaned.isEmpty()) continue
@@ -2901,26 +2896,39 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                     continue
                 }
 
-                // Variable substitution
+                // Variable substitution (respecting single quotes)
                 val substitutedCommand = substituteSessionVariables(step.command)
 
-                val success = if (substitutedCommand.contains("&&")) {
-                    var allOk = true
-                    val subCommands = substitutedCommand.split("&&").map { it.trim() }.filter { it.isNotEmpty() }
-                    for (cmd in subCommands) {
-                        val ok = executePipedOrSingleCommand(
+                // Quote-aware conditional chain splitting ('&&' and '||')
+                val chain = ShellScriptParser.splitConditionalChain(substitutedCommand)
+                val success = if (chain.size > 1) {
+                    var lastOk = true
+                    var idxInChain = 0
+                    while (idxInChain < chain.size) {
+                        val (cmd, op) = chain[idxInChain]
+                        lastOk = executePipedOrSingleCommand(
                             cmd,
                             suppressStderr = step.suppressStderr,
                             suppressStdout = step.suppressStdout,
                             ignoreFailure = step.ignoreFailure
                         )
-                        if (!ok && !step.ignoreFailure) {
-                            allOk = false
-                            break
+                        delay(100L)
+                        if (op == "&&" && !lastOk) {
+                            // Skip until an '||' branch or end
+                            idxInChain++
+                            while (idxInChain < chain.size && chain[idxInChain].second == "&&") {
+                                idxInChain++
+                            }
+                        } else if (op == "||" && lastOk) {
+                            // Short-circuit past '||' alternatives until '&&' or end
+                            idxInChain++
+                            while (idxInChain < chain.size && chain[idxInChain].second == "||") {
+                                idxInChain++
+                            }
                         }
-                        delay(120L)
+                        idxInChain++
                     }
-                    allOk
+                    lastOk || step.ignoreFailure
                 } else {
                     val ok = executePipedOrSingleCommand(
                         substitutedCommand,
@@ -2928,7 +2936,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                         suppressStdout = step.suppressStdout,
                         ignoreFailure = step.ignoreFailure
                     )
-                    delay(120L)
+                    delay(100L)
                     ok
                 }
 
@@ -2975,13 +2983,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             )
         )
 
-        if (command.contains("|")) {
-            val stages = command.split('|').map { it.trim() }.filter { it.isNotEmpty() }
-            if (stages.isEmpty()) return true
-
+        val pipeStages = ShellScriptParser.splitPipeline(command)
+        if (pipeStages.size > 1) {
             var currentOutput: List<String> = emptyList()
-            for (i in stages.indices) {
-                val stage = stages[i]
+            for (i in pipeStages.indices) {
+                val stage = pipeStages[i]
                 if (i == 0) {
                     currentOutput = executeCommandCaptureOutput(stage, repo, branch, workingDir, token)
                 } else {
@@ -3028,12 +3034,30 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
             "cat" -> {
                 val file = args.firstOrNull { !it.startsWith("-") } ?: return emptyList()
-                val resolved = if (workingDir.isEmpty()) file else "$workingDir/$file"
-                val text = _uiState.value.terminalDrafts[resolved] ?: if (resolved == _uiState.value.activeFilePath) _uiState.value.activeFileContent else null
-                (text ?: if (repo != null && !token.isNullOrBlank()) repository.getFileContent(token, repo.owner.login, repo.name, resolved, branch).getOrNull()?.second ?: "" else "").lines()
+                val resolved = resolveTerminalRepoPath(file, workingDir, repo)
+                if (_uiState.value.terminalStagedDeletedFiles.contains(resolved)) return emptyList()
+                val text = _uiState.value.virtualTempFiles[file]
+                    ?: _uiState.value.virtualTempFiles[resolved]
+                    ?: _uiState.value.terminalDrafts[resolved]
+                    ?: if (resolved == _uiState.value.activeFilePath) _uiState.value.activeFileContent else null
+                (text ?: if (repo != null) repository.getFileContent(token, repo.owner.login, repo.name, resolved, branch).getOrNull()?.second ?: "" else "").lines()
+            }
+            "sed" -> {
+                val parsed = SedCommandEngine.parseArgs(args)
+                if (parsed.error != null || parsed.files.isEmpty()) return emptyList()
+                val combinedScript = parsed.expressions.joinToString("\n")
+                val out = mutableListOf<String>()
+                for (f in parsed.files) {
+                    val content = readTerminalFileContent(f, workingDir, repo, branch, token) ?: continue
+                    val transformed = runCatching {
+                        SedCommandEngine.transform(content, combinedScript, quiet = parsed.quiet, extended = parsed.extendedRegex)
+                    }.getOrNull() ?: content
+                    out.addAll(transformed.trimEnd('\n').lines())
+                }
+                out
             }
             "echo" -> {
-                listOf(command.removePrefix("echo").trim().trim('"', '\''))
+                listOf(args.joinToString(" "))
             }
             else -> {
                 listOf(command)
@@ -3050,7 +3074,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         token: String?
     ): List<String> {
         val trimmed = stage.trim()
-        val parts = trimmed.split(Regex("\\s+"))
+        val parts = tokenizeShellCommand(trimmed)
         val cmd = parts.firstOrNull()?.lowercase() ?: return stdin
         val args = parts.drop(1)
 
@@ -3094,11 +3118,34 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 return emptyList()
             }
 
+            "sed" -> {
+                val parsed = SedCommandEngine.parseArgs(args)
+                if (parsed.error != null) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = parsed.error))
+                    return emptyList()
+                }
+                val combinedScript = parsed.expressions.joinToString("\n")
+                val inputStr = stdin.joinToString("\n")
+                val transformed = runCatching {
+                    SedCommandEngine.transform(inputStr, combinedScript, quiet = parsed.quiet, extended = parsed.extendedRegex)
+                }.getOrElse {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = it.message ?: "sed: execution error"))
+                    return emptyList()
+                }
+                val outLines = if (transformed.isEmpty()) emptyList() else transformed.trimEnd('\n').lines()
+                outLines.forEach {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = it))
+                }
+                return outLines
+            }
+
             "grep" -> {
                 val pattern = args.firstOrNull { !it.startsWith("-") }?.trim('\'', '"') ?: ""
                 val ignoreCase = args.contains("-i")
+                val invert = args.contains("-v")
                 val matching = stdin.filter {
-                    if (ignoreCase) it.contains(pattern, ignoreCase = true) else it.contains(pattern)
+                    val hit = if (ignoreCase) it.contains(pattern, ignoreCase = true) else it.contains(pattern)
+                    if (invert) !hit else hit
                 }
                 matching.forEach {
                     appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = it))
@@ -3140,7 +3187,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "sort" -> {
-                val sorted = stdin.sorted()
+                val sorted = if (args.contains("-r")) stdin.sortedDescending() else stdin.sorted()
                 sorted.forEach { appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = it)) }
                 return sorted
             }
@@ -3197,8 +3244,12 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 handleTerminalCd(args, workingDir, state.rawTreeItems)
             }
 
-            "cat", "head", "tail" -> {
+            "cat" -> {
                 handleTerminalCat(args, workingDir, repo, branch, token)
+            }
+
+            "sed" -> {
+                return handleTerminalSed(args, workingDir, repo, branch, token, suppressStderr, suppressStdout, ignoreFailure)
             }
 
             "touch" -> {
@@ -3206,11 +3257,14 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "mkdir" -> {
-                val dirName = args.firstOrNull()
-                if (dirName.isNullOrBlank()) {
+                val dirs = args.filter { !it.startsWith("-") }
+                if (dirs.isEmpty()) {
                     appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "mkdir: missing operand"))
+                    return ignoreFailure
                 } else {
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Directory created: $dirName"))
+                    dirs.forEach { d ->
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Directory created: $d"))
+                    }
                 }
             }
 
@@ -3218,8 +3272,24 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 handleTerminalEcho(command, workingDir, repo, branch)
             }
 
+            "printf" -> {
+                val rawText = args.firstOrNull() ?: ""
+                val unescaped = rawText.replace("\\n", "\n").replace("\\t", "\t")
+                unescaped.lines().forEach { line ->
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+                }
+            }
+
+            "true", ":" -> {
+                return true
+            }
+
+            "false" -> {
+                return ignoreFailure
+            }
+
             "rm" -> {
-                handleTerminalRm(args, workingDir, repo, branch, token)
+                return handleTerminalRm(args, workingDir, repo, branch, token, suppressStderr) || ignoreFailure
             }
 
             "mv" -> {
@@ -4084,7 +4154,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             }
 
             "rm" -> {
-                handleTerminalRm(subArgs, workingDir, repo, branch, token)
+                return handleTerminalRm(subArgs, workingDir, repo, branch, token)
             }
 
             "cp" -> {
@@ -4466,19 +4536,38 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
             return
         }
 
-        val target = args[0]
         val currentStaged = state.terminalStagedFiles.toMutableSet()
+        val hasAllFlag = args.any { it == "." || it == "-A" || it == "--all" || it == "-u" || it == "--update" }
 
-        if (target == "." || target == "-A" || target == "--all") {
+        if (hasAllFlag) {
             currentStaged.addAll(drafts.keys)
-            state.activeFilePath?.let { currentStaged.add(it) }
+            state.activeFilePath?.let { activePath ->
+                if (state.isFileDirty || drafts.containsKey(activePath)) {
+                    currentStaged.add(activePath)
+                }
+            }
             _uiState.update { it.copy(terminalStagedFiles = currentStaged) }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Staged ${currentStaged.size} modified file(s) for commit."))
+            val totalChanges = currentStaged.size + state.terminalStagedDeletedFiles.size
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_SUCCESS,
+                    text = "Staged $totalChanges change(s) for commit (${currentStaged.size} modified/added, ${state.terminalStagedDeletedFiles.size} deleted)."
+                )
+            )
         } else {
-            val resolvedPath = if (workingDir.isEmpty()) target else "$workingDir/$target"
-            currentStaged.add(resolvedPath)
+            val targets = args.filter { !it.startsWith("-") }
+            if (targets.isEmpty()) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "Nothing specified, nothing added."))
+                return
+            }
+            targets.forEach { target ->
+                val resolvedPath = resolveTerminalRepoPath(target, workingDir, state.selectedRepo)
+                if (!state.terminalStagedDeletedFiles.contains(resolvedPath)) {
+                    currentStaged.add(resolvedPath)
+                }
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Staged: $resolvedPath"))
+            }
             _uiState.update { it.copy(terminalStagedFiles = currentStaged) }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Staged: $resolvedPath"))
         }
     }
 
@@ -4487,11 +4576,27 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val staged = state.terminalStagedFiles
         val drafts = state.terminalDrafts
 
-        // Extract message from -m "message" or -m 'message' or --amend
-        val msgRegex = Regex("-m\\s+[\"']([^\"']+)[\"']")
-        val match = msgRegex.find(fullCommand)
-        val commitMessage = match?.groupValues?.getOrNull(1)?.trim() 
-            ?: if (fullCommand.contains("--amend")) "Amend commit via GitHub Terminal" else ""
+        // Extract commit message via POSIX tokenizer (handles apostrophes/quotes inside -m "...")
+        val cmdTokens = tokenizeShellCommand(fullCommand)
+        var commitMessage = ""
+        var i = 0
+        while (i < cmdTokens.size) {
+            val tok = cmdTokens[i]
+            if ((tok == "-m" || tok == "-am" || tok == "-ma") && i + 1 < cmdTokens.size) {
+                commitMessage = cmdTokens[i + 1].trim()
+                break
+            } else if (tok.startsWith("-m") && tok.length > 2) {
+                commitMessage = tok.removePrefix("-m").trim()
+                break
+            } else if (tok.startsWith("--message=")) {
+                commitMessage = tok.removePrefix("--message=").trim()
+                break
+            }
+            i++
+        }
+        if (commitMessage.isEmpty() && cmdTokens.contains("--amend")) {
+            commitMessage = "Amend commit via GitHub Terminal"
+        }
 
         // Handle merge commit during active merge conflict or with pending activeMergeContext
         if (state.activeMergeConflict || state.activeMergeContext != null) {
@@ -4516,14 +4621,16 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val effectiveCommitMsg = commitMessage.ifEmpty { "Update files via GitHub Terminal" }
 
         val stagedDeleted = state.terminalStagedDeletedFiles
-        val isAutoStage = fullCommand.contains("-am") || fullCommand.contains("-a -m") || fullCommand.contains("-a ")
+        val isAutoStage = cmdTokens.any { it == "-am" || it == "-a" || it == "-ma" || it == "--all" }
         val filesToCommit = when {
             staged.isNotEmpty() -> staged
-            isAutoStage -> drafts.keys.ifEmpty { state.activeFilePath?.let { setOf(it) } ?: emptySet() }
+            isAutoStage -> drafts.keys.ifEmpty {
+                state.activeFilePath?.takeIf { state.isFileDirty }?.let { setOf(it) } ?: emptySet()
+            }
             drafts.isNotEmpty() -> drafts.keys
             state.isFileDirty && state.activeFilePath != null -> setOf(state.activeFilePath)
             else -> emptySet()
-        }
+        }.filter { !stagedDeleted.contains(it) }.toSet()
         val deletedToCommit = stagedDeleted
 
         if (filesToCommit.isEmpty() && deletedToCommit.isEmpty()) {
@@ -4572,18 +4679,24 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
 
         if (atomicRes.isSuccess) {
-            // Delete old files from repository
+            // Delete staged removed files from repository
             for (delPath in deletedToCommit) {
-                val sha = state.rawTreeItems.find { it.path == delPath }?.sha ?: ""
-                repository.deleteFile(
-                    token = token,
-                    owner = repo.owner.login,
-                    repo = repo.name,
-                    path = delPath.trimStart('/'),
-                    sha = sha,
-                    message = "Remove $delPath after rename",
-                    branch = branch
-                )
+                val cleanDelPath = delPath.trimStart('/')
+                var sha = state.rawTreeItems.find { it.path == cleanDelPath }?.sha ?: ""
+                if (sha.isBlank()) {
+                    sha = repository.getFileContent(token, repo.owner.login, repo.name, cleanDelPath, branch).getOrNull()?.first?.sha ?: ""
+                }
+                if (sha.isNotBlank()) {
+                    repository.deleteFile(
+                        token = token,
+                        owner = repo.owner.login,
+                        repo = repo.name,
+                        path = cleanDelPath,
+                        sha = sha,
+                        message = effectiveCommitMsg,
+                        branch = branch
+                    )
+                }
             }
             val shortSha = atomicRes.getOrNull()?.take(7) ?: "HEAD"
             _uiState.update {
@@ -4637,10 +4750,11 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
 
         val state = _uiState.value
         val pendingDrafts = state.terminalDrafts.filter { !ConflictResolverUtil.hasConflictMarkers(it.value) }
-        val filesToPush = (pendingDrafts.keys + state.terminalStagedFiles).distinct()
+        val filesToPush = (pendingDrafts.keys + state.terminalStagedFiles).filter { !state.terminalStagedDeletedFiles.contains(it) }.distinct()
+        val deletedToPush = state.terminalStagedDeletedFiles
 
-        if (filesToPush.isNotEmpty() && !token.isNullOrBlank()) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing and pushing ${filesToPush.size} updated object(s) in 1 commit to branch '$targetBranch'..."))
+        if ((filesToPush.isNotEmpty() || deletedToPush.isNotEmpty()) && !token.isNullOrBlank()) {
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing and pushing ${filesToPush.size + deletedToPush.size} updated object(s) to branch '$targetBranch'..."))
             val filePairs = mutableListOf<Pair<String, ByteArray>>()
             for (filePath in filesToPush) {
                 val content = state.terminalDrafts[filePath] ?: if (filePath == state.activeFilePath) state.activeFileContent else null
@@ -4665,13 +4779,33 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
                 }
             }
 
+            for (delPath in deletedToPush) {
+                val cleanDelPath = delPath.trimStart('/')
+                var sha = state.rawTreeItems.find { it.path == cleanDelPath }?.sha ?: ""
+                if (sha.isBlank()) {
+                    sha = repository.getFileContent(token, repo.owner.login, repo.name, cleanDelPath, targetBranch).getOrNull()?.first?.sha ?: ""
+                }
+                if (sha.isNotBlank()) {
+                    repository.deleteFile(
+                        token = token,
+                        owner = repo.owner.login,
+                        repo = repo.name,
+                        path = cleanDelPath,
+                        sha = sha,
+                        message = "Delete $cleanDelPath via git push",
+                        branch = targetBranch
+                    )
+                }
+            }
+
             _uiState.update {
                 it.copy(
                     terminalDrafts = it.terminalDrafts - filesToPush.toSet(),
-                    terminalStagedFiles = emptySet()
+                    terminalStagedFiles = emptySet(),
+                    terminalStagedDeletedFiles = emptySet()
                 )
             }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (${filePairs.size}/${filePairs.size}), done."))
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "Writing objects: 100% (${filePairs.size + deletedToPush.size}/${filePairs.size + deletedToPush.size}), done."))
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "To https://github.com/${repo.fullName}.git"))
             if (isForce) {
                 appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = " + 7a3c9e1...4b8d2f0 $targetBranch -> $targetBranch (forced update)"))
@@ -4760,7 +4894,7 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun handleGitReset(args: List<String>, workingDir: String) {
-        _uiState.update { it.copy(terminalStagedFiles = emptySet()) }
+        _uiState.update { it.copy(terminalStagedFiles = emptySet(), terminalStagedDeletedFiles = emptySet()) }
         appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Unstaged all changes."))
     }
 
@@ -4826,10 +4960,16 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         val showAll = args.contains("-a") || args.contains("-la") || args.contains("-al")
         val showLong = args.contains("-l") || args.contains("-la") || args.contains("-al")
 
-        val targetDir = args.firstOrNull { !it.startsWith("-") } ?: workingDir
+        val targetArg = args.firstOrNull { !it.startsWith("-") }
+        val targetDir = if (targetArg != null) {
+            resolveTerminalRepoPath(targetArg, workingDir, _uiState.value.selectedRepo)
+        } else {
+            workingDir
+        }
 
+        val deletedSet = _uiState.value.terminalStagedDeletedFiles
         val directChildren = items.filter { item ->
-            if (targetDir.isEmpty()) {
+            !deletedSet.contains(item.path) && if (targetDir.isEmpty()) {
                 !item.path.contains('/')
             } else {
                 item.path.startsWith("$targetDir/") && !item.path.removePrefix("$targetDir/").contains('/')
@@ -4967,122 +5107,329 @@ class GitExplorerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    private fun resolveTerminalRepoPath(rawTarget: String, workingDir: String, repo: GitHubRepository?): String {
+        val repoName = repo?.name ?: ""
+        var p = rawTarget.trim().trim('\'', '"')
+        if (p.startsWith("/workspace/")) {
+            p = p.removePrefix("/workspace/")
+        }
+        if (p.startsWith("~/")) {
+            p = p.removePrefix("~/")
+        }
+        if (repoName.isNotEmpty() && p.startsWith("$repoName/")) {
+            p = p.removePrefix("$repoName/")
+        }
+        val isFromRoot = rawTarget.trim().startsWith("/") || rawTarget.trim().startsWith("~/") ||
+            (repoName.isNotEmpty() && rawTarget.trim().startsWith("$repoName/"))
+        p = p.removePrefix("/")
+        val base = if (isFromRoot) "" else workingDir
+        val combined = if (base.isEmpty()) p else if (p.isEmpty()) base else "$base/$p"
+        val segments = combined.split("/").filter { it.isNotEmpty() && it != "." }
+        val stack = mutableListOf<String>()
+        for (seg in segments) {
+            if (seg == "..") {
+                if (stack.isNotEmpty()) stack.removeAt(stack.size - 1)
+            } else {
+                stack.add(seg)
+            }
+        }
+        return stack.joinToString("/")
+    }
+
+    private suspend fun readTerminalFileContent(
+        rawPath: String,
+        workingDir: String,
+        repo: GitHubRepository?,
+        branch: String,
+        token: String?
+    ): String? {
+        val clean = rawPath.trim('\'', '"')
+        val state = _uiState.value
+        val isTmp = clean.startsWith("/tmp/") || clean.startsWith("/var/")
+        val resolved = if (isTmp) clean else resolveTerminalRepoPath(clean, workingDir, repo)
+
+        if (state.terminalStagedDeletedFiles.contains(resolved)) {
+            return null
+        }
+
+        state.virtualTempFiles[clean]?.let { return it }
+        state.virtualTempFiles[resolved]?.let { return it }
+        state.terminalDrafts[resolved]?.let { return it }
+        if (resolved == state.activeFilePath) return state.activeFileContent
+
+        if (repo != null && !isTmp) {
+            val res = repository.getFileContent(token, repo.owner.login, repo.name, resolved, branch)
+            if (res.isSuccess) return res.getOrNull()?.second
+        }
+        return null
+    }
+
+    private fun writeTerminalFileContent(rawPath: String, newContent: String, workingDir: String, repo: GitHubRepository?) {
+        val clean = rawPath.trim('\'', '"')
+        val isTmp = clean.startsWith("/tmp/") || clean.startsWith("/var/")
+        val resolved = if (isTmp) clean else resolveTerminalRepoPath(clean, workingDir, repo)
+
+        _uiState.update { current ->
+            val updatedTemp = current.virtualTempFiles + (clean to newContent) + (resolved to newContent)
+            if (!isTmp) {
+                current.copy(
+                    virtualTempFiles = updatedTemp,
+                    terminalDrafts = current.terminalDrafts + (resolved to newContent),
+                    terminalStagedFiles = current.terminalStagedFiles + resolved,
+                    terminalStagedDeletedFiles = current.terminalStagedDeletedFiles - resolved,
+                    activeFileContent = if (current.activeFilePath == resolved) newContent else current.activeFileContent,
+                    isFileDirty = if (current.activeFilePath == resolved) true else current.isFileDirty
+                )
+            } else {
+                current.copy(virtualTempFiles = updatedTemp)
+            }
+        }
+    }
+
+    private suspend fun handleTerminalSed(
+        args: List<String>,
+        workingDir: String,
+        repo: GitHubRepository?,
+        branch: String,
+        token: String?,
+        suppressStderr: Boolean,
+        suppressStdout: Boolean,
+        ignoreFailure: Boolean
+    ): Boolean {
+        val parsed = SedCommandEngine.parseArgs(args)
+        if (parsed.error != null) {
+            if (!suppressStderr) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = parsed.error))
+            }
+            return ignoreFailure
+        }
+
+        if (parsed.files.isEmpty()) {
+            if (!suppressStderr) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "sed: no input files specified"))
+            }
+            return ignoreFailure
+        }
+
+        val combinedScript = parsed.expressions.joinToString("\n")
+        var allOk = true
+
+        for (fileArg in parsed.files) {
+            val content = readTerminalFileContent(fileArg, workingDir, repo, branch, token)
+            if (content == null) {
+                allOk = false
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "sed: can't read $fileArg: No such file or directory"))
+                }
+                continue
+            }
+
+            val transformed = try {
+                SedCommandEngine.transform(
+                    content = content,
+                    script = combinedScript,
+                    quiet = parsed.quiet,
+                    extended = parsed.extendedRegex
+                )
+            } catch (e: Exception) {
+                allOk = false
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = e.message ?: "sed: invalid expression"))
+                }
+                continue
+            }
+
+            if (parsed.inPlace) {
+                writeTerminalFileContent(fileArg, transformed, workingDir, repo)
+                if (!suppressStdout) {
+                    val resolved = resolveTerminalRepoPath(fileArg, workingDir, repo)
+                    val changed = transformed != content
+                    appendTerminalLine(
+                        TerminalLine(
+                            type = if (changed) TerminalLineType.OUTPUT_SUCCESS else TerminalLineType.OUTPUT_INFO,
+                            text = if (changed) "Updated $resolved (staged in working tree)" else "No changes needed in $resolved"
+                        )
+                    )
+                }
+            } else if (!suppressStdout) {
+                if (transformed.isNotEmpty()) {
+                    transformed.trimEnd('\n').lines().forEach { line ->
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+                    }
+                }
+            }
+        }
+
+        return allOk || ignoreFailure
+    }
+
     private suspend fun handleTerminalCat(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
-        val fileName = args.firstOrNull()?.trim('\'', '"')
-        if (fileName.isNullOrBlank()) {
+        val targets = args.filter { !it.startsWith("-") }
+        if (targets.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cat: missing file operand"))
             return
         }
 
-        val isTmpOrRoot = fileName.startsWith("/")
-        val filePath = if (isTmpOrRoot) fileName else if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
-
-        val state = _uiState.value
-        val localContent = state.virtualTempFiles[fileName]
-            ?: state.virtualTempFiles[filePath]
-            ?: state.terminalDrafts[filePath]
-
-        if (localContent != null) {
-            localContent.lines().take(100).forEach { line ->
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+        for (fileName in targets) {
+            val content = readTerminalFileContent(fileName, workingDir, repo, branch, token)
+            if (content != null) {
+                content.lines().take(100).forEach { line ->
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+                }
+                if (content.lines().size > 100) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [truncated output: ${content.lines().size} lines]"))
+                }
+            } else {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cat: $fileName: No such file or directory"))
             }
-            if (localContent.lines().size > 100) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [truncated output: ${localContent.lines().size} lines]"))
-            }
-            return
-        }
-
-        if (repo == null) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cat: $fileName: No such file or directory"))
-            return
-        }
-
-        val contentRes = repository.getFileContent(token, repo.owner.login, repo.name, filePath, branch)
-
-        if (contentRes.isSuccess) {
-            val text = contentRes.getOrNull()?.second ?: ""
-            text.lines().take(100).forEach { line ->
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
-            }
-            if (text.lines().size > 100) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_INFO, text = "... [truncated output: ${text.lines().size} lines]"))
-            }
-        } else {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "cat: $fileName: No such file or directory"))
         }
     }
 
     private fun handleTerminalTouch(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String) {
-        val fileName = args.firstOrNull()
-        if (fileName.isNullOrBlank()) {
+        val targets = args.filter { !it.startsWith("-") }
+        if (targets.isEmpty()) {
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "touch: missing file operand"))
             return
         }
-        val filePath = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
-        _uiState.update {
-            it.copy(terminalDrafts = it.terminalDrafts + (filePath to ""))
+        targets.forEach { fileName ->
+            val filePath = resolveTerminalRepoPath(fileName, workingDir, repo)
+            writeTerminalFileContent(filePath, _uiState.value.terminalDrafts[filePath] ?: "", workingDir, repo)
+            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Created empty file: $filePath"))
         }
-        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Created empty file: $filePath"))
     }
 
     private fun handleTerminalEcho(fullCommand: String, workingDir: String, repo: GitHubRepository?, branch: String) {
-        if (fullCommand.contains(">")) {
-            val parts = fullCommand.split(">")
-            val rawText = parts[0].removePrefix("echo").trim().removeSurrounding("\"").removeSurrounding("'")
-            val targetFile = parts[1].trim()
-            val filePath = if (workingDir.isEmpty()) targetFile else "$workingDir/$targetFile"
-            _uiState.update {
-                it.copy(terminalDrafts = it.terminalDrafts + (filePath to rawText))
-            }
+        val redirAppendIdx = fullCommand.indexOf(">>")
+        val redirIdx = if (redirAppendIdx != -1) redirAppendIdx else fullCommand.indexOf('>')
+        if (redirIdx != -1) {
+            val isAppend = redirAppendIdx != -1
+            val left = fullCommand.substring(0, redirIdx).trim()
+            val targetFile = fullCommand.substring(redirIdx + if (isAppend) 2 else 1).trim().trim('\'', '"')
+            val tokens = tokenizeShellCommand(left).drop(1).filter { it != "-e" && it != "-n" }
+            val text = tokens.joinToString(" ")
+            val filePath = resolveTerminalRepoPath(targetFile, workingDir, repo)
+            val prev = if (isAppend) (_uiState.value.terminalDrafts[filePath] ?: "") else ""
+            val nextContent = if (isAppend && prev.isNotEmpty()) "$prev\n$text" else text
+            writeTerminalFileContent(filePath, nextContent, workingDir, repo)
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Written to $filePath"))
         } else {
-            val text = fullCommand.removePrefix("echo").trim().removeSurrounding("\"").removeSurrounding("'")
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = text))
+            val tokens = tokenizeShellCommand(fullCommand).drop(1)
+            val interpretEscapes = tokens.contains("-e")
+            val text = tokens.filter { it != "-e" && it != "-n" }.joinToString(" ")
+            val finalOutput = if (interpretEscapes) text.replace("\\n", "\n").replace("\\t", "\t") else text
+            finalOutput.lines().forEach { line ->
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_TEXT, text = line))
+            }
         }
     }
 
-    private suspend fun handleTerminalRm(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
-        val nonFlags = args.filter { !it.startsWith("-") }
-        val fileName = nonFlags.firstOrNull()?.trim('\'', '"')
-        if (fileName.isNullOrBlank()) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: missing operand"))
-            return
-        }
-        if (repo == null || token.isNullOrBlank()) {
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "fatal: Authentication required to delete remote files"))
-            return
-        }
+    private suspend fun handleTerminalRm(
+        args: List<String>,
+        workingDir: String,
+        repo: GitHubRepository?,
+        branch: String,
+        token: String?,
+        suppressStderr: Boolean = false
+    ): Boolean {
+        val flags = args.filter { it.startsWith("-") }
+        val isForce = flags.any { it.contains('f') || it == "--force" }
+        val isRecursive = flags.any { it.contains('r') || it.contains('R') || it == "--recursive" }
+        val targets = args.filter { !it.startsWith("-") && it.isNotBlank() }
 
-        val rawPath = if (workingDir.isEmpty()) fileName else "$workingDir/$fileName"
-        val cleanPath = rawPath.trim('/')
-        val rawTree = _uiState.value.rawTreeItems
-        val dirFiles = rawTree.filter { !it.isDirectory && (it.path == cleanPath || it.path.startsWith("$cleanPath/")) }
-
-        if (dirFiles.isNotEmpty()) {
-            var delCount = 0
-            for (f in dirFiles) {
-                val res = repository.deleteFile(token, repo.owner.login, repo.name, f.path, f.sha, "Remove ${f.path} via Terminal", branch)
-                if (res.isSuccess) delCount++
+        if (targets.isEmpty()) {
+            if (!isForce && !suppressStderr) {
+                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: missing operand"))
             }
-            appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed: $cleanPath ($delCount file(s) deleted)"))
-            syncActiveRepository(isSilent = true)
-        } else {
-            val fileItem = rawTree.find { it.path == cleanPath }
-            val sha = fileItem?.sha ?: ""
-            val res = repository.deleteFile(token, repo.owner.login, repo.name, cleanPath, sha, "Delete $cleanPath via Terminal", branch)
-            if (res.isSuccess) {
-                appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed: $cleanPath"))
-                syncActiveRepository(isSilent = true)
-            } else {
-                val gitkeepRes = repository.deleteFile(token, repo.owner.login, repo.name, "$cleanPath/.gitkeep", "", "Delete $cleanPath via Terminal", branch)
-                if (gitkeepRes.isSuccess) {
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed folder: $cleanPath"))
-                    syncActiveRepository(isSilent = true)
-                } else {
-                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: cannot remove '$fileName': ${res.exceptionOrNull()?.message}"))
+            return isForce
+        }
+
+        val state = _uiState.value
+        val newDrafts = state.terminalDrafts.toMutableMap()
+        val newStaged = state.terminalStagedFiles.toMutableSet()
+        val newDeleted = state.terminalStagedDeletedFiles.toMutableSet()
+        val newTemp = state.virtualTempFiles.toMutableMap()
+        val rawTree = state.rawTreeItems
+
+        var allOk = true
+
+        for (targetRaw in targets) {
+            val cleanRaw = targetRaw.trim('\'', '"')
+            if (cleanRaw.startsWith("/tmp/") || cleanRaw.startsWith("/var/")) {
+                val existed = newTemp.remove(cleanRaw) != null
+                if (!existed && !isForce) {
+                    allOk = false
+                    if (!suppressStderr) {
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: cannot remove '$cleanRaw': No such file or directory"))
+                    }
+                } else if (existed) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Removed: $cleanRaw"))
                 }
+                continue
             }
+
+            val cleanPath = resolveTerminalRepoPath(cleanRaw, workingDir, repo).trim('/')
+            if (cleanPath.isEmpty()) continue
+
+            val matchedRemoteFiles = rawTree.filter { item ->
+                !item.isDirectory && !newDeleted.contains(item.path) &&
+                    (item.path == cleanPath || (isRecursive && item.path.startsWith("$cleanPath/")))
+            }
+            val matchedDrafts = newDrafts.keys.filter { p ->
+                p == cleanPath || (isRecursive && p.startsWith("$cleanPath/"))
+            }
+
+            val hasDirChildrenWithoutR = !isRecursive && rawTree.any {
+                !newDeleted.contains(it.path) && it.path.startsWith("$cleanPath/")
+            }
+
+            if (hasDirChildrenWithoutR) {
+                allOk = false
+                if (!suppressStderr) {
+                    appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: cannot remove '$cleanRaw': Is a directory"))
+                }
+                continue
+            }
+
+            val totalRemoved = (matchedRemoteFiles.map { it.path } + matchedDrafts).distinct()
+            if (totalRemoved.isEmpty()) {
+                if (!isForce) {
+                    allOk = false
+                    if (!suppressStderr) {
+                        appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_ERROR, text = "rm: cannot remove '$cleanRaw': No such file or directory"))
+                    }
+                }
+                continue
+            }
+
+            for (p in matchedDrafts) {
+                newDrafts.remove(p)
+                newStaged.remove(p)
+            }
+            for (rf in matchedRemoteFiles) {
+                newDeleted.add(rf.path)
+                newStaged.remove(rf.path)
+                newDrafts.remove(rf.path)
+            }
+            newTemp.remove(cleanPath)
+
+            appendTerminalLine(
+                TerminalLine(
+                    type = TerminalLineType.OUTPUT_SUCCESS,
+                    text = "Removed: $cleanPath (${totalRemoved.size} file(s) staged for deletion)"
+                )
+            )
         }
+
+        _uiState.update {
+            it.copy(
+                terminalDrafts = newDrafts,
+                terminalStagedFiles = newStaged,
+                terminalStagedDeletedFiles = newDeleted,
+                virtualTempFiles = newTemp
+            )
+        }
+
+        return allOk || isForce
     }
 
     private suspend fun handleGitMv(args: List<String>, workingDir: String, repo: GitHubRepository?, branch: String, token: String?) {
@@ -6616,14 +6963,21 @@ val cherryPickFeature = true
         val target = args.firstOrNull { !it.startsWith("-") }
 
         if (target == null || target == ".") {
-            _uiState.update { it.copy(terminalStagedFiles = emptySet(), terminalDrafts = emptyMap()) }
+            _uiState.update {
+                it.copy(
+                    terminalStagedFiles = emptySet(),
+                    terminalDrafts = if (stagedFlag) it.terminalDrafts else emptyMap(),
+                    terminalStagedDeletedFiles = emptySet()
+                )
+            }
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Restored all working tree files."))
         } else {
             val resolved = if (workingDir.isEmpty()) target else "$workingDir/$target"
             _uiState.update {
                 it.copy(
                     terminalStagedFiles = it.terminalStagedFiles - resolved,
-                    terminalDrafts = it.terminalDrafts - resolved
+                    terminalDrafts = if (stagedFlag) it.terminalDrafts else (it.terminalDrafts - resolved),
+                    terminalStagedDeletedFiles = it.terminalStagedDeletedFiles - resolved
                 )
             }
             appendTerminalLine(TerminalLine(type = TerminalLineType.OUTPUT_SUCCESS, text = "Restored $resolved"))
@@ -6907,14 +7261,19 @@ val cherryPickFeature = true
                 val full = if (isRoot) clean else if (workingDir.isEmpty()) clean else "$workingDir/$clean"
 
                 val state = _uiState.value
-                state.virtualTempFiles[clean]
-                    ?: state.virtualTempFiles[full]
-                    ?: state.terminalDrafts[full]
-                    ?: run {
-                        if (repo != null) {
-                            repository.getFileContent(token, repo.owner.login, repo.name, full, branch).getOrNull()?.second
-                        } else null
-                    }
+                if (state.terminalStagedDeletedFiles.contains(full)) {
+                    null
+                } else {
+                    state.virtualTempFiles[clean]
+                        ?: state.virtualTempFiles[full]
+                        ?: state.terminalDrafts[full]
+                        ?: if (full == state.activeFilePath) state.activeFileContent else null
+                        ?: run {
+                            if (repo != null) {
+                                repository.getFileContent(token, repo.owner.login, repo.name, full, branch).getOrNull()?.second
+                            } else null
+                        }
+                }
             },
             writeFile = { path, newContent ->
                 val clean = path.trim('\'', '"')
@@ -6927,7 +7286,10 @@ val cherryPickFeature = true
                         current.copy(
                             virtualTempFiles = updatedTemp,
                             terminalDrafts = current.terminalDrafts + (full to newContent),
-                            terminalStagedFiles = current.terminalStagedFiles + full
+                            terminalStagedFiles = current.terminalStagedFiles + full,
+                            terminalStagedDeletedFiles = current.terminalStagedDeletedFiles - full,
+                            activeFileContent = if (current.activeFilePath == full) newContent else current.activeFileContent,
+                            isFileDirty = if (current.activeFilePath == full) true else current.isFileDirty
                         )
                     } else {
                         current.copy(virtualTempFiles = updatedTemp)
@@ -6937,22 +7299,27 @@ val cherryPickFeature = true
             listMatchingFiles = { pattern ->
                 val regex = globToRegex(pattern)
                 val prefix = if (workingDir.isEmpty()) "" else "$workingDir/"
+                val deleted = _uiState.value.terminalStagedDeletedFiles
 
                 val allPaths = mutableSetOf<String>()
                 _uiState.value.rawTreeItems.forEach { item ->
-                    if (prefix.isEmpty()) {
-                        if (!item.path.contains("/")) allPaths.add(item.path)
-                    } else if (item.path.startsWith(prefix)) {
-                        val rel = item.path.removePrefix(prefix)
-                        if (!rel.contains("/")) allPaths.add(rel)
+                    if (!deleted.contains(item.path)) {
+                        if (prefix.isEmpty()) {
+                            if (!item.path.contains("/")) allPaths.add(item.path)
+                        } else if (item.path.startsWith(prefix)) {
+                            val rel = item.path.removePrefix(prefix)
+                            if (!rel.contains("/")) allPaths.add(rel)
+                        }
                     }
                 }
                 _uiState.value.terminalDrafts.keys.forEach { draftPath ->
-                    if (prefix.isEmpty()) {
-                        if (!draftPath.contains("/")) allPaths.add(draftPath)
-                    } else if (draftPath.startsWith(prefix)) {
-                        val rel = draftPath.removePrefix(prefix)
-                        if (!rel.contains("/")) allPaths.add(rel)
+                    if (!deleted.contains(draftPath)) {
+                        if (prefix.isEmpty()) {
+                            if (!draftPath.contains("/")) allPaths.add(draftPath)
+                        } else if (draftPath.startsWith(prefix)) {
+                            val rel = draftPath.removePrefix(prefix)
+                            if (!rel.contains("/")) allPaths.add(rel)
+                        }
                     }
                 }
                 allPaths.filter { regex.matches(it) }.sorted()
@@ -7025,8 +7392,9 @@ val cherryPickFeature = true
             "  wc [-l] <file>                           Count lines, words, bytes in file",
             "  head / tail [-n N] <file>                View first or last lines of file",
             "  touch <file>                             Create empty file",
+            "  sed -i 's/old/new/g' <file>              Stream editor (in-place edits, ranges, N/D)",
             "  echo \"text\" > <file>                     Write text into file",
-            "  rm <file>                                Delete file from repository",
+            "  rm [-rf] <file|dir>...                   Delete file(s) or folder(s) (staged for commit)",
             "  whoami / uname / uptime / date           System inspection utilities",
             "  python3 <file.py> [-c cmd]               Execute Python 3 scripts & regex transformations",
             "  cat > <file> <<'EOF' ... EOF             Multi-line Heredoc file writer",

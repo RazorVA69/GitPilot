@@ -126,6 +126,66 @@ enum class DeviceFolderSortBy {
     TYPE
 }
 
+data class DeviceFolderSortConfig(
+    val sortBy: DeviceFolderSortBy,
+    val isReversed: Boolean,
+    val foldersFirst: Boolean,
+    val sortFoldersByName: Boolean
+)
+
+private fun canonicalFolderKey(dir: File): String {
+    return try {
+        dir.canonicalPath.trimEnd('/')
+    } catch (_: Exception) {
+        dir.absolutePath.trimEnd('/')
+    }.ifEmpty { "/" }
+}
+
+private fun loadFolderSortOverrides(prefs: android.content.SharedPreferences): Map<String, DeviceFolderSortConfig> {
+    val raw = prefs.getString("folder_sort_overrides_v1", null) ?: return emptyMap()
+    return try {
+        val json = org.json.JSONObject(raw)
+        val result = mutableMapOf<String, DeviceFolderSortConfig>()
+        val keys = json.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val obj = json.optJSONObject(key) ?: continue
+            val sortName = obj.optString("sortBy", DeviceFolderSortBy.NAME.name)
+            val sortBy = try {
+                DeviceFolderSortBy.valueOf(sortName)
+            } catch (_: Exception) {
+                DeviceFolderSortBy.NAME
+            }
+            result[key] = DeviceFolderSortConfig(
+                sortBy = sortBy,
+                isReversed = obj.optBoolean("isReversed", false),
+                foldersFirst = obj.optBoolean("foldersFirst", true),
+                sortFoldersByName = obj.optBoolean("sortFoldersByName", true)
+            )
+        }
+        result
+    } catch (_: Exception) {
+        emptyMap()
+    }
+}
+
+private fun saveFolderSortOverrides(
+    prefs: android.content.SharedPreferences,
+    overrides: Map<String, DeviceFolderSortConfig>
+) {
+    val json = org.json.JSONObject()
+    overrides.forEach { (path, cfg) ->
+        val obj = org.json.JSONObject().apply {
+            put("sortBy", cfg.sortBy.name)
+            put("isReversed", cfg.isReversed)
+            put("foldersFirst", cfg.foldersFirst)
+            put("sortFoldersByName", cfg.sortFoldersByName)
+        }
+        json.put(path, obj)
+    }
+    prefs.edit().putString("folder_sort_overrides_v1", json.toString()).apply()
+}
+
 data class LocalFileItem(
     val file: File,
     val name: String,
@@ -181,21 +241,47 @@ fun DeviceStorageExplorerModal(
         prefs.edit().putInt("explorer_ui_scale", clamped).apply()
     }
 
-    // Sorting State - Remembered in SharedPreferences
-    var foldersFirst by rememberSaveable {
+    // Global & Per-Folder ("This Folder Only") Sorting State - Remembered in SharedPreferences
+    var globalFoldersFirst by rememberSaveable {
         mutableStateOf(prefs.getBoolean("folders_first", true))
     }
-    var sortFoldersByName by rememberSaveable {
+    var globalSortFoldersByName by rememberSaveable {
         mutableStateOf(prefs.getBoolean("sort_folders_by_name", true))
     }
-    var sortBy by rememberSaveable {
+    var globalSortBy by rememberSaveable {
         val savedName = prefs.getString("sort_by", DeviceFolderSortBy.NAME.name) ?: DeviceFolderSortBy.NAME.name
         mutableStateOf(try { DeviceFolderSortBy.valueOf(savedName) } catch (_: Exception) { DeviceFolderSortBy.NAME })
     }
-    var isSortReversed by rememberSaveable {
+    var globalSortReversed by rememberSaveable {
         mutableStateOf(prefs.getBoolean("sort_reversed", false))
     }
+    var folderSortOverrides by remember {
+        mutableStateOf(loadFolderSortOverrides(prefs))
+    }
     var showSortDropdown by remember { mutableStateOf(false) }
+
+    val currentFolderKey = remember(currentDir) { canonicalFolderKey(currentDir) }
+    val currentFolderOverride = folderSortOverrides[currentFolderKey]
+    val isThisFolderOnly = currentFolderOverride != null
+    val foldersFirst = currentFolderOverride?.foldersFirst ?: globalFoldersFirst
+    val sortFoldersByName = currentFolderOverride?.sortFoldersByName ?: globalSortFoldersByName
+    val sortBy = currentFolderOverride?.sortBy ?: globalSortBy
+    val isSortReversed = currentFolderOverride?.isReversed ?: globalSortReversed
+
+    fun toggleThisFolderOnly() {
+        val updated = if (isThisFolderOnly) {
+            folderSortOverrides - currentFolderKey
+        } else {
+            folderSortOverrides + (currentFolderKey to DeviceFolderSortConfig(
+                sortBy = sortBy,
+                isReversed = isSortReversed,
+                foldersFirst = foldersFirst,
+                sortFoldersByName = sortFoldersByName
+            ))
+        }
+        folderSortOverrides = updated
+        saveFolderSortOverrides(prefs, updated)
+    }
 
     fun updateSort(
         newSortBy: DeviceFolderSortBy = sortBy,
@@ -203,16 +289,27 @@ fun DeviceStorageExplorerModal(
         newFoldersFirst: Boolean = foldersFirst,
         newSortFoldersByName: Boolean = sortFoldersByName
     ) {
-        sortBy = newSortBy
-        isSortReversed = newSortReversed
-        foldersFirst = newFoldersFirst
-        sortFoldersByName = newSortFoldersByName
-        prefs.edit()
-            .putString("sort_by", newSortBy.name)
-            .putBoolean("sort_reversed", newSortReversed)
-            .putBoolean("folders_first", newFoldersFirst)
-            .putBoolean("sort_folders_by_name", newSortFoldersByName)
-            .apply()
+        if (isThisFolderOnly) {
+            val updated = folderSortOverrides + (currentFolderKey to DeviceFolderSortConfig(
+                sortBy = newSortBy,
+                isReversed = newSortReversed,
+                foldersFirst = newFoldersFirst,
+                sortFoldersByName = newSortFoldersByName
+            ))
+            folderSortOverrides = updated
+            saveFolderSortOverrides(prefs, updated)
+        } else {
+            globalSortBy = newSortBy
+            globalSortReversed = newSortReversed
+            globalFoldersFirst = newFoldersFirst
+            globalSortFoldersByName = newSortFoldersByName
+            prefs.edit()
+                .putString("sort_by", newSortBy.name)
+                .putBoolean("sort_reversed", newSortReversed)
+                .putBoolean("folders_first", newFoldersFirst)
+                .putBoolean("sort_folders_by_name", newSortFoldersByName)
+                .apply()
+        }
     }
 
     // Check if the current directory is at root path (Storage Root)
@@ -708,7 +805,7 @@ fun DeviceStorageExplorerModal(
                                         Icon(
                                             imageVector = Icons.Default.Sort,
                                             contentDescription = "Sort Options",
-                                            tint = GitText2,
+                                            tint = if (isThisFolderOnly) GitAccent else GitText2,
                                             modifier = Modifier.size(20.dp)
                                         )
                                     }
@@ -720,6 +817,65 @@ fun DeviceStorageExplorerModal(
                                         border = androidx.compose.foundation.BorderStroke(1.dp, GitBorderStrong),
                                         shape = RoundedCornerShape(12.dp)
                                     ) {
+                                        // Per-Folder Sort Scope Toggle: "This Folder Only"
+                                        val folderDisplayName = if (currentDir.absolutePath == defaultRoot.absolutePath) {
+                                            "Storage Root"
+                                        } else {
+                                            currentDir.name.ifEmpty { "This Folder" }
+                                        }
+                                        DropdownMenuItem(
+                                            text = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Folder,
+                                                            contentDescription = null,
+                                                            tint = if (isThisFolderOnly) GitAccent else GitText2,
+                                                            modifier = Modifier.size(17.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = "This Folder Only",
+                                                                fontSize = 13.5.sp,
+                                                                fontWeight = if (isThisFolderOnly) FontWeight.SemiBold else FontWeight.Normal,
+                                                                color = if (isThisFolderOnly) GitAccent else GitText1
+                                                            )
+                                                            Text(
+                                                                text = if (isThisFolderOnly) "Remembered for $folderDisplayName" else "Apply to all folders",
+                                                                fontSize = 11.sp,
+                                                                color = GitText3,
+                                                                maxLines = 1,
+                                                                overflow = TextOverflow.Ellipsis
+                                                            )
+                                                        }
+                                                    }
+                                                    if (isThisFolderOnly) {
+                                                        Spacer(modifier = Modifier.width(10.dp))
+                                                        Icon(
+                                                            imageVector = Icons.Default.Check,
+                                                            contentDescription = null,
+                                                            tint = GitAccent,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            },
+                                            modifier = Modifier.testTag("sort_this_folder_only_item"),
+                                            onClick = {
+                                                toggleThisFolderOnly()
+                                            }
+                                        )
+
+                                        HorizontalDivider(color = GitBorder, thickness = 0.5.dp, modifier = Modifier.padding(vertical = 4.dp))
+
                                         // Option 1: Folders First
                                         DropdownMenuItem(
                                             text = {
